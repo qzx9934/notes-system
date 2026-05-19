@@ -80,14 +80,6 @@ body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; background: va
 .batch-bar select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
 
 /* Stats Bar */
-.stats-bar { display: flex; gap: 12px; margin-bottom: 16px; }
-.stat-card {
-  flex: 1; background: var(--card); border-radius: var(--radius); padding: 14px 18px;
-  box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 100px;
-}
-.stat-card .num { font-size: 28px; font-weight: 700; }
-.stat-card .label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-
 /* Table */
 .table-wrap { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; flex:1; display:flex; flex-direction:column; }
 .table-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -196,7 +188,6 @@ tbody tr.selected { background: #EBF5FB; }
   .sidebar.open { width: 260px; }
   .main { margin-left: 0; }
   .topbar { flex-direction: column; }
-  .stats-bar { flex-wrap: wrap; }
   .preview-drawer { width: 100vw; max-height: 100vh; border-radius: 0; }
 }
 
@@ -386,8 +377,6 @@ tbody tr.selected { background: #EBF5FB; }
     <button class="btn btn-primary" onclick="openAddModal()">+ 新增笔记</button>
     <button class="btn btn-outline" id="importBtn" onclick="importExcel()">📥 导入Excel</button>
   </div>
-
-  <div class="stats-bar" id="statsBar"></div>
 
   <!-- Batch bar -->
   <div class="batch-bar" id="batchBar">
@@ -754,7 +743,7 @@ async function doDeleteUser(id, username) {
 
 // ==================== Init ====================
 async function init() {
-  await Promise.all([loadDomains(), loadSections(), loadStats()]);
+  await Promise.all([loadDomains(), loadSections()]);
   renderSidebar();
   populateBatchSectionSelect();
   doSearch();
@@ -771,19 +760,6 @@ async function loadSections() {
   // 填充编辑弹窗的章节下拉
   const sel = document.getElementById('editSection');
   sel.innerHTML = sections.map(s => `<option value="${s.code}">${s.code} ${s.name}</option>`).join('');
-}
-async function loadStats() {
-  const r = await fetch('/api/stats');
-  const s = await r.json();
-  const byLevel = {};
-  s.by_level.forEach(l => byLevel[l.level] = l.cnt);
-  document.getElementById('statsBar').innerHTML = `
-    <div class="stat-card"><div class="num">${s.total}</div><div class="label">总条目</div></div>
-    <div class="stat-card"><div class="num" style="color:var(--star3)">${byLevel['★★★'] || 0}</div><div class="label">★★★ 核心</div></div>
-    <div class="stat-card"><div class="num" style="color:var(--star2)">${byLevel['★★'] || 0}</div><div class="label">★★ 重要</div></div>
-    <div class="stat-card"><div class="num" style="color:var(--star1)">${byLevel['★'] || 0}</div><div class="label">★ 参考</div></div>
-    <div class="stat-card"><div class="num">${s.by_section.filter(x=>x.cnt>0).length}</div><div class="label">涉及章节</div></div>
-  `;
 }
 
 function populateBatchSectionSelect() {
@@ -1016,8 +992,7 @@ async function batchDelete() {
       selectedIds.clear();
       updateBatchBar();
       doSearch();
-      loadStats();
-    } else {
+          } else {
       showToast(data.error || '删除失败', 'error');
     }
   } catch(e) { showToast('网络错误', 'error'); }
@@ -1062,8 +1037,7 @@ async function batchUpdateSection() {
       document.getElementById('batchSection').value = '';
       clearSelection();
       doSearch();
-      loadStats();
-    } else { showToast(data.error || '更新失败', 'error'); }
+          } else { showToast(data.error || '更新失败', 'error'); }
   } catch(e) { showToast('网络错误', 'error'); }
 }
 
@@ -1115,8 +1089,7 @@ async function deleteFromPreview() {
     showToast('已删除', 'success');
     closePreview();
     doSearch();
-    loadStats();
-  } else showToast('删除失败', 'error');
+      } else showToast('删除失败', 'error');
 }
 
 // ==================== CRUD ====================
@@ -1170,8 +1143,7 @@ async function saveNote() {
     showToast(id ? '已更新' : '已创建', 'success');
     closeModal();
     doSearch();
-    loadStats();
-  } else {
+      } else {
     const e = await r.json();
     showToast(e.error || '保存失败', 'error');
   }
@@ -1180,7 +1152,7 @@ async function saveNote() {
 async function deleteNote(id, title) {
   if (!confirm(`确认删除笔记「${title}」？`)) return;
   const r = await fetch('/api/notes/' + id, { method: 'DELETE' });
-  if (r.ok) { showToast('已删除', 'success'); doSearch(); loadStats(); }
+  if (r.ok) { showToast('已删除', 'success'); doSearch(); }
   else showToast('删除失败', 'error');
 }
 
@@ -1261,8 +1233,7 @@ function importExcel() {
       if (skipped > 0) msg += `, ${skipped} unchanged`;
       showToast(msg, 'success');
       doSearch();
-      loadStats();
-    };
+          };
     reader.readAsArrayBuffer(file);
   };
   input.click();
