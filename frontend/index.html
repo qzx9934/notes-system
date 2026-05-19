@@ -181,8 +181,8 @@ tbody tr.selected { background: #EBF5FB; }
 .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
 
 /* Toast */
-.toast { position: fixed; top: 20px; right: 20px; z-index: 300; padding: 12px 20px; border-radius: var(--radius); color: #fff; font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,.15); transform: translateX(120%); transition: transform .3s; }
-.toast.show { transform: translateX(0); }
+.toast { position: fixed; top: 20px; right: 20px; z-index: 300; padding: 12px 20px; border-radius: var(--radius); color: #fff; font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,.15); transform: translateX(120%); transition: transform .3s; visibility: hidden; }
+.toast.show { transform: translateX(0); visibility: visible; }
 .toast-success { background: var(--accent-D); }
 .toast-error { background: var(--star3); }
 

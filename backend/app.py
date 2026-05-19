@@ -283,7 +283,6 @@ def api_login():
     session['user_id'] = user['id']
     session['username'] = user['username']
     session['role'] = user['role']
-    session.permanent = True
     return jsonify({'ok': True, 'username': user['username'], 'role': user['role']})
 
 @app.route('/api/logout', methods=['POST'])
