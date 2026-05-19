@@ -6,5 +6,7 @@ __pycache__/
 ~$*
 # 数据库（含用户数据，不上传）
 backend/notes.db
+# 密钥文件
+*.secret_key
 # 部署配置（服务器相关）
 deploy/

@@ -199,9 +199,94 @@ tbody tr.selected { background: #EBF5FB; }
   .stats-bar { flex-wrap: wrap; }
   .preview-drawer { width: 100vw; max-height: 100vh; border-radius: 0; }
 }
+
+/* ===== Login Screen ===== */
+.login-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(135deg, #1F4E79 0%, #2E75B6 60%, #1a3a5c 100%);
+  z-index: 999; display: flex; justify-content: center; align-items: center;
+}
+.login-overlay.hidden { display: none; }
+.login-card {
+  background: #fff; border-radius: 12px; padding: 44px 40px 36px;
+  width: 400px; max-width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,.35);
+}
+.login-card .logo { text-align: center; margin-bottom: 32px; }
+.login-card .logo h1 { font-size: 20px; color: var(--primary); margin-bottom: 4px; }
+.login-card .logo p { font-size: 13px; color: var(--text-secondary); }
+.login-form .form-group { margin-bottom: 16px; }
+.login-form .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--text); }
+.login-form .form-group input {
+  width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 6px;
+  font-size: 14px; outline: none; transition: border .2s; font-family: inherit;
+}
+.login-form .form-group input:focus { border-color: var(--primary-light); box-shadow: 0 0 0 3px rgba(46,117,182,.15); }
+.login-error { color: var(--star3); font-size: 13px; margin-bottom: 12px; min-height: 20px; text-align: center; }
+.login-form .btn { width: 100%; padding: 12px; font-size: 15px; }
+.login-form .btn:disabled { opacity: .6; cursor: not-allowed; }
+
+/* Change Password Modal */
+.pwd-modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.4); z-index: 300; justify-content: center; align-items: center; }
+.pwd-modal-overlay.open { display: flex; }
+.pwd-modal { background: var(--card); border-radius: var(--radius); width: 420px; max-width: 90vw; box-shadow: 0 10px 40px rgba(0,0,0,.2); padding: 28px 32px; }
+.pwd-modal h3 { font-size: 16px; margin-bottom: 20px; color: var(--primary); }
+.pwd-modal .form-group { margin-bottom: 14px; }
+.pwd-modal .form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+.pwd-modal .form-group input { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; outline: none; font-family: inherit; }
+.pwd-modal .form-group input:focus { border-color: var(--primary-light); }
+.pwd-modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.pwd-error { color: var(--star3); font-size: 13px; min-height: 20px; margin-bottom: 4px; }
+.pwd-success { color: var(--accent-D); font-size: 13px; min-height: 20px; margin-bottom: 4px; }
 </style>
 </head>
 <body>
+
+<!-- ===== 登录页面 ===== -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-card">
+    <div class="logo">
+      <h1>⚡ 电厂运行人员工作笔记</h1>
+      <p>请登录后使用</p>
+    </div>
+    <form class="login-form" onsubmit="doLogin(event)">
+      <div class="form-group">
+        <label>用户名</label>
+        <input type="text" id="loginUsername" placeholder="请输入用户名" autocomplete="username" required>
+      </div>
+      <div class="form-group">
+        <label>密码</label>
+        <input type="password" id="loginPassword" placeholder="请输入密码" autocomplete="current-password" required>
+      </div>
+      <div class="login-error" id="loginError"></div>
+      <button type="submit" class="btn btn-primary" id="loginBtn">登 录</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===== 修改密码弹窗 ===== -->
+<div class="pwd-modal-overlay" id="pwdModalOverlay">
+  <div class="pwd-modal">
+    <h3>🔒 修改密码</h3>
+    <div class="form-group">
+      <label>原密码</label>
+      <input type="password" id="pwdOld" placeholder="请输入原密码">
+    </div>
+    <div class="form-group">
+      <label>新密码</label>
+      <input type="password" id="pwdNew" placeholder="至少6位">
+    </div>
+    <div class="form-group">
+      <label>确认新密码</label>
+      <input type="password" id="pwdNew2" placeholder="再次输入新密码">
+    </div>
+    <div class="pwd-error" id="pwdError"></div>
+    <div class="pwd-success" id="pwdSuccess"></div>
+    <div class="actions">
+      <button class="btn btn-outline" onclick="closePwdModal()">取消</button>
+      <button class="btn btn-primary" onclick="doChangePassword()">确认修改</button>
+    </div>
+  </div>
+</div>
 
 <!-- Sidebar -->
 <aside class="sidebar">
@@ -210,7 +295,16 @@ tbody tr.selected { background: #EBF5FB; }
     <div class="sub">结构化知识管理 · v2.1</div>
   </div>
   <nav class="sidebar-nav" id="sidebarNav"></nav>
-  <div class="sidebar-footer">Agent兼容 · Flask+SQLite</div>
+  <div class="sidebar-footer">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="opacity:.6">Flask+SQLite · v2.2</span>
+      <span style="display:flex;align-items:center;gap:4px">
+        <span id="currentUser" style="font-size:11px;opacity:.7"></span>
+        <span style="cursor:pointer;font-size:13px" onclick="openPwdModal()" title="修改密码">🔑</span>
+        <span style="cursor:pointer;font-size:13px" onclick="doLogout()" title="退出登录">🚪</span>
+      </span>
+    </div>
+  </div>
 </aside>
 
 <!-- Main -->
@@ -363,6 +457,132 @@ let currentPage = 1;
 let selectedIds = new Set();
 let previewNoteId = null;
 let allLoadedItems = []; // current page items for checkbox reference
+
+// ==================== Auth ====================
+let isAuthenticated = false;
+
+// 全局 fetch 拦截：未登录时自动弹出登录界面
+const _origFetch = window.fetch;
+window.fetch = async function(...args) {
+  const r = await _origFetch(...args);
+  if (r.status === 401) {
+    const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+    // 排除登录/检查接口自身，避免死循环
+    if (!url.includes('/api/login') && !url.includes('/api/check-auth')) {
+      showLogin();
+    }
+  }
+  return r;
+};
+
+async function checkAuth() {
+  try {
+    const r = await _origFetch('/api/check-auth');
+    if (r.ok) {
+      const data = await r.json();
+      isAuthenticated = true;
+      document.getElementById('loginOverlay').classList.add('hidden');
+      document.getElementById('currentUser').textContent = data.username;
+      init(); // 认证通过 → 初始化主应用
+      return true;
+    }
+  } catch(e) {}
+  showLogin();
+  return false;
+}
+
+function showLogin() {
+  isAuthenticated = false;
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginUsername').focus();
+}
+
+async function doLogin(e) {
+  e.preventDefault();
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginBtn');
+  const errorEl = document.getElementById('loginError');
+
+  if (!username || !password) { errorEl.textContent = '请输入用户名和密码'; return; }
+
+  btn.disabled = true; btn.textContent = '登录中…'; errorEl.textContent = '';
+
+  try {
+    const r = await _origFetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ username, password })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      isAuthenticated = true;
+      document.getElementById('loginOverlay').classList.add('hidden');
+      document.getElementById('currentUser').textContent = data.username;
+      init(); // 登录成功 → 初始化主应用
+    } else {
+      errorEl.textContent = data.error || '登录失败';
+    }
+  } catch(e) {
+    errorEl.textContent = '网络错误，请重试';
+  }
+  btn.disabled = false; btn.textContent = '登 录';
+}
+
+async function doLogout() {
+  try { await _origFetch('/api/logout', { method: 'POST' }); } catch(e) {}
+  // 清除状态
+  selectedIds.clear();
+  currentSection = '';
+  currentPage = 1;
+  showLogin();
+}
+
+// ---- 修改密码 ----
+function openPwdModal() {
+  document.getElementById('pwdOld').value = '';
+  document.getElementById('pwdNew').value = '';
+  document.getElementById('pwdNew2').value = '';
+  document.getElementById('pwdError').textContent = '';
+  document.getElementById('pwdSuccess').textContent = '';
+  document.getElementById('pwdModalOverlay').classList.add('open');
+}
+
+function closePwdModal() {
+  document.getElementById('pwdModalOverlay').classList.remove('open');
+}
+
+async function doChangePassword() {
+  const oldPwd = document.getElementById('pwdOld').value;
+  const newPwd = document.getElementById('pwdNew').value;
+  const newPwd2 = document.getElementById('pwdNew2').value;
+  const errEl = document.getElementById('pwdError');
+  const okEl = document.getElementById('pwdSuccess');
+
+  errEl.textContent = ''; okEl.textContent = '';
+  if (!oldPwd || !newPwd) { errEl.textContent = '请填写完整'; return; }
+  if (newPwd.length < 6) { errEl.textContent = '新密码至少6位'; return; }
+  if (newPwd !== newPwd2) { errEl.textContent = '两次新密码不一致'; return; }
+
+  try {
+    const r = await _origFetch('/api/change-password', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ old_password: oldPwd, new_password: newPwd })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      okEl.textContent = '密码修改成功！';
+      setTimeout(closePwdModal, 1500);
+    } else {
+      errEl.textContent = data.error || '修改失败';
+    }
+  } catch(e) {
+    errEl.textContent = '网络错误';
+  }
+}
 
 // ==================== Init ====================
 async function init() {
@@ -895,7 +1115,7 @@ document.addEventListener('keydown', e => {
 });
 
 // ==================== Start ====================
-init();
+checkAuth();
 </script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </body>
