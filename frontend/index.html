@@ -237,6 +237,27 @@ tbody tr.selected { background: #EBF5FB; }
 .pwd-modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
 .pwd-error { color: var(--star3); font-size: 13px; min-height: 20px; margin-bottom: 4px; }
 .pwd-success { color: var(--accent-D); font-size: 13px; min-height: 20px; margin-bottom: 4px; }
+
+/* User Management Modal */
+.user-mgmt-modal { background: var(--card); border-radius: var(--radius); width: 600px; max-width: 95vw; max-height: 80vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,.2); }
+.user-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; }
+.user-table th { background: #f8f9fa; padding: 8px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--border); }
+.user-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.user-table .role-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+.user-table .role-admin { background: #EBF5FB; color: var(--primary-light); }
+.user-table .role-viewer { background: #F0F0F0; color: #7F8C8D; }
+.user-table .btn-del { padding: 3px 10px; font-size: 11px; border: 1px solid #E74C3C; color: #E74C3C; background: #fff; border-radius: 4px; cursor: pointer; }
+.user-table .btn-del:hover { background: #E74C3C; color: #fff; }
+.add-user-form { border-top: 1px solid var(--border); padding-top: 16px; }
+.add-user-form h4 { font-size: 14px; margin-bottom: 12px; color: var(--primary); }
+.add-user-form .form-row { display: flex; gap: 10px; align-items: flex-end; }
+.add-user-form .form-group { flex: 1; margin-bottom: 0; }
+.add-user-form .form-group label { display: block; font-size: 12px; font-weight: 500; margin-bottom: 4px; }
+.add-user-form .form-group input, .add-user-form .form-group select {
+  width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; outline: none; font-family: inherit;
+}
+.add-user-form .form-group input:focus, .add-user-form .form-group select:focus { border-color: var(--primary-light); }
+.user-error { color: var(--star3); font-size: 13px; min-height: 18px; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -288,6 +309,47 @@ tbody tr.selected { background: #EBF5FB; }
   </div>
 </div>
 
+<!-- ===== 用户管理弹窗 ===== -->
+<div class="modal-overlay" id="userModalOverlay">
+  <div class="user-mgmt-modal">
+    <div class="modal-header">
+      <h3>👥 用户管理</h3>
+      <button class="modal-close" onclick="closeUserModal()">×</button>
+    </div>
+    <div class="modal-body" id="userModalBody">
+      <table class="user-table">
+        <thead><tr><th>用户名</th><th>角色</th><th>创建时间</th><th style="width:60px">操作</th></tr></thead>
+        <tbody id="userTableBody"></tbody>
+      </table>
+      <div class="add-user-form">
+        <h4>+ 添加用户</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label>用户名</label>
+            <input type="text" id="newUsername" placeholder="登录用户名">
+          </div>
+          <div class="form-group">
+            <label>密码</label>
+            <input type="password" id="newPassword" placeholder="至少6位">
+          </div>
+          <div class="form-group">
+            <label>角色</label>
+            <select id="newUserRole">
+              <option value="viewer">viewer（只读）</option>
+              <option value="admin">admin（管理）</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:0 0 auto">
+            <label>&nbsp;</label>
+            <button class="btn btn-primary btn-sm" onclick="doCreateUser()">添加</button>
+          </div>
+        </div>
+        <div class="user-error" id="userError"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Sidebar -->
 <aside class="sidebar">
   <div class="sidebar-header">
@@ -300,6 +362,7 @@ tbody tr.selected { background: #EBF5FB; }
       <span style="opacity:.6">Flask+SQLite · v2.2</span>
       <span style="display:flex;align-items:center;gap:4px">
         <span id="currentUser" style="font-size:11px;opacity:.7"></span>
+        <span id="userMgmtBtn" style="cursor:pointer;font-size:13px;display:none" onclick="openUserModal()" title="用户管理">👥</span>
         <span style="cursor:pointer;font-size:13px" onclick="openPwdModal()" title="修改密码">🔑</span>
         <span style="cursor:pointer;font-size:13px" onclick="doLogout()" title="退出登录">🚪</span>
       </span>
@@ -460,6 +523,7 @@ let allLoadedItems = []; // current page items for checkbox reference
 
 // ==================== Auth ====================
 let isAuthenticated = false;
+let currentRole = 'viewer';
 
 // 全局 fetch 拦截：未登录时自动弹出登录界面
 const _origFetch = window.fetch;
@@ -467,10 +531,12 @@ window.fetch = async function(...args) {
   const r = await _origFetch(...args);
   if (r.status === 401) {
     const url = typeof args[0] === 'string' ? args[0] : args[0].url;
-    // 排除登录/检查接口自身，避免死循环
     if (!url.includes('/api/login') && !url.includes('/api/check-auth')) {
       showLogin();
     }
+  }
+  if (r.status === 403) {
+    showToast('权限不足，仅管理员可执行此操作', 'error');
   }
   return r;
 };
@@ -481,9 +547,12 @@ async function checkAuth() {
     if (r.ok) {
       const data = await r.json();
       isAuthenticated = true;
+      currentRole = data.role || 'viewer';
       document.getElementById('loginOverlay').classList.add('hidden');
-      document.getElementById('currentUser').textContent = data.username;
-      init(); // 认证通过 → 初始化主应用
+      document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : ' (只读)');
+      document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
+      applyRoleUI();
+      init();
       return true;
     }
   } catch(e) {}
@@ -519,8 +588,11 @@ async function doLogin(e) {
     const data = await r.json();
     if (r.ok) {
       isAuthenticated = true;
+      currentRole = data.role || 'viewer';
       document.getElementById('loginOverlay').classList.add('hidden');
-      document.getElementById('currentUser').textContent = data.username;
+      document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : ' (只读)');
+      document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
+      applyRoleUI();
       init(); // 登录成功 → 初始化主应用
     } else {
       errorEl.textContent = data.error || '登录失败';
@@ -537,7 +609,26 @@ async function doLogout() {
   selectedIds.clear();
   currentSection = '';
   currentPage = 1;
+  currentRole = 'viewer';
   showLogin();
+}
+
+// ---- 根据角色控制 UI ----
+function applyRoleUI() {
+  const isAdmin = currentRole === 'admin';
+  // 顶栏按钮
+  const addBtn = document.querySelector('.topbar .btn-primary');
+  const importBtn = document.querySelector('.topbar .btn-outline');
+  if (addBtn) addBtn.style.display = isAdmin ? '' : 'none';
+  if (importBtn && importBtn.textContent.includes('导入Excel')) importBtn.style.display = isAdmin ? '' : 'none';
+  // 批量操作栏（viewer 永远不显示）
+  document.getElementById('batchBar').classList.remove('show');
+  // 表头复选框：viewer 隐藏
+  const headerCheck = document.getElementById('headerCheck');
+  if (headerCheck) headerCheck.style.display = isAdmin ? '' : 'none';
+  // 预览弹窗底部按钮
+  const previewFooter = document.querySelector('.preview-footer');
+  if (previewFooter) previewFooter.style.display = isAdmin ? '' : 'none';
 }
 
 // ---- 修改密码 ----
@@ -581,6 +672,83 @@ async function doChangePassword() {
     }
   } catch(e) {
     errEl.textContent = '网络错误';
+  }
+}
+
+// ---- 用户管理 ----
+async function openUserModal() {
+  document.getElementById('userModalOverlay').classList.add('open');
+  document.getElementById('userError').textContent = '';
+  document.getElementById('newUsername').value = '';
+  document.getElementById('newPassword').value = '';
+  await loadUsers();
+}
+
+function closeUserModal() {
+  document.getElementById('userModalOverlay').classList.remove('open');
+}
+
+async function loadUsers() {
+  try {
+    const r = await _origFetch('/api/users');
+    const users = await r.json();
+    const tbody = document.getElementById('userTableBody');
+    tbody.innerHTML = users.map(u => `
+      <tr>
+        <td>${esc(u.username)}${u.username === document.getElementById('currentUser').textContent.replace(' (只读)','') ? ' <span style="font-size:10px;color:var(--text-secondary)">(当前)</span>' : ''}</td>
+        <td><span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-viewer'}">${u.role}</span></td>
+        <td style="color:var(--text-secondary)">${u.created_at}</td>
+        <td>${u.role !== 'admin' ? `<button class="btn-del" onclick="doDeleteUser(${u.id}, '${esc(u.username)}')">删除</button>` : '<span style="font-size:11px;color:var(--text-secondary)">-</span>'}</td>
+      </tr>
+    `).join('');
+  } catch(e) {
+    document.getElementById('userTableBody').innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-secondary)">加载失败</td></tr>';
+  }
+}
+
+async function doCreateUser() {
+  const username = document.getElementById('newUsername').value.trim();
+  const password = document.getElementById('newPassword').value;
+  const role = document.getElementById('newUserRole').value;
+  const errEl = document.getElementById('userError');
+
+  errEl.textContent = '';
+  if (!username || !password) { errEl.textContent = '用户名和密码不能为空'; return; }
+  if (password.length < 6) { errEl.textContent = '密码至少6位'; return; }
+
+  try {
+    const r = await _origFetch('/api/users', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ username, password, role })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      showToast(`用户 ${data.username} 创建成功`, 'success');
+      document.getElementById('newUsername').value = '';
+      document.getElementById('newPassword').value = '';
+      await loadUsers();
+    } else {
+      errEl.textContent = data.error || '创建失败';
+    }
+  } catch(e) {
+    errEl.textContent = '网络错误';
+  }
+}
+
+async function doDeleteUser(id, username) {
+  if (!confirm(`确认删除用户「${username}」？此操作不可恢复！`)) return;
+  try {
+    const r = await _origFetch('/api/users/' + id, { method: 'DELETE' });
+    const data = await r.json();
+    if (r.ok) {
+      showToast(`用户 ${username} 已删除`, 'success');
+      await loadUsers();
+    } else {
+      showToast(data.error || '删除失败', 'error');
+    }
+  } catch(e) {
+    showToast('网络错误', 'error');
   }
 }
 
@@ -801,7 +969,7 @@ function toggleAllCheck() {
 function updateBatchBar() {
   const bar = document.getElementById('batchBar');
   const count = selectedIds.size;
-  if (count > 0) {
+  if (count > 0 && currentRole === 'admin') {
     bar.classList.add('show');
     document.getElementById('selInfo').textContent = `已选 ${count} 条`;
   } else {

@@ -114,6 +114,7 @@ def init_db():
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             username        TEXT    NOT NULL UNIQUE,
             password_hash   TEXT    NOT NULL,
+            role            TEXT    NOT NULL DEFAULT 'viewer',
             created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
         );
     ''')
@@ -181,13 +182,25 @@ def seed_db():
     # 检查是否已执行过种子数据初始化
     seeded = db.execute("SELECT value FROM config WHERE key='seeded'").fetchone()
 
+    # 数据库迁移：为旧版本 users 表添加 role 列
+    try:
+        db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'viewer'")
+        db.commit()
+        print('[迁移] 已为 users 表添加 role 列')
+    except sqlite3.OperationalError:
+        pass  # 列已存在
+
+    # 确保已有 admin 用户的角色为 admin
+    db.execute("UPDATE users SET role='admin' WHERE username='admin' AND role!='admin'")
+    db.commit()
+
     # 默认管理员账号（首次运行自动创建）
     user_count = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     if user_count == 0:
-        db.execute("INSERT INTO users(username, password_hash) VALUES(?, ?)",
-                   ('admin', generate_password_hash('admin123')))
+        db.execute("INSERT INTO users(username, password_hash, role) VALUES(?, ?, ?)",
+                   ('admin', generate_password_hash('admin123'), 'admin'))
         db.commit()
-        print('[认证] 已创建默认管理员账号: admin / admin123')
+        print('[认证] 已创建默认管理员账号: admin / admin123 (角色: admin)')
 
     if seeded:
         # 已初始化过，只确保领域和章节数据完整（用 OR IGNORE）
@@ -229,11 +242,26 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def admin_required(f):
+    """管理员权限装饰器：非 admin 角色返回 403"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({'error': 'unauthorized'}), 401
+        if session.get('role') != 'admin':
+            return jsonify({'error': 'forbidden', 'message': '仅管理员可执行此操作'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
 @app.route('/api/check-auth')
 def api_check_auth():
     """检查当前登录状态"""
     if 'user_id' in session:
-        return jsonify({'authenticated': True, 'username': session.get('username', '')})
+        return jsonify({
+            'authenticated': True,
+            'username': session.get('username', ''),
+            'role': session.get('role', 'viewer')
+        })
     return jsonify({'authenticated': False}), 401
 
 @app.route('/api/login', methods=['POST'])
@@ -254,8 +282,9 @@ def api_login():
 
     session['user_id'] = user['id']
     session['username'] = user['username']
+    session['role'] = user['role']
     session.permanent = True
-    return jsonify({'ok': True, 'username': user['username']})
+    return jsonify({'ok': True, 'username': user['username'], 'role': user['role']})
 
 @app.route('/api/logout', methods=['POST'])
 def api_logout():
@@ -286,6 +315,63 @@ def api_change_password():
                (generate_password_hash(new_password), session['user_id']))
     db.commit()
     return jsonify({'ok': True})
+
+# ---- 用户管理（仅管理员） ----
+@app.route('/api/users')
+@admin_required
+def api_users_list():
+    """列出所有用户（管理员专用）"""
+    db = get_db()
+    rows = db.execute('SELECT id, username, role, created_at FROM users ORDER BY id').fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/users', methods=['POST'])
+@admin_required
+def api_user_create():
+    """创建新用户（管理员专用）"""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'invalid JSON'}), 400
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    role = data.get('role', 'viewer').strip()
+
+    if not username or not password:
+        return jsonify({'error': '用户名和密码不能为空'}), 400
+    if len(password) < 6:
+        return jsonify({'error': '密码至少6位'}), 400
+    if role not in ('admin', 'viewer'):
+        return jsonify({'error': '角色只能为 admin 或 viewer'}), 400
+
+    db = get_db()
+    existing = db.execute('SELECT id FROM users WHERE username=?', (username,)).fetchone()
+    if existing:
+        return jsonify({'error': f'用户名 "{username}" 已存在'}), 409
+
+    try:
+        db.execute('INSERT INTO users(username, password_hash, role) VALUES(?, ?, ?)',
+                   (username, generate_password_hash(password), role))
+        db.commit()
+        user = db.execute('SELECT id, username, role, created_at FROM users WHERE username=?', (username,)).fetchone()
+        return jsonify(dict(user)), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/users/<int:id>', methods=['DELETE'])
+@admin_required
+def api_user_delete(id):
+    """删除用户（管理员专用，不能删除自己）"""
+    if id == session['user_id']:
+        return jsonify({'error': '不能删除当前登录的管理员账号'}), 400
+
+    db = get_db()
+    user = db.execute('SELECT id, username FROM users WHERE id=?', (id,)).fetchone()
+    if not user:
+        return jsonify({'error': '用户不存在'}), 404
+
+    db.execute('DELETE FROM users WHERE id=?', (id,))
+    db.commit()
+    return jsonify({'ok': True, 'deleted': {'id': user['id'], 'username': user['username']}})
 
 # ==================== API 路由 ====================
 
@@ -388,7 +474,7 @@ def api_note_get(id):
     return jsonify(dict(row))
 
 @app.route('/api/notes', methods=['POST'])
-@login_required
+@admin_required
 def api_note_create():
     data = request.get_json()
     if not data:
@@ -427,7 +513,7 @@ def api_note_create():
     return jsonify(note_to_dict(row)), 201
 
 @app.route('/api/notes/<int:id>', methods=['PUT'])
-@login_required
+@admin_required
 def api_note_update(id):
     data = request.get_json()
     if not data:
@@ -456,7 +542,7 @@ def api_note_update(id):
 
 # --- 批量操作 ---
 @app.route('/api/notes/batch', methods=['DELETE'])
-@login_required
+@admin_required
 def api_notes_batch_delete():
     """批量删除笔记"""
     data = request.get_json()
@@ -470,7 +556,7 @@ def api_notes_batch_delete():
     return jsonify({'ok': True, 'deleted': cursor.rowcount})
 
 @app.route('/api/notes/batch', methods=['PUT'])
-@login_required
+@admin_required
 def api_notes_batch_update():
     """批量更新笔记字段（等级/章节/来源）"""
     data = request.get_json()
@@ -503,7 +589,7 @@ def api_notes_batch_update():
 
 # --- 单条笔记 CRUD ---
 @app.route('/api/notes/<int:id>', methods=['DELETE'])
-@login_required
+@admin_required
 def api_note_delete(id):
     db = get_db()
     db.execute('DELETE FROM notes WHERE id=?', (id,))
@@ -532,7 +618,7 @@ def api_stats():
 
 # --- Agent 批量追加 ---
 @app.route('/api/notes/batch', methods=['POST'])
-@login_required
+@admin_required
 def api_note_batch():
     """Agent批量追加接口，格式同Word文档JSON模板"""
     data = request.get_json()
@@ -599,7 +685,7 @@ def api_note_batch():
 
 # --- 从 Excel 导入 ---
 @app.route('/api/import-excel', methods=['POST'])
-@login_required
+@admin_required
 def api_import_excel():
     """从上传的Excel文件导入笔记（手动上传方式，暂不使用）"""
     return jsonify({'error': '请使用前端导入功能'}), 501
