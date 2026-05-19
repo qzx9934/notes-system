@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电厂运行人员工作笔记</title>
+<style>
+:root {
+  --bg: #f0f2f5;
+  --card: #fff;
+  --primary: #1F4E79;
+  --primary-light: #2E75B6;
+  --accent-A: #C0392B; --accent-B: #2980B9; --accent-C: #E67E22;
+  --accent-D: #27AE60; --accent-E: #8E44AD;
+  --star3: #E74C3C; --star2: #F39C12; --star1: #7F8C8D;
+  --text: #2c3e50; --text-secondary: #7f8c8d; --border: #e1e4e8;
+  --radius: 8px; --shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--text); display: flex; min-height: 100vh; }
+
+/* Sidebar */
+.sidebar {
+  width: 260px; background: var(--primary); color: #fff; display: flex; flex-direction: column;
+  position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; overflow-y: auto;
+}
+.sidebar-header { padding: 20px 16px; border-bottom: 1px solid rgba(255,255,255,.15); }
+.sidebar-header h1 { font-size: 16px; font-weight: 600; line-height: 1.4; }
+.sidebar-header .sub { font-size: 12px; opacity: .7; margin-top: 4px; }
+.sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; }
+.nav-section { margin-bottom: 4px; }
+.nav-domain {
+  padding: 10px 16px; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  font-size: 14px; font-weight: 600; transition: background .15s;
+}
+.nav-domain:hover { background: rgba(255,255,255,.1); }
+.nav-domain .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.nav-domain .count { margin-left: auto; font-size: 11px; opacity: .6; }
+.nav-items { display: none; }
+.nav-items.open { display: block; }
+.nav-item {
+  padding: 6px 16px 6px 36px; cursor: pointer; font-size: 13px;
+  transition: background .15s; display: flex; align-items: center; gap: 6px;
+}
+.nav-item:hover, .nav-item.active { background: rgba(255,255,255,.15); }
+.nav-item .badge { margin-left: auto; font-size: 10px; background: rgba(255,255,255,.2); padding: 1px 6px; border-radius: 10px; }
+.sidebar-footer { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,.15); font-size: 10px; opacity: .5; }
+
+/* Main */
+.main { margin-left: 260px; flex: 1; padding: 20px 24px; display:flex; flex-direction:column; min-height:100vh; }
+.topbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.search-wrap { flex: 1; min-width: 200px; position: relative; }
+.search-wrap input { width: 100%; padding: 10px 40px 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; outline: none; transition: border .2s; }
+.search-wrap input:focus { border-color: var(--primary-light); }
+.search-wrap .clear { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-secondary); font-size: 18px; display: none; background: none; border: none; }
+
+.filter-group { display: flex; gap: 8px; align-items: center; }
+.filter-group select, .filter-group button {
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 13px; background: var(--card); cursor: pointer; outline: none;
+}
+.btn { padding: 8px 16px; border: none; border-radius: var(--radius); cursor: pointer; font-size: 13px; font-weight: 500; transition: all .15s; }
+.btn-primary { background: var(--primary-light); color: #fff; }
+.btn-primary:hover { background: var(--primary); }
+.btn-success { background: var(--accent-D); color: #fff; }
+.btn-warning { background: var(--accent-C); color: #fff; }
+.btn-danger { background: #E74C3C; color: #fff; }
+.btn-outline { background: var(--card); border: 1px solid var(--border); color: var(--text); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+/* Batch bar */
+.batch-bar {
+  display: none; align-items: center; gap: 10px; padding: 10px 16px;
+  background: #EBF5FB; border-radius: var(--radius); margin-bottom: 12px;
+  border: 1px solid #BDD7EE;
+}
+.batch-bar.show { display: flex; }
+.batch-bar .sel-info { font-size: 13px; font-weight: 500; color: var(--primary); }
+.batch-bar .actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.batch-bar select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
+
+/* Stats Bar */
+.stats-bar { display: flex; gap: 12px; margin-bottom: 16px; }
+.stat-card {
+  flex: 1; background: var(--card); border-radius: var(--radius); padding: 14px 18px;
+  box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 100px;
+}
+.stat-card .num { font-size: 28px; font-weight: 700; }
+.stat-card .label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+/* Table */
+.table-wrap { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; flex:1; display:flex; flex-direction:column; }
+.table-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.table-header h2 { font-size: 15px; font-weight: 600; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { background: #f8f9fa; padding: 10px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--border); position: sticky; top: 0; white-space: nowrap; }
+tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tbody tr { cursor: pointer; transition: background .1s; }
+tbody tr:hover { background: #f8f9fb; }
+tbody tr.selected { background: #EBF5FB; }
+.col-check { width: 36px; text-align: center; }
+.col-code { width: 100px; font-family: 'Consolas', monospace; font-size: 12px; }
+.col-title { min-width: 140px; font-weight: 500; }
+.col-content { min-width: 200px; line-height: 1.5; color: var(--text-secondary); }
+.col-content .truncated { max-height: 48px; overflow: hidden; position: relative; }
+.col-content .truncated::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 20px;
+  background: linear-gradient(transparent, #fff);
+}
+.col-content .expand-hint { font-size: 11px; color: var(--primary-light); margin-top: 2px; }
+.col-tags { min-width: 120px; }
+.col-source { width: 80px; text-align: center; }
+.col-level { width: 60px; text-align: center; }
+.col-date { width: 90px; text-align: center; }
+.tag { display: inline-block; padding: 2px 8px; margin: 1px 3px; border-radius: 12px; font-size: 11px; background: #EBF5FB; color: var(--primary-light); }
+.star3 { color: var(--star3); font-weight: bold; }
+.star2 { color: var(--star2); font-weight: bold; }
+.star1 { color: var(--star1); }
+
+/* Pagination */
+.pagination { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 16px; }
+.pagination button { padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); cursor: pointer; font-size: 13px; }
+.pagination button:disabled { opacity: .4; cursor: default; }
+.pagination .page-info { font-size: 13px; color: var(--text-secondary); }
+
+/* Preview Modal (centered) */
+.preview-overlay {
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,.3); z-index: 250;
+  justify-content: center; align-items: center;
+}
+.preview-overlay.open { display: flex; }
+.preview-drawer {
+  background: var(--card); z-index: 260;
+  box-shadow: 0 10px 40px rgba(0,0,0,.2); border-radius: var(--radius);
+  display: flex; flex-direction: column; overflow: hidden;
+  width: 750px; max-width: 95vw; max-height: 90vh;
+}
+.preview-header {
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: flex-start;
+}
+.preview-header .title-area { flex: 1; }
+.preview-header .code { font-family: 'Consolas', monospace; font-size: 12px; color: var(--text-secondary); }
+.preview-header .title { font-size: 18px; font-weight: 600; margin-top: 4px; line-height: 1.4; }
+.preview-close { cursor: pointer; font-size: 24px; color: var(--text-secondary); background: none; border: none; padding: 0 4px; flex-shrink: 0; }
+.preview-close:hover { color: var(--text); }
+.preview-meta {
+  padding: 12px 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+  border-bottom: 1px solid var(--border); background: #f8f9fa;
+}
+.preview-meta .meta-item { font-size: 12px; display: flex; align-items: center; gap: 4px; }
+.preview-meta .meta-label { color: var(--text-secondary); }
+.preview-body {
+  flex: 1; padding: 20px; overflow-y: auto; font-size: 14px; line-height: 1.8;
+  white-space: pre-wrap; word-break: break-word;
+}
+.preview-footer {
+  padding: 12px 20px; border-top: 1px solid var(--border);
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+
+/* Modal */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.4); z-index: 200; justify-content: center; align-items: flex-start; padding-top: 40px; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--card); border-radius: var(--radius); width: 700px; max-width: 95vw; max-height: 85vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,.2); }
+.modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+.modal-header h3 { font-size: 16px; }
+.modal-close { cursor: pointer; font-size: 22px; color: var(--text-secondary); background: none; border: none; }
+.modal-body { padding: 20px; }
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; color: var(--text); }
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px;
+  font-size: 13px; font-family: inherit; outline: none; transition: border .2s;
+}
+.form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: var(--primary-light); }
+.form-group textarea { resize: vertical; min-height: 120px; }
+.form-row { display: flex; gap: 12px; }
+.form-row .form-group { flex: 1; }
+.modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Toast */
+.toast { position: fixed; top: 20px; right: 20px; z-index: 300; padding: 12px 20px; border-radius: var(--radius); color: #fff; font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,.15); transform: translateX(120%); transition: transform .3s; }
+.toast.show { transform: translateX(0); }
+.toast-success { background: var(--accent-D); }
+.toast-error { background: var(--star3); }
+
+/* Empty state */
+.empty { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+.empty .icon { font-size: 48px; margin-bottom: 12px; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar { width: 0; overflow: hidden; }
+  .sidebar.open { width: 260px; }
+  .main { margin-left: 0; }
+  .topbar { flex-direction: column; }
+  .stats-bar { flex-wrap: wrap; }
+  .preview-drawer { width: 100vw; max-height: 100vh; border-radius: 0; }
+}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1>⚡ 电厂运行人员<br>工作笔记</h1>
+    <div class="sub">结构化知识管理 · v2.1</div>
+  </div>
+  <nav class="sidebar-nav" id="sidebarNav"></nav>
+  <div class="sidebar-footer">Agent兼容 · Flask+SQLite</div>
+</aside>
+
+<!-- Main -->
+<main class="main">
+  <div class="topbar">
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="搜索标题、内容、标签…" oninput="doSearch()">
+      <button class="clear" id="clearSearch" onclick="clearSearch()" style="display:none">×</button>
+    </div>
+    <div class="filter-group">
+      <select id="filterLevel" onchange="doSearch()"><option value="">全部等级</option><option value="★★★">★★★ 核心</option><option value="★★">★★ 重要</option><option value="★">★ 参考</option></select>
+      <select id="filterSource" onchange="doSearch()"><option value="">全部来源</option><option>规程</option><option>培训</option><option>事故通报</option><option>个人总结</option><option>技术文件</option><option>经验反馈</option></select>
+      <select id="filterDomain" onchange="onDomainFilter()"><option value="">全部领域</option><option value="A">A 系统设备</option><option value="B">B 运行操作</option><option value="C">C 安全管理</option><option value="D">D 技术标准</option><option value="E">E 综合管理</option></select>
+      <button class="btn btn-outline" onclick="resetFilters()">重置</button>
+    </div>
+    <button class="btn btn-primary" onclick="openAddModal()">+ 新增笔记</button>
+    <button class="btn btn-outline" onclick="importExcel()">📥 导入Excel</button>
+  </div>
+
+  <div class="stats-bar" id="statsBar"></div>
+
+  <!-- Batch bar -->
+  <div class="batch-bar" id="batchBar">
+    <input type="checkbox" id="checkAll" onchange="toggleAllCheck()" style="cursor:pointer">
+    <span class="sel-info" id="selInfo">已选 0 条</span>
+    <div class="actions">
+      <select id="batchLevel" title="批量修改等级">
+        <option value="">改等级…</option>
+        <option value="★★★">★★★ 核心</option>
+        <option value="★★">★★ 重要</option>
+        <option value="★">★ 参考</option>
+      </select>
+      <button class="btn btn-sm btn-outline" onclick="batchUpdateLevel()">应用等级</button>
+      <select id="batchSection" title="批量修改章节">
+        <option value="">改章节…</option>
+      </select>
+      <button class="btn btn-sm btn-outline" onclick="batchUpdateSection()">应用章节</button>
+      <button class="btn btn-sm btn-danger" onclick="batchDelete()">删除选中</button>
+      <button class="btn btn-sm btn-outline" onclick="clearSelection()">取消选择</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <div class="table-header">
+      <h2 id="tableTitle">全部笔记</h2>
+      <span style="font-size:12px;color:var(--text-secondary)" id="resultCount"></span>
+    </div>
+    <div style="overflow-x:auto; flex:1; overflow-y:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-check"><input type="checkbox" id="headerCheck" onchange="toggleAllCheck()"></th>
+            <th class="col-code">编号</th>
+            <th class="col-title">要点标题</th>
+            <th class="col-content">内容详情</th>
+            <th class="col-tags">关键词标签</th>
+            <th class="col-source">来源</th>
+            <th class="col-level">等级</th>
+            <th class="col-date">日期</th>
+          </tr>
+        </thead>
+        <tbody id="notesTable"></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+    <div class="empty" id="emptyState" style="display:none">
+      <div class="icon">📝</div>
+      <p>暂无笔记记录</p>
+      <p style="font-size:12px;margin-top:4px">点击"新增笔记"添加第一条知识条目</p>
+    </div>
+  </div>
+</main>
+
+<!-- Preview Modal -->
+<div class="preview-overlay" id="previewOverlay" onclick="closePreview()">
+  <div class="preview-drawer" id="previewDrawer" onclick="event.stopPropagation()">
+    <div class="preview-header">
+      <div class="title-area">
+        <div class="code" id="previewCode"></div>
+        <div class="title" id="previewTitle"></div>
+      </div>
+      <button class="preview-close" onclick="closePreview()">×</button>
+    </div>
+    <div class="preview-meta" id="previewMeta"></div>
+    <div class="preview-body" id="previewBody"></div>
+    <div class="preview-footer">
+      <button class="btn btn-outline" onclick="editFromPreview()">✎ 编辑</button>
+      <button class="btn btn-danger" onclick="deleteFromPreview()">✕ 删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">新增笔记</h3>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>所属章节 *</label>
+          <select id="editSection"></select>
+        </div>
+        <div class="form-group">
+          <label>等级</label>
+          <select id="editLevel"><option value="★">★ 了解参考</option><option value="★★">★★ 重要掌握</option><option value="★★★" selected>★★★ 核心必会</option></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>要点标题 *</label>
+        <input type="text" id="editTitle" placeholder="简洁概括，不超过20字">
+      </div>
+      <div class="form-group">
+        <label>内容详情</label>
+        <textarea id="editContent" placeholder="完整知识内容，可含数值/步骤/要点…"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>关键词标签</label>
+          <input type="text" id="editTags" placeholder="逗号分隔，如：MFT,炉膛保护">
+        </div>
+        <div class="form-group">
+          <label>来源</label>
+          <select id="editSource"><option>规程</option><option>培训</option><option>事故通报</option><option selected>个人总结</option><option>技术文件</option><option>经验反馈</option></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>日期</label>
+        <input type="date" id="editDate">
+      </div>
+      <input type="hidden" id="editId">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveNote()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ==================== Global State ====================
+let sections = [];
+let domains = [];
+let currentSection = '';
+let currentPage = 1;
+let selectedIds = new Set();
+let previewNoteId = null;
+let allLoadedItems = []; // current page items for checkbox reference
+
+// ==================== Init ====================
+async function init() {
+  await Promise.all([loadDomains(), loadSections(), loadStats()]);
+  renderSidebar();
+  populateBatchSectionSelect();
+  doSearch();
+  document.getElementById('editDate').value = new Date().toISOString().split('T')[0];
+}
+
+async function loadDomains() {
+  const r = await fetch('/api/domains');
+  domains = await r.json();
+}
+async function loadSections() {
+  const r = await fetch('/api/sections');
+  sections = await r.json();
+  // 填充编辑弹窗的章节下拉
+  const sel = document.getElementById('editSection');
+  sel.innerHTML = sections.map(s => `<option value="${s.code}">${s.code} ${s.name}</option>`).join('');
+}
+async function loadStats() {
+  const r = await fetch('/api/stats');
+  const s = await r.json();
+  const byLevel = {};
+  s.by_level.forEach(l => byLevel[l.level] = l.cnt);
+  document.getElementById('statsBar').innerHTML = `
+    <div class="stat-card"><div class="num">${s.total}</div><div class="label">总条目</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--star3)">${byLevel['★★★'] || 0}</div><div class="label">★★★ 核心</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--star2)">${byLevel['★★'] || 0}</div><div class="label">★★ 重要</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--star1)">${byLevel['★'] || 0}</div><div class="label">★ 参考</div></div>
+    <div class="stat-card"><div class="num">${s.by_section.filter(x=>x.cnt>0).length}</div><div class="label">涉及章节</div></div>
+  `;
+}
+
+function populateBatchSectionSelect() {
+  const sel = document.getElementById('batchSection');
+  sel.innerHTML = '<option value="">改章节…</option>';
+  sections.forEach(s => {
+    sel.innerHTML += `<option value="${s.code}">${s.code} ${s.name}</option>`;
+  });
+}
+
+// ==================== Sidebar ====================
+function renderSidebar() {
+  const nav = document.getElementById('sidebarNav');
+  const domainColors = {A: 'var(--accent-A)', B: 'var(--accent-B)', C: 'var(--accent-C)', D: 'var(--accent-D)', E: 'var(--accent-E)'};
+  let html = '';
+  // "全部笔记" at the same level as the 5 domains
+  html += `<div class="nav-section">
+    <div class="nav-domain" onclick="selectSection('')" style="${currentSection === '' ? 'background:rgba(255,255,255,.1)' : ''}">
+      <span class="dot" style="background:#7F8C8D"></span>
+      📋 全部笔记
+    </div>
+  </div>`;
+  domains.forEach(d => {
+    const domainSections = sections.filter(s => s.domain === d.code);
+    html += `<div class="nav-section">
+      <div class="nav-domain" onclick="toggleDomain('${d.code}')">
+        <span class="dot" style="background:${domainColors[d.code]}"></span>
+        ${d.code} ${d.name}
+      </div>
+      <div class="nav-items" id="navItems-${d.code}">`;
+    domainSections.forEach(s => {
+      html += `<div class="nav-item ${currentSection === s.code ? 'active' : ''}" onclick="selectSection('${s.code}')">
+        ${s.code} ${s.name}
+      </div>`;
+    });
+    html += '</div></div>';
+  });
+  nav.innerHTML = html;
+  if (currentSection) {
+    const sec = sections.find(s => s.code === currentSection);
+    if (sec) toggleDomain(sec.domain, true);
+  }
+}
+
+function toggleDomain(code, forceOpen = false) {
+  const el = document.getElementById('navItems-' + code);
+  if (!el) return;
+  if (forceOpen) { el.classList.add('open'); return; }
+  el.classList.toggle('open');
+}
+function selectSection(code) {
+  currentSection = code;
+  currentPage = 1;
+  selectedIds.clear();
+  updateBatchBar();
+  document.getElementById('filterDomain').value = '';
+  renderSidebar();
+  doSearch();
+  document.getElementById('tableTitle').textContent = code ? `${code} ${sections.find(s=>s.code===code)?.name || ''}` : '全部笔记';
+}
+function onDomainFilter() {
+  currentSection = '';
+  currentPage = 1;
+  selectedIds.clear();
+  updateBatchBar();
+  document.getElementById('tableTitle').textContent = '全部笔记';
+  renderSidebar();
+  doSearch();
+}
+
+// ==================== Search & List ====================
+async function doSearch() {
+  const params = new URLSearchParams();
+  const q = document.getElementById('searchInput').value.trim();
+  if (q) { params.set('q', q); document.getElementById('clearSearch').style.display = 'block'; }
+  else document.getElementById('clearSearch').style.display = 'none';
+
+  const level = document.getElementById('filterLevel').value;
+  const source = document.getElementById('filterSource').value;
+  const domain = document.getElementById('filterDomain').value;
+  if (level) params.set('level', level);
+  if (source) params.set('source', source);
+  if (domain) params.set('domain', domain);
+  if (currentSection) params.set('section', currentSection);
+  params.set('page', currentPage);
+  params.set('per', 30);
+
+  const r = await fetch('/api/notes?' + params);
+  const data = await r.json();
+  allLoadedItems = data.items;
+
+  document.getElementById('resultCount').textContent = `共 ${data.total} 条`;
+  renderTable(data.items);
+  renderPagination(data);
+  document.getElementById('emptyState').style.display = data.total === 0 ? 'block' : 'none';
+}
+
+const CONTENT_PREVIEW_LEN = 60;
+
+function renderTable(items) {
+  const tbody = document.getElementById('notesTable');
+  if (items.length === 0) { tbody.innerHTML = ''; return; }
+  tbody.innerHTML = items.map(n => {
+    const checked = selectedIds.has(n.id) ? 'checked' : '';
+    const selClass = selectedIds.has(n.id) ? 'selected' : '';
+    const contentRaw = n.content || '';
+    const contentEsc = esc(contentRaw);
+    const needTruncate = contentRaw.length > CONTENT_PREVIEW_LEN;
+    const preview = needTruncate ? esc(contentRaw.substring(0, CONTENT_PREVIEW_LEN)) + '…' : contentEsc;
+
+    return `<tr class="${selClass}" onclick="openPreview(${n.id})">
+      <td class="col-check" onclick="event.stopPropagation()"><input type="checkbox" data-id="${n.id}" ${checked} onchange="toggleCheck(${n.id}, this.checked)"></td>
+      <td class="col-code">${esc(n.code)}</td>
+      <td class="col-title">${esc(n.title)}</td>
+      <td class="col-content">
+        <div class="${needTruncate ? 'truncated' : ''}">${preview.replace(/\n/g, '<br>')}</div>
+        ${needTruncate ? '<div class="expand-hint">点击查看全文 ›</div>' : ''}
+      </td>
+      <td class="col-tags">${(n.tags || '').split(',').filter(Boolean).map(t => `<span class="tag">${esc(t.trim())}</span>`).join('')}</td>
+      <td class="col-source">${esc(n.source)}</td>
+      <td class="col-level ${levelClass(n.level)}">${n.level}</td>
+      <td class="col-date">${n.note_date}</td>
+    </tr>`;
+  }).join('');
+}
+
+function levelClass(level) { return level === '★★★' ? 'star3' : level === '★★' ? 'star2' : 'star1'; }
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function renderPagination(data) {
+  const pg = document.getElementById('pagination');
+  if (data.pages <= 1) { pg.innerHTML = ''; return; }
+  let html = `<button ${data.page <= 1 ? 'disabled' : ''} onclick="goPage(${data.page - 1})">上一页</button>`;
+  for (let i = 1; i <= data.pages; i++) {
+    if (i === data.page) html += `<button style="background:var(--primary-light);color:#fff;font-weight:600">${i}</button>`;
+    else html += `<button onclick="goPage(${i})">${i}</button>`;
+  }
+  html += `<button ${data.page >= data.pages ? 'disabled' : ''} onclick="goPage(${data.page + 1})">下一页</button>`;
+  html += `<span class="page-info">第 ${data.page}/${data.pages} 页</span>`;
+  pg.innerHTML = html;
+}
+function goPage(p) { currentPage = p; doSearch(); window.scrollTo({top: 400, behavior: 'smooth'}); }
+
+function clearSearch() { document.getElementById('searchInput').value = ''; doSearch(); }
+function resetFilters() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('filterLevel').value = '';
+  document.getElementById('filterSource').value = '';
+  document.getElementById('filterDomain').value = '';
+  currentSection = '';
+  currentPage = 1;
+  selectedIds.clear();
+  updateBatchBar();
+  document.getElementById('tableTitle').textContent = '全部笔记';
+  renderSidebar();
+  doSearch();
+}
+
+// ==================== Checkbox / Batch ====================
+function toggleCheck(id, checked) {
+  if (checked) selectedIds.add(id);
+  else selectedIds.delete(id);
+  // Update row style
+  const row = document.querySelector(`input[data-id="${id}"]`)?.closest('tr');
+  if (row) row.classList.toggle('selected', checked);
+  updateBatchBar();
+}
+
+function toggleAllCheck() {
+  const headerCheck = document.getElementById('headerCheck');
+  const allChecks = document.querySelectorAll('#notesTable input[type=checkbox]');
+  const newState = headerCheck.checked;
+  allChecks.forEach(cb => {
+    const id = parseInt(cb.dataset.id);
+    cb.checked = newState;
+    if (newState) selectedIds.add(id);
+    else selectedIds.delete(id);
+    cb.closest('tr').classList.toggle('selected', newState);
+  });
+  updateBatchBar();
+}
+
+function updateBatchBar() {
+  const bar = document.getElementById('batchBar');
+  const count = selectedIds.size;
+  if (count > 0) {
+    bar.classList.add('show');
+    document.getElementById('selInfo').textContent = `已选 ${count} 条`;
+  } else {
+    bar.classList.remove('show');
+  }
+  // Update header checkbox state
+  const allChecks = document.querySelectorAll('#notesTable input[type=checkbox]');
+  const headerCheck = document.getElementById('headerCheck');
+  if (allChecks.length === 0) { headerCheck.checked = false; headerCheck.indeterminate = false; return; }
+  const checkedCount = document.querySelectorAll('#notesTable input[type=checkbox]:checked').length;
+  headerCheck.checked = checkedCount === allChecks.length;
+  headerCheck.indeterminate = checkedCount > 0 && checkedCount < allChecks.length;
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  document.querySelectorAll('#notesTable input[type=checkbox]').forEach(cb => {
+    cb.checked = false;
+    cb.closest('tr').classList.remove('selected');
+  });
+  document.getElementById('headerCheck').checked = false;
+  document.getElementById('headerCheck').indeterminate = false;
+  updateBatchBar();
+}
+
+async function batchDelete() {
+  const ids = Array.from(selectedIds);
+  if (ids.length === 0) return;
+  if (!confirm(`确认删除选中的 ${ids.length} 条笔记？此操作不可恢复！`)) return;
+  try {
+    const r = await fetch('/api/notes/batch', {
+      method: 'DELETE',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ ids })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      showToast(`已删除 ${data.deleted} 条`, 'success');
+      selectedIds.clear();
+      updateBatchBar();
+      doSearch();
+      loadStats();
+    } else {
+      showToast(data.error || '删除失败', 'error');
+    }
+  } catch(e) { showToast('网络错误', 'error'); }
+}
+
+async function batchUpdateLevel() {
+  const newLevel = document.getElementById('batchLevel').value;
+  if (!newLevel) { showToast('请先选择等级', 'error'); return; }
+  const ids = Array.from(selectedIds);
+  if (ids.length === 0) return;
+  try {
+    const r = await fetch('/api/notes/batch', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ ids, updates: { level: newLevel } })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      showToast(`已更新 ${data.updated} 条等级`, 'success');
+      document.getElementById('batchLevel').value = '';
+      clearSelection();
+      doSearch();
+    } else { showToast(data.error || '更新失败', 'error'); }
+  } catch(e) { showToast('网络错误', 'error'); }
+}
+
+async function batchUpdateSection() {
+  const newSection = document.getElementById('batchSection').value;
+  if (!newSection) { showToast('请先选择章节', 'error'); return; }
+  const ids = Array.from(selectedIds);
+  if (ids.length === 0) return;
+  if (!confirm(`确认将 ${ids.length} 条笔记移至 ${newSection}？编号将重新生成。`)) return;
+  try {
+    const r = await fetch('/api/notes/batch', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ ids, updates: { section: newSection } })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      showToast(`已移动 ${data.updated} 条`, 'success');
+      document.getElementById('batchSection').value = '';
+      clearSelection();
+      doSearch();
+      loadStats();
+    } else { showToast(data.error || '更新失败', 'error'); }
+  } catch(e) { showToast('网络错误', 'error'); }
+}
+
+// ==================== Preview Drawer ====================
+async function openPreview(id) {
+  previewNoteId = id;
+  try {
+    const r = await fetch('/api/notes/' + id);
+    const n = await r.json();
+    document.getElementById('previewCode').textContent = n.code + ' · ' + (n.section_name || n.section);
+    document.getElementById('previewTitle').textContent = n.title;
+    document.getElementById('previewBody').textContent = n.content || '（无内容）';
+
+    const sectionName = sections.find(s => s.code === n.section)?.name || '';
+    document.getElementById('previewMeta').innerHTML = `
+      <span class="meta-item"><span class="meta-label">等级</span> <span class="${levelClass(n.level)}">${n.level}</span></span>
+      <span class="meta-item"><span class="meta-label">来源</span> ${esc(n.source)}</span>
+      <span class="meta-item"><span class="meta-label">日期</span> ${n.note_date}</span>
+      ${(n.tags || '').split(',').filter(Boolean).map(t => `<span class="tag">${esc(t.trim())}</span>`).join('')}
+    `;
+
+    document.getElementById('previewOverlay').classList.add('open');
+    document.getElementById('previewDrawer').classList.add('open');
+  } catch(e) {
+    showToast('加载失败', 'error');
+  }
+}
+
+function closePreview() {
+  document.getElementById('previewOverlay').classList.remove('open');
+  document.getElementById('previewDrawer').classList.remove('open');
+  previewNoteId = null;
+}
+
+function editFromPreview() {
+  const id = previewNoteId;  // 先保存ID
+  if (!id) return;
+  closePreview();
+  openEditModal(id);  // 用保存的ID
+}
+
+async function deleteFromPreview() {
+  const id = previewNoteId;
+  if (!id) return;
+  const title = document.getElementById('previewTitle').textContent;
+  if (!confirm(`确认删除「${title}」？`)) return;
+  const r = await fetch('/api/notes/' + id, { method: 'DELETE' });
+  if (r.ok) {
+    showToast('已删除', 'success');
+    closePreview();
+    doSearch();
+    loadStats();
+  } else showToast('删除失败', 'error');
+}
+
+// ==================== CRUD ====================
+function openAddModal() {
+  document.getElementById('modalTitle').textContent = '新增笔记';
+  document.getElementById('editId').value = '';
+  document.getElementById('editTitle').value = '';
+  document.getElementById('editContent').value = '';
+  document.getElementById('editTags').value = '';
+  document.getElementById('editSource').value = '个人总结';
+  document.getElementById('editLevel').value = '★★★';
+  document.getElementById('editDate').value = new Date().toISOString().split('T')[0];
+  if (currentSection) document.getElementById('editSection').value = currentSection;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+async function openEditModal(id) {
+  const r = await fetch('/api/notes/' + id);
+  const n = await r.json();
+  document.getElementById('modalTitle').textContent = '编辑笔记 - ' + n.code;
+  document.getElementById('editId').value = n.id;
+  document.getElementById('editSection').value = n.section;
+  document.getElementById('editTitle').value = n.title;
+  document.getElementById('editContent').value = n.content;
+  document.getElementById('editTags').value = n.tags;
+  document.getElementById('editSource').value = n.source;
+  document.getElementById('editLevel').value = n.level;
+  document.getElementById('editDate').value = n.note_date;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+
+async function saveNote() {
+  const id = document.getElementById('editId').value;
+  const data = {
+    section: document.getElementById('editSection').value,
+    title: document.getElementById('editTitle').value.trim(),
+    content: document.getElementById('editContent').value.trim(),
+    tags: document.getElementById('editTags').value.trim(),
+    source: document.getElementById('editSource').value,
+    level: document.getElementById('editLevel').value,
+    note_date: document.getElementById('editDate').value,
+  };
+  if (!data.section || !data.title) { showToast('章节和标题为必填', 'error'); return; }
+
+  const url = id ? '/api/notes/' + id : '/api/notes';
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+  if (r.ok) {
+    showToast(id ? '已更新' : '已创建', 'success');
+    closeModal();
+    doSearch();
+    loadStats();
+  } else {
+    const e = await r.json();
+    showToast(e.error || '保存失败', 'error');
+  }
+}
+
+async function deleteNote(id, title) {
+  if (!confirm(`确认删除笔记「${title}」？`)) return;
+  const r = await fetch('/api/notes/' + id, { method: 'DELETE' });
+  if (r.ok) { showToast('已删除', 'success'); doSearch(); loadStats(); }
+  else showToast('删除失败', 'error');
+}
+
+// ==================== Excel 导入 ====================
+function importExcel() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.xlsx,.xls';
+  input.onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    showToast('Loading Excel...', 'success');
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      const data = new Uint8Array(ev.target.result);
+      const XLSX = window.XLSX;
+      const wb = XLSX.read(data, { type: 'array' });
+
+      // Fetch existing notes for dedup check
+      let existingMap = {};
+      try {
+        const allRes = await fetch('/api/notes?per=9999');
+        const allData = await allRes.json();
+        allData.items.forEach(n => {
+          const key = n.section + '::' + n.title.trim();
+          existingMap[key] = n;
+        });
+      } catch(err) { console.error('Failed to load existing notes for dedup'); }
+
+      let added = 0, skipped = 0, updated = 0;
+      for (const sheetName of wb.SheetNames) {
+        if (['总览目录','附录-编码速查','附录-来源与等级','附录-Agent操作手册'].includes(sheetName)) continue;
+        const ws = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const codePrefix = sheetName.split(' ')[0];
+        for (let i = 3; i < rows.length; i++) {
+          const r = rows[i];
+          if (!r || !r[0] || !r[1]) continue;
+          const section = codePrefix;
+          const title = String(r[1] || '').trim();
+          const content = String(r[2] || '').trim();
+          const tags = String(r[3] || '').trim();
+          const source = String(r[4] || '个人总结').trim();
+          const level = String(r[5] || '★').trim();
+          const note_date = String(r[6] || new Date().toISOString().split('T')[0]).trim();
+          const key = section + '::' + title;
+
+          if (existingMap[key]) {
+            const existing = existingMap[key];
+            if (existing.content !== content || existing.tags !== tags || existing.source !== source || existing.level !== level) {
+              try {
+                await fetch('/api/notes/' + existing.id, {
+                  method: 'PUT',
+                  headers: {'Content-Type':'application/json'},
+                  body: JSON.stringify({ title, content, tags, source, level, note_date, section: existing.section })
+                });
+                updated++;
+              } catch (err) { console.error(err); }
+            } else {
+              skipped++;
+            }
+            continue;
+          }
+
+          const entry = { section, title, content, tags, source, level, note_date };
+          try {
+            const res = await fetch('/api/notes', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(entry) });
+            if (res.ok) {
+              const newNote = await res.json();
+              existingMap[key] = newNote;
+              added++;
+            }
+          } catch (err) { console.error(err); }
+        }
+      }
+      let msg = `Import done: ${added} added`;
+      if (updated > 0) msg += `, ${updated} updated`;
+      if (skipped > 0) msg += `, ${skipped} unchanged`;
+      showToast(msg, 'success');
+      doSearch();
+      loadStats();
+    };
+    reader.readAsArrayBuffer(file);
+  };
+  input.click();
+}
+
+// ==================== Toast ====================
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast toast-' + type + ' show';
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ==================== Keyboard ====================
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('previewDrawer').classList.contains('open')) {
+      closePreview();
+    } else {
+      closeModal();
+    }
+  }
+});
+
+// ==================== Start ====================
+init();
+</script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+</body>
+</html>

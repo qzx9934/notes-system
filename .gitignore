@@ -1,0 +1,10 @@
+python/
+venv/
+__pycache__/
+*.pyc
+*.tmp
+~$*
+# 数据库（含用户数据，不上传）
+backend/notes.db
+# 部署配置（服务器相关）
+deploy/
