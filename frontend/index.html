@@ -384,7 +384,7 @@ tbody tr.selected { background: #EBF5FB; }
       <button class="btn btn-outline" onclick="resetFilters()">重置</button>
     </div>
     <button class="btn btn-primary" onclick="openAddModal()">+ 新增笔记</button>
-    <button class="btn btn-outline" onclick="importExcel()">📥 导入Excel</button>
+    <button class="btn btn-outline" id="importBtn" onclick="importExcel()">📥 导入Excel</button>
   </div>
 
   <div class="stats-bar" id="statsBar"></div>
@@ -618,9 +618,9 @@ function applyRoleUI() {
   const isAdmin = currentRole === 'admin';
   // 顶栏按钮
   const addBtn = document.querySelector('.topbar .btn-primary');
-  const importBtn = document.querySelector('.topbar .btn-outline');
+  const importBtn = document.getElementById('importBtn');
   if (addBtn) addBtn.style.display = isAdmin ? '' : 'none';
-  if (importBtn && importBtn.textContent.includes('导入Excel')) importBtn.style.display = isAdmin ? '' : 'none';
+  if (importBtn) importBtn.style.display = isAdmin ? '' : 'none';
   // 批量操作栏（viewer 永远不显示）
   document.getElementById('batchBar').classList.remove('show');
   // 表头复选框：viewer 隐藏
@@ -856,6 +856,7 @@ function onDomainFilter() {
 
 // ==================== Search & List ====================
 async function doSearch() {
+  try {
   const params = new URLSearchParams();
   const q = document.getElementById('searchInput').value.trim();
   if (q) { params.set('q', q); document.getElementById('clearSearch').style.display = 'block'; }
@@ -879,6 +880,10 @@ async function doSearch() {
   renderTable(data.items);
   renderPagination(data);
   document.getElementById('emptyState').style.display = data.total === 0 ? 'block' : 'none';
+  } catch(e) {
+    console.error('搜索出错:', e);
+    showToast('搜索失败，请检查网络连接', 'error');
+  }
 }
 
 const CONTENT_PREVIEW_LEN = 60;
