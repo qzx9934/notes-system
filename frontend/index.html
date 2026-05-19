@@ -1102,11 +1102,28 @@ function closePreview() {
   previewNoteId = null;
 }
 
+function copyToClipboard(text) {
+  // 优先用 Clipboard API（需 HTTPS 或 localhost）
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  // 兜底：execCommand（兼容 HTTP）
+  return new Promise((resolve, reject) => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.style.top = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); resolve(); } catch(e) { reject(e); }
+    document.body.removeChild(ta);
+  });
+}
+
 function copyFromPreview() {
   const title = document.getElementById('previewTitle').textContent;
   const body = document.getElementById('previewBody').textContent;
   const text = title + '\n\n' + body;
-  navigator.clipboard.writeText(text).then(() => {
+  copyToClipboard(text).then(() => {
     showToast('已复制到剪贴板', 'success');
   }).catch(() => {
     showToast('复制失败，请手动选择复制', 'error');
