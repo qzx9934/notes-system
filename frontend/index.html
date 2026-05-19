@@ -454,8 +454,9 @@ tbody tr.selected { background: #EBF5FB; }
     <div class="preview-meta" id="previewMeta"></div>
     <div class="preview-body" id="previewBody"></div>
     <div class="preview-footer">
-      <button class="btn btn-outline" onclick="editFromPreview()">✎ 编辑</button>
-      <button class="btn btn-danger" onclick="deleteFromPreview()">✕ 删除</button>
+      <button class="btn btn-outline" onclick="copyFromPreview()">📋 复制内容</button>
+      <button class="btn btn-outline admin-only" onclick="editFromPreview()">✎ 编辑</button>
+      <button class="btn btn-danger admin-only" onclick="deleteFromPreview()">✕ 删除</button>
     </div>
   </div>
 </div>
@@ -626,9 +627,12 @@ function applyRoleUI() {
   // 表头复选框：viewer 隐藏
   const headerCheck = document.getElementById('headerCheck');
   if (headerCheck) headerCheck.style.display = isAdmin ? '' : 'none';
-  // 预览弹窗底部按钮
+  // 预览弹窗底部按钮：复制对所有人可见，编辑/删除仅 admin
   const previewFooter = document.querySelector('.preview-footer');
-  if (previewFooter) previewFooter.style.display = isAdmin ? '' : 'none';
+  if (previewFooter) previewFooter.style.display = '';
+  document.querySelectorAll('.preview-footer .admin-only').forEach(el => {
+    el.style.display = isAdmin ? '' : 'none';
+  });
 }
 
 // ---- 修改密码 ----
@@ -1096,6 +1100,17 @@ function closePreview() {
   document.getElementById('previewOverlay').classList.remove('open');
   document.getElementById('previewDrawer').classList.remove('open');
   previewNoteId = null;
+}
+
+function copyFromPreview() {
+  const title = document.getElementById('previewTitle').textContent;
+  const body = document.getElementById('previewBody').textContent;
+  const text = title + '\n\n' + body;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('已复制到剪贴板', 'success');
+  }).catch(() => {
+    showToast('复制失败，请手动选择复制', 'error');
+  });
 }
 
 function editFromPreview() {
