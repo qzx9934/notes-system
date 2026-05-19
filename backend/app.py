@@ -423,30 +423,30 @@ def api_notes_list():
     params = []
 
     if q:
-        where.append('(title LIKE ? OR content LIKE ? OR tags LIKE ? OR code LIKE ?)')
+        where.append('(n.title LIKE ? OR n.content LIKE ? OR n.tags LIKE ? OR n.code LIKE ?)')
         like = f'%{q}%'
         params.extend([like, like, like, like])
 
     if section:
-        where.append('section = ?')
+        where.append('n.section = ?')
         params.append(section)
 
     if level:
-        where.append('level = ?')
+        where.append('n.level = ?')
         params.append(level)
 
     if source:
-        where.append('source = ?')
+        where.append('n.source = ?')
         params.append(source)
 
     if domain:
-        where.append('section IN (SELECT code FROM sections WHERE domain = ?)')
+        where.append('n.section IN (SELECT code FROM sections WHERE domain = ?)')
         params.append(domain)
 
     where_clause = ' AND '.join(where)
 
     # count
-    total = db.execute(f'SELECT COUNT(*) FROM notes WHERE {where_clause}', params).fetchone()[0]
+    total = db.execute(f'SELECT COUNT(*) FROM notes n WHERE {where_clause}', params).fetchone()[0]
 
     # data
     rows = db.execute(
