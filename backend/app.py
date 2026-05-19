@@ -214,6 +214,10 @@ def seed_db():
     db.commit()
     db.close()
 
+# 模块加载时自动初始化数据库（兼容 gunicorn/wsgi 导入）
+init_db()
+seed_db()
+
 # ==================== 认证 ====================
 
 def login_required(f):
@@ -607,9 +611,7 @@ def index():
     return app.send_static_file('index.html')
 
 def main():
-    """主入口：初始化数据库并启动服务"""
-    init_db()
-    seed_db()
+    """主入口：启动服务"""
     if '--init-only' in sys.argv:
         print('数据库初始化完成')
         return
