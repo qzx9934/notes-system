@@ -39,6 +39,16 @@ if not _secret_key:
             _f.write(_secret_key)
 app.secret_key = _secret_key
 
+# ---- 安全拦截：禁止访问隐藏文件/目录（.git / .env 等） ----
+BANNED_PREFIXES = ('.git', '.svn', '.env', '.htaccess', '.htpasswd', '.DS_Store')
+
+@app.before_request
+def block_sensitive_paths():
+    path = request.path
+    for segment in path.split('/'):
+        if segment.startswith(BANNED_PREFIXES):
+            return jsonify({'error': 'forbidden'}), 404
+
 DB_PATH = os.path.join(BACKEND_DIR, 'notes.db')
 
 # 跨平台浏览器打开
