@@ -9,7 +9,7 @@ import sqlite3
 import os
 import sys
 import platform
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, g, session
 from flask_cors import CORS
 from functools import wraps
@@ -38,6 +38,9 @@ if not _secret_key:
         with open(_secret_file, 'w', encoding='utf-8') as _f:
             _f.write(_secret_key)
 app.secret_key = _secret_key
+
+# ---- 会话有效期 8 小时（防止浏览器恢复会话导致自动登录） ----
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 
 # ---- 安全拦截：禁止访问隐藏文件/目录（.git / .env 等） ----
 BANNED_PREFIXES = ('.git', '.svn', '.env', '.htaccess', '.htpasswd', '.DS_Store')
@@ -293,6 +296,7 @@ def api_login():
     session['user_id'] = user['id']
     session['username'] = user['username']
     session['role'] = user['role']
+    session.permanent = True
     return jsonify({'ok': True, 'username': user['username'], 'role': user['role']})
 
 @app.route('/api/logout', methods=['POST'])

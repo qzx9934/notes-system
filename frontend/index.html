@@ -293,6 +293,9 @@ body.roam-immersive .batch-bar { display: none; }
 }
 .roam-card.loading { opacity: .5; pointer-events: none; }
 .roam-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+.roam-card-level { cursor: pointer; font-size: 22px; padding: 2px 8px; border-radius: 6px; transition: all .15s; user-select: none; }
+.roam-card-level:hover { background: rgba(0,0,0,.06); transform: scale(1.15); }
+.roam-card-level:active { transform: scale(.95); }
 .roam-card-code { font-family: 'Consolas', monospace; font-size: 13px; color: var(--primary-light); font-weight: 600; }
 .roam-card-title { font-size: 24px; font-weight: 700; color: var(--text); margin: 16px 0; line-height: 1.4; }
 .roam-card-content { font-size: 15px; line-height: 1.9; color: var(--text); white-space: pre-wrap; flex: 1; min-height: 0; overflow-y: auto; margin-bottom: 24px; }
@@ -530,7 +533,7 @@ body.roam-immersive .batch-bar { display: none; }
     <div id="roamCardInner" style="display:none">
       <div class="roam-card-header">
         <span class="roam-card-code" id="roamCode"></span>
-        <span id="roamLevel"></span>
+        <span id="roamLevel" class="roam-card-level" onclick="cycleRoamLevel()" title="点击切换重要程度"></span>
       </div>
       <div class="roam-card-title" id="roamTitle" style="cursor:pointer" onclick="openRoamPreview()"></div>
       <div class="roam-card-content" id="roamContent"></div>
@@ -1489,7 +1492,7 @@ function renderRoamCard() {
 
   const levelEl = document.getElementById('roamLevel');
   levelEl.textContent = n.level || '★';
-  levelEl.className = levelClass(n.level);
+  levelEl.className = 'roam-card-level ' + levelClass(n.level);
 
   const tags = (n.tags || '').split(',').filter(Boolean);
   document.getElementById('roamTags').innerHTML = tags.map(function(t) { return '<span class="tag">' + esc(t.trim()) + '</span>'; }).join('');
@@ -1508,6 +1511,42 @@ function roamNext() {
     roamIndex++;
     renderRoamCard();
   }
+}
+
+function cycleRoamLevel() {
+  if (roamNotes.length === 0 || roamIndex < 0 || roamIndex >= roamNotes.length) return;
+  const n = roamNotes[roamIndex];
+  const levels = ['★', '★★', '★★★'];
+  const curIdx = levels.indexOf(n.level || '★');
+  const newIdx = (curIdx + 1) % levels.length;
+  const newLevel = levels[newIdx];
+  const oldLevel = n.level;
+
+  // 即时更新 UI
+  n.level = newLevel;
+  renderRoamCard();
+
+  // 异步保存到后端
+  fetch('/api/notes/' + n.id, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ level: newLevel })
+  })
+  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+  .then(function(result) {
+    if (!result.ok) {
+      n.level = oldLevel;
+      renderRoamCard();
+      showToast(result.data.error || '保存失败', 'error');
+    } else {
+      showToast('已更新为 ' + newLevel, 'success');
+    }
+  })
+  .catch(function() {
+    n.level = oldLevel;
+    renderRoamCard();
+    showToast('网络错误', 'error');
+  });
 }
 
 function roamPrev() {
