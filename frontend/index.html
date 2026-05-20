@@ -190,14 +190,74 @@ tbody tr.selected { background: #EBF5FB; }
 .empty { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
 .empty .icon { font-size: 48px; margin-bottom: 12px; }
 
-/* Responsive */
+/* ===== 手机/平板适配 ===== */
+/* 汉堡菜单按钮 — 仅小屏可见 */
+.hamburger { display: none; position: fixed; top: 10px; left: 10px; z-index: 110; background: var(--primary); color: #fff; border: none; border-radius: 6px; width: 38px; height: 38px; font-size: 20px; cursor: pointer; align-items: center; justify-content: center; box-shadow: var(--shadow); }
+.hamburger:active { transform: scale(.95); }
+/* 侧边栏遮罩 */
+.sidebar-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.4); z-index: 99; }
+
 @media (max-width: 768px) {
-  .sidebar { width: 0; overflow: hidden; }
-  .sidebar.open { width: 260px; }
-  .main { margin-left: 0; }
-  .topbar { flex-direction: column; }
-  .stats-bar { flex-wrap: wrap; }
+  .hamburger { display: flex; }
+  .sidebar { transform: translateX(-100%); transition: transform .3s; width: 260px; }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-overlay.show { display: block; }
+  .main { margin-left: 0; padding: 12px; }
+  /* 表格横向滚动 */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { font-size: 12px; min-width: 600px; }
+  thead th, tbody td { padding: 7px 8px; }
+  .col-content { display: none; }
+  .col-tags { display: none; }
+  .col-source { display: none; }
+  .col-check { width: 28px; }
+  .col-code { width: 80px; }
+  .col-title { min-width: 100px; }
+  /* 顶栏堆叠 */
+  .topbar { flex-direction: column; gap: 6px; padding-left: 44px; }
+  .topbar .btn { width: 100%; }
+  .search-wrap { min-width: 0; }
+  .filter-group { flex-wrap: wrap; gap: 4px; }
+  .filter-group select { flex: 1; min-width: 80px; font-size: 11px; padding: 6px 8px; }
+  .filter-group .btn { font-size: 11px; padding: 6px 10px; }
+  /* 统计栏 */
+  .stats-bar { flex-wrap: wrap; gap: 6px; }
+  .stat-card { flex: 1 1 45%; min-width: 0; padding: 10px 12px; }
+  .stat-card .num { font-size: 22px; }
+  /* 批量栏 */
+  .batch-bar { flex-wrap: wrap; gap: 6px; }
+  .batch-bar .actions { flex-wrap: wrap; gap: 4px; }
+  .batch-bar .actions select { flex: 1; min-width: 70px; font-size: 11px; }
+  .batch-bar .actions .btn { font-size: 11px; padding: 4px 8px; }
+  /* 分页 */
+  .pagination { gap: 4px; flex-wrap: wrap; }
+  .pagination button { padding: 5px 8px; font-size: 12px; }
+  /* 漫游卡片 */
+  .roam-card { padding: 24px 20px; max-width: 100%; border-radius: 0; min-height: 30vh; max-height: 90vh; }
+  .roam-container.active { padding: 0; }
+  .roam-card-header { margin-bottom: 16px; }
+  .roam-nav { bottom: 10px; }
+  /* 预览 */
   .preview-drawer { width: 100vw; max-height: 100vh; border-radius: 0; }
+  .preview-body { padding: 14px; font-size: 13px; }
+  .preview-header { padding: 12px 14px; }
+  .preview-header .title { font-size: 16px; }
+  /* 模态框 */
+  .modal { width: 100vw; max-width: 100vw; max-height: 90vh; border-radius: 0; }
+  .modal-body { padding: 14px; }
+  .form-row { flex-direction: column; gap: 8px; }
+  .form-group input, .form-group select, .form-group textarea { font-size: 14px; padding: 8px 10px; }
+  .modal-footer { padding: 10px 14px; }
+  .modal-footer .btn { flex: 1; }
+  /* 表头区域 */
+  .table-header { flex-direction: column; align-items: flex-start; }
+  .table-header h2 { font-size: 14px; }
+  .sort-select { font-size: 11px; padding: 5px 8px; }
+  /* Toast */
+  .toast { right: 10px; left: 10px; top: auto; bottom: 10px; text-align: center; font-size: 13px; }
+  /* 用户管理 */
+  .user-mgmt-modal { width: 100vw; max-width: 100vw; border-radius: 0; }
+  .add-user-form .form-row { flex-direction: column; gap: 6px; }
 }
 
 /* ===== Login Screen ===== */
@@ -267,6 +327,8 @@ body.roam-immersive {
   background: #1a1a2e;
 }
 body.roam-immersive .sidebar { display: none; }
+body.roam-immersive .hamburger,
+body.roam-immersive .sidebar-overlay { display: none; }
 body.roam-immersive .main {
   margin-left: 0; padding: 0;
   display: flex; flex-direction: column;
@@ -418,7 +480,9 @@ body.roam-immersive .batch-bar { display: none; }
 </div>
 
 <!-- Sidebar -->
-<aside class="sidebar">
+<button class="hamburger" id="hamburgerBtn" onclick="toggleSidebar()" title="菜单">☰</button>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+<aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <h1>运行人员<br>工作笔记管理系统</h1>
     <div class="sub">v2.2</div>
@@ -728,6 +792,22 @@ async function doLogout() {
   currentRole = 'viewer';
   showLogin();
 }
+
+// ---- 手机侧边栏切换 ----
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('show');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('show');
+}
+// 导航点击后自动关闭手机侧边栏
+document.addEventListener('click', function(e) {
+  if (e.target.closest('.nav-item') || e.target.closest('.nav-domain')) {
+    setTimeout(closeSidebar, 200);
+  }
+});
 
 // ---- 根据角色控制 UI ----
 function applyRoleUI() {
