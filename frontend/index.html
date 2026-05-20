@@ -258,6 +258,50 @@ tbody tr.selected { background: #EBF5FB; }
 }
 .add-user-form .form-group input:focus, .add-user-form .form-group select:focus { border-color: var(--primary-light); }
 .user-error { color: var(--star3); font-size: 13px; min-height: 18px; margin-top: 8px; }
+
+/* Sort dropdown */
+.sort-select { padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; background: var(--card); cursor: pointer; outline: none; color: var(--text); }
+
+/* Roam Card View */
+.roam-container { display: none; }
+.roam-container.active { display: block; }
+.roam-card {
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 40px 48px; max-width: 800px; margin: 0 auto;
+  min-height: 60vh; display: flex; flex-direction: column;
+  transition: opacity .2s;
+}
+.roam-card.loading { opacity: .5; pointer-events: none; }
+.roam-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+.roam-card-code { font-family: 'Consolas', monospace; font-size: 13px; color: var(--primary-light); font-weight: 600; }
+.roam-card-title { font-size: 24px; font-weight: 700; color: var(--text); margin: 16px 0; line-height: 1.4; }
+.roam-card-content { font-size: 15px; line-height: 1.9; color: var(--text); white-space: pre-wrap; flex: 1; margin-bottom: 24px; }
+.roam-card-meta { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; padding-top: 16px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-secondary); }
+.roam-card-meta .meta-item { display: flex; align-items: center; gap: 4px; }
+.roam-card-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* Roam Controls */
+.roam-controls { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 24px; }
+.roam-btn {
+  padding: 10px 24px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--card); cursor: pointer; font-size: 14px; transition: all .15s;
+}
+.roam-btn:hover { background: #f0f0f0; }
+.roam-btn:disabled { opacity: .3; cursor: default; }
+.roam-btn.primary { background: var(--primary-light); color: #fff; border-color: var(--primary-light); }
+.roam-btn.primary:hover { background: var(--primary); }
+.roam-pos { font-size: 14px; color: var(--text-secondary); min-width: 80px; text-align: center; }
+.roam-topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.roam-empty { text-align: center; padding: 80px 20px; color: var(--text-secondary); }
+
+/* Roam responsive */
+@media (max-width: 768px) {
+  .roam-card { padding: 20px; min-height: 50vh; }
+  .roam-card-title { font-size: 20px; }
+  .roam-card-content { font-size: 14px; }
+  .roam-controls { gap: 8px; }
+  .roam-btn { padding: 8px 16px; font-size: 13px; }
+}
 </style>
 </head>
 <body>
@@ -385,6 +429,7 @@ tbody tr.selected { background: #EBF5FB; }
     </div>
     <button class="btn btn-primary" onclick="openAddModal()">+ 新增笔记</button>
     <button class="btn btn-outline" id="importBtn" onclick="importExcel()">📥 导入Excel</button>
+    <button class="btn btn-warning" onclick="startRoam()">🎴 笔记漫游</button>
   </div>
 
   <div class="stats-bar" id="statsBar"></div>
@@ -410,9 +455,16 @@ tbody tr.selected { background: #EBF5FB; }
     </div>
   </div>
 
-  <div class="table-wrap">
+  <div class="table-wrap" id="tableContainer">
     <div class="table-header">
-      <h2 id="tableTitle">全部笔记</h2>
+      <div style="display:flex;align-items:center;gap:12px">
+        <h2 id="tableTitle">全部笔记</h2>
+        <select class="sort-select" id="sortSelect" onchange="doSearch()">
+          <option value="code">按编号排序</option>
+          <option value="updated">按更新时间</option>
+          <option value="created">按创建时间</option>
+        </select>
+      </div>
       <span style="font-size:12px;color:var(--text-secondary)" id="resultCount"></span>
     </div>
     <div style="overflow-x:auto; flex:1; overflow-y:auto;">
@@ -440,6 +492,42 @@ tbody tr.selected { background: #EBF5FB; }
     </div>
   </div>
 </main>
+
+<!-- Roam Card View -->
+<div class="roam-container" id="roamContainer">
+  <div class="roam-topbar">
+    <span style="font-size:14px;color:var(--text-secondary)" id="roamFilterHint"></span>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline" onclick="reshuffleRoam()">🔄 换一批</button>
+      <button class="btn btn-outline" onclick="exitRoam()">📋 返回列表</button>
+    </div>
+  </div>
+  <div class="roam-card" id="roamCard">
+    <div class="roam-empty" id="roamEmpty" style="display:none">
+      <div style="font-size:48px;margin-bottom:12px">🎴</div>
+      <p>当前筛选条件下暂无笔记</p>
+    </div>
+    <div id="roamCardInner" style="display:none;cursor:pointer" onclick="openRoamPreview()">
+      <div class="roam-card-header">
+        <span class="roam-card-code" id="roamCode"></span>
+        <span id="roamLevel"></span>
+      </div>
+      <div class="roam-card-title" id="roamTitle"></div>
+      <div class="roam-card-content" id="roamContent"></div>
+      <div class="roam-card-meta">
+        <div class="roam-card-tags" id="roamTags"></div>
+        <span class="meta-item">📅 <span id="roamNoteDate"></span></span>
+        <span class="meta-item">🔄 <span id="roamUpdatedAt"></span></span>
+        <span class="meta-item">📂 <span id="roamSource"></span></span>
+      </div>
+    </div>
+  </div>
+  <div class="roam-controls" id="roamControls" style="display:none">
+    <button class="roam-btn" id="roamPrev" onclick="roamPrev()" disabled>← 上一张</button>
+    <span class="roam-pos" id="roamPos"></span>
+    <button class="roam-btn primary" id="roamNext" onclick="roamNext()">下一张 →</button>
+  </div>
+</div>
 
 <!-- Preview Modal -->
 <div class="preview-overlay" id="previewOverlay" onclick="closePreview()">
@@ -518,6 +606,10 @@ let sections = [];
 let domains = [];
 let currentSection = '';
 let currentPage = 1;
+let currentSort = 'code';
+let roamNotes = [];
+let roamIndex = 0;
+let isRoamMode = false;
 let selectedIds = new Set();
 let previewNoteId = null;
 let allLoadedItems = []; // current page items for checkbox reference
@@ -861,6 +953,9 @@ function onDomainFilter() {
 // ==================== Search & List ====================
 async function doSearch() {
   try {
+  // Exit roam mode if active
+  if (isRoamMode) exitRoam();
+
   const params = new URLSearchParams();
   const q = document.getElementById('searchInput').value.trim();
   if (q) { params.set('q', q); document.getElementById('clearSearch').style.display = 'block'; }
@@ -876,6 +971,11 @@ async function doSearch() {
   params.set('page', currentPage);
   params.set('per', 30);
 
+  // Sort parameter
+  const sort = document.getElementById('sortSelect')?.value || currentSort;
+  if (sort && sort !== 'code') params.set('sort', sort);
+  currentSort = sort;
+
   const r = await fetch('/api/notes?' + params);
   const data = await r.json();
   allLoadedItems = data.items;
@@ -884,6 +984,8 @@ async function doSearch() {
   renderTable(data.items);
   renderPagination(data);
   document.getElementById('emptyState').style.display = data.total === 0 ? 'block' : 'none';
+  document.getElementById('pagination').style.display = data.total <= 30 ? 'none' : '';
+  document.getElementById('resultCount').style.display = data.total === 0 ? 'none' : '';
   } catch(e) {
     console.error('搜索出错:', e);
     showToast('搜索失败，请检查网络连接', 'error');
@@ -944,6 +1046,9 @@ function resetFilters() {
   document.getElementById('filterDomain').value = '';
   currentSection = '';
   currentPage = 1;
+  currentSort = 'code';
+  const sortEl = document.getElementById('sortSelect');
+  if (sortEl) sortEl.value = 'code';
   selectedIds.clear();
   updateBatchBar();
   document.getElementById('tableTitle').textContent = '全部笔记';
@@ -1300,6 +1405,111 @@ function importExcel() {
   input.click();
 }
 
+// ==================== 笔记漫游 ====================
+async function startRoam() {
+  const params = new URLSearchParams();
+  const q = document.getElementById('searchInput').value.trim();
+  if (q) params.set('q', q);
+  const level = document.getElementById('filterLevel').value;
+  const source = document.getElementById('filterSource').value;
+  const domain = document.getElementById('filterDomain').value;
+  if (level) params.set('level', level);
+  if (source) params.set('source', source);
+  if (domain) params.set('domain', domain);
+  if (currentSection) params.set('section', currentSection);
+  params.set('sort', 'random');
+  params.set('per', '50');
+
+  try {
+    document.getElementById('roamCard').classList.add('loading');
+    const r = await fetch('/api/notes?' + params);
+    const data = await r.json();
+    roamNotes = data.items;
+    document.getElementById('roamCard').classList.remove('loading');
+
+    if (roamNotes.length === 0) {
+      document.getElementById('roamEmpty').style.display = 'block';
+      document.getElementById('roamCardInner').style.display = 'none';
+      document.getElementById('roamControls').style.display = 'none';
+      document.getElementById('roamFilterHint').textContent = '当前筛选条件下暂无笔记';
+    } else {
+      document.getElementById('roamEmpty').style.display = 'none';
+      document.getElementById('roamCardInner').style.display = 'block';
+      document.getElementById('roamControls').style.display = 'flex';
+      roamIndex = 0;
+      renderRoamCard();
+      document.getElementById('roamFilterHint').textContent = '共 ' + roamNotes.length + ' 张笔记卡片';
+    }
+
+    isRoamMode = true;
+    document.getElementById('tableContainer').style.display = 'none';
+    document.getElementById('pagination').style.display = 'none';
+    document.getElementById('resultCount').style.display = 'none';
+    document.getElementById('roamContainer').classList.add('active');
+  } catch(e) {
+    showToast('加载失败', 'error');
+    document.getElementById('roamCard').classList.remove('loading');
+  }
+}
+
+function renderRoamCard() {
+  if (roamNotes.length === 0 || roamIndex < 0 || roamIndex >= roamNotes.length) return;
+  const n = roamNotes[roamIndex];
+
+  document.getElementById('roamCode').textContent = n.code;
+  document.getElementById('roamTitle').textContent = n.title;
+  document.getElementById('roamContent').textContent = n.content || '（无内容）';
+
+  const levelEl = document.getElementById('roamLevel');
+  levelEl.textContent = n.level || '★';
+  levelEl.className = levelClass(n.level);
+
+  const tags = (n.tags || '').split(',').filter(Boolean);
+  document.getElementById('roamTags').innerHTML = tags.map(function(t) { return '<span class="tag">' + esc(t.trim()) + '</span>'; }).join('');
+
+  document.getElementById('roamNoteDate').textContent = n.note_date || '—';
+  document.getElementById('roamUpdatedAt').textContent = (n.updated_at || '').slice(0, 10) || '—';
+  document.getElementById('roamSource').textContent = n.source || '—';
+
+  document.getElementById('roamPos').textContent = (roamIndex + 1) + ' / ' + roamNotes.length;
+  document.getElementById('roamPrev').disabled = roamIndex <= 0;
+  document.getElementById('roamNext').disabled = roamIndex >= roamNotes.length - 1;
+}
+
+function roamNext() {
+  if (roamIndex < roamNotes.length - 1) {
+    roamIndex++;
+    renderRoamCard();
+  }
+}
+
+function roamPrev() {
+  if (roamIndex > 0) {
+    roamIndex--;
+    renderRoamCard();
+  }
+}
+
+function reshuffleRoam() {
+  startRoam();
+}
+
+function exitRoam() {
+  isRoamMode = false;
+  roamNotes = [];
+  roamIndex = 0;
+  document.getElementById('roamContainer').classList.remove('active');
+  document.getElementById('tableContainer').style.display = '';
+  document.getElementById('pagination').style.display = '';
+  document.getElementById('resultCount').style.display = '';
+  doSearch();
+}
+
+function openRoamPreview() {
+  if (roamNotes.length === 0 || roamIndex < 0 || roamIndex >= roamNotes.length) return;
+  openPreview(roamNotes[roamIndex].id);
+}
+
 // ==================== Toast ====================
 function showToast(msg, type) {
   const t = document.getElementById('toast');
@@ -1310,12 +1520,20 @@ function showToast(msg, type) {
 
 // ==================== Keyboard ====================
 document.addEventListener('keydown', e => {
+  // Escape: always close preview/modal first
   if (e.key === 'Escape') {
     if (document.getElementById('previewDrawer').classList.contains('open')) {
-      closePreview();
-    } else {
-      closeModal();
+      closePreview(); return;
     }
+    if (document.getElementById('modalOverlay').classList.contains('open')) {
+      closeModal(); return;
+    }
+    if (isRoamMode) { exitRoam(); return; }
+  }
+  // Roam navigation (only when preview is not open)
+  if (isRoamMode && !document.getElementById('previewDrawer').classList.contains('open')) {
+    if (e.key === 'ArrowLeft') { roamPrev(); return; }
+    if (e.key === 'ArrowRight') { roamNext(); return; }
   }
 });
 

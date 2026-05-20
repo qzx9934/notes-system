@@ -424,6 +424,7 @@ def api_notes_list():
     level   = request.args.get('level', '').strip()
     source  = request.args.get('source', '').strip()
     domain  = request.args.get('domain', '').strip()
+    sort    = request.args.get('sort', 'code').strip()
     page   = int(request.args.get('page', 1))
     per    = int(request.args.get('per', 50))
     offset = (page - 1) * per
@@ -458,10 +459,17 @@ def api_notes_list():
     total = db.execute(f'SELECT COUNT(*) FROM notes n WHERE {where_clause}', params).fetchone()[0]
 
     # data
+    order_map = {
+        'code':    'n.code',
+        'updated': 'n.updated_at DESC',
+        'created': 'n.created_at DESC',
+        'random':  'RANDOM()'
+    }
+    order_by = order_map.get(sort, 'n.code')
     rows = db.execute(
         f'SELECT n.*, s.name as section_name, s.domain as domain_code '
         f'FROM notes n LEFT JOIN sections s ON n.section = s.code '
-        f'WHERE {where_clause} ORDER BY n.code LIMIT ? OFFSET ?',
+        f'WHERE {where_clause} ORDER BY {order_by} LIMIT ? OFFSET ?',
         params + [per, offset]
     ).fetchall()
 
