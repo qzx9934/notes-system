@@ -1449,12 +1449,18 @@ async function startRoam() {
 
     if (roamNotes.length === 0) {
       document.getElementById('roamEmpty').style.display = 'block';
-      document.getElementById('roamCardInner').style.display = 'none';
+      const inner = document.getElementById('roamCardInner');
+      inner.style.display = 'none';
+      inner.style.flexDirection = ''; inner.style.flex = ''; inner.style.minHeight = '';
       document.getElementById('roamControls').style.display = 'none';
       document.getElementById('roamFilterHint').textContent = '当前筛选条件下暂无笔记';
     } else {
       document.getElementById('roamEmpty').style.display = 'none';
-      document.getElementById('roamCardInner').style.display = 'block';
+      const inner = document.getElementById('roamCardInner');
+      inner.style.display = 'flex';
+      inner.style.flexDirection = 'column';
+      inner.style.flex = '1';
+      inner.style.minHeight = '0';
       document.getElementById('roamControls').style.display = 'flex';
       roamIndex = 0;
       renderRoamCard();
@@ -1521,6 +1527,9 @@ function exitRoam() {
   roamIndex = 0;
   document.body.classList.remove('roam-immersive');
   document.getElementById('roamContainer').classList.remove('active');
+  const inner = document.getElementById('roamCardInner');
+  inner.style.display = 'none';
+  inner.style.flexDirection = ''; inner.style.flex = ''; inner.style.minHeight = '';
   document.getElementById('tableContainer').style.display = '';
   document.getElementById('pagination').style.display = '';
   document.getElementById('resultCount').style.display = '';
