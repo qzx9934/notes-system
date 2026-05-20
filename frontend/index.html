@@ -287,7 +287,7 @@ body.roam-immersive .batch-bar { display: none; }
   background: var(--card); border-radius: 12px;
   box-shadow: 0 4px 32px rgba(0,0,0,.35);
   padding: 40px 48px; max-width: 800px; width: 100%;
-  min-height: 40vh; max-height: 85vh;
+  min-height: 40vh; max-height: 85vh; overflow: hidden;
   display: flex; flex-direction: column;
   transition: opacity .25s ease;
 }
@@ -295,7 +295,7 @@ body.roam-immersive .batch-bar { display: none; }
 .roam-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
 .roam-card-code { font-family: 'Consolas', monospace; font-size: 13px; color: var(--primary-light); font-weight: 600; }
 .roam-card-title { font-size: 24px; font-weight: 700; color: var(--text); margin: 16px 0; line-height: 1.4; }
-.roam-card-content { font-size: 15px; line-height: 1.9; color: var(--text); white-space: pre-wrap; flex: 1; overflow-y: auto; margin-bottom: 24px; }
+.roam-card-content { font-size: 15px; line-height: 1.9; color: var(--text); white-space: pre-wrap; flex: 1; min-height: 0; overflow-y: auto; margin-bottom: 24px; }
 .roam-card-meta { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; padding-top: 16px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-secondary); }
 .roam-card-meta .meta-item { display: flex; align-items: center; gap: 4px; }
 .roam-card-tags { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -516,7 +516,7 @@ body.roam-immersive .batch-bar { display: none; }
 <!-- Roam Card View -->
 <div class="roam-container" id="roamContainer">
   <div class="roam-topbar">
-    <span style="font-size:14px;color:var(--text-secondary)" id="roamFilterHint"></span>
+    <span style="font-size:14px;color:var(--text-secondary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:16px" id="roamFilterHint"></span>
     <div style="display:flex;gap:8px">
       <button class="btn btn-outline" onclick="reshuffleRoam()">🔄 换一批</button>
       <button class="btn btn-outline" onclick="exitRoam()">📋 返回列表</button>
@@ -527,12 +527,12 @@ body.roam-immersive .batch-bar { display: none; }
       <div style="font-size:48px;margin-bottom:12px">🎴</div>
       <p>当前筛选条件下暂无笔记</p>
     </div>
-    <div id="roamCardInner" style="display:none;cursor:pointer" onclick="openRoamPreview()">
+    <div id="roamCardInner" style="display:none">
       <div class="roam-card-header">
         <span class="roam-card-code" id="roamCode"></span>
         <span id="roamLevel"></span>
       </div>
-      <div class="roam-card-title" id="roamTitle"></div>
+      <div class="roam-card-title" id="roamTitle" style="cursor:pointer" onclick="openRoamPreview()"></div>
       <div class="roam-card-content" id="roamContent"></div>
       <div class="roam-card-meta">
         <div class="roam-card-tags" id="roamTags"></div>
