@@ -1612,20 +1612,31 @@ function cycleRoamLevel() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ level: newLevel })
   })
-  .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+  .then(async function(r) {
+    var data;
+    try {
+      var ct = r.headers.get('content-type') || '';
+      data = ct.includes('application/json') ? await r.json() : { error: '服务器响应异常 (HTTP ' + r.status + ')' };
+    } catch(e) {
+      data = { error: '响应解析失败 (HTTP ' + r.status + ')' };
+    }
+    return { ok: r.ok, status: r.status, data: data };
+  })
   .then(function(result) {
     if (!result.ok) {
       n.level = oldLevel;
       renderRoamCard();
-      showToast(result.data.error || '保存失败', 'error');
+      if (result.status !== 403) {
+        showToast(result.data.error || '保存失败 (HTTP ' + result.status + ')', 'error');
+      }
     } else {
       showToast('已更新为 ' + newLevel, 'success');
     }
   })
-  .catch(function() {
+  .catch(function(e) {
     n.level = oldLevel;
     renderRoamCard();
-    showToast('网络错误', 'error');
+    showToast('请求失败: ' + (e.message || '网络错误'), 'error');
   });
 }
 
