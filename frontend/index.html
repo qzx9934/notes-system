@@ -199,7 +199,15 @@ tbody tr.selected { background: #EBF5FB; }
   font-size: 13px; font-family: inherit; outline: none; transition: border .2s;
 }
 .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: var(--primary-light); }
-.form-group textarea { resize: vertical; min-height: 120px; }
+.form-group textarea { resize: vertical; min-height: 120px; font-family: Consolas, 'Microsoft YaHei', monospace; }
+/* Markdown 编辑工具栏 */
+.md-toolbar { display: flex; gap: 2px; margin-bottom: 6px; flex-wrap: wrap; padding: 4px; background: #f8f9fa; border: 1px solid var(--border); border-radius: 6px 6px 0 0; border-bottom: none; }
+.md-toolbar button { width: 28px; height: 26px; border: none; background: transparent; border-radius: 3px; cursor: pointer; font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; justify-content: center; transition: all .15s; }
+.md-toolbar button:hover { background: #e8e8e8; color: var(--text); }
+.md-toolbar button:active { background: #ddd; }
+.md-toolbar .sep { width: 1px; background: var(--border); margin: 3px 4px; }
+.md-toolbar + textarea { border-radius: 0 0 6px 6px; }
+.md-preview { border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; min-height: 120px; max-height: 50vh; overflow-y: auto; background: #fcfcfc; }
 .form-row { display: flex; gap: 12px; }
 .form-row .form-group { flex: 1; }
 .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
@@ -684,7 +692,25 @@ body.roam-immersive .batch-bar { display: none; }
       </div>
       <div class="form-group">
         <label>内容详情</label>
+        <div class="md-toolbar">
+          <button title="标题2" onclick="mdInsert('## ')">H2</button>
+          <button title="标题3" onclick="mdInsert('### ')">H3</button>
+          <span class="sep"></span>
+          <button title="加粗" onclick="mdWrap('**')"><b>B</b></button>
+          <button title="斜体" onclick="mdWrap('*')"><i>I</i></button>
+          <button title="行内代码" onclick="mdWrap('`')">&lt;/&gt;</button>
+          <span class="sep"></span>
+          <button title="无序列表" onclick="mdInsert('- ')">•</button>
+          <button title="有序列表" onclick="mdInsert('1. ')">1.</button>
+          <button title="引用" onclick="mdInsert('> ')">❝</button>
+          <span class="sep"></span>
+          <button title="链接" onclick="mdLink()">🔗</button>
+          <button title="表格" onclick="mdInsert('| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| | | |\n')">⊞</button>
+          <span class="sep"></span>
+          <button title="预览" id="mdPreviewToggle" onclick="toggleMdPreview()">👁</button>
+        </div>
         <textarea id="editContent" placeholder="完整知识内容，可含数值/步骤/要点…"></textarea>
+        <div class="md-preview md-body" id="mdPreview" style="display:none"></div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -1151,6 +1177,62 @@ function renderTable(items) {
 function levelClass(level) { return level === '★★★' ? 'star3' : level === '★★' ? 'star2' : 'star1'; }
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+// ==================== Markdown Editor ====================
+function mdGetTA() { return document.getElementById('editContent'); }
+
+function mdInsert(text) {
+  const ta = mdGetTA();
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  ta.setRangeText(text, start, end, 'end');
+  ta.focus();
+}
+
+function mdWrap(sym) {
+  const ta = mdGetTA();
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const sel = ta.value.substring(start, end) || '文字';
+  ta.setRangeText(sym + sel + sym, start, end, 'start');
+  ta.selectionStart = start + sym.length;
+  ta.selectionEnd = start + sym.length + sel.length;
+  ta.focus();
+}
+
+function mdLink() {
+  const ta = mdGetTA();
+  const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd) || '链接文字';
+  mdInsert('[' + sel + '](url)');
+}
+
+function toggleMdPreview() {
+  const ta = mdGetTA();
+  const preview = document.getElementById('mdPreview');
+  const btn = document.getElementById('mdPreviewToggle');
+  if (preview.style.display === 'none') {
+    preview.innerHTML = marked.parse(ta.value || '（无内容）');
+    preview.style.display = 'block';
+    ta.style.display = 'none';
+    btn.textContent = '✏';
+  } else {
+    preview.style.display = 'none';
+    ta.style.display = '';
+    btn.textContent = '👁';
+  }
+}
+
+function resetMdEditor() {
+  const ta = mdGetTA();
+  const preview = document.getElementById('mdPreview');
+  const btn = document.getElementById('mdPreviewToggle');
+  preview.style.display = 'none';
+  ta.style.display = '';
+  btn.textContent = '👁';
+}
+
+// Tab 键插入缩进
+mdGetTA().addEventListener('keydown', function(e) {
+  if (e.key === 'Tab') { e.preventDefault(); mdInsert('  '); }
+});
+
 function renderPagination(data) {
   const pg = document.getElementById('pagination');
   if (data.pages <= 1) { pg.innerHTML = ''; return; }
@@ -1395,6 +1477,7 @@ function openAddModal() {
   document.getElementById('editLevel').value = '★★★';
   document.getElementById('editDate').value = new Date().toISOString().split('T')[0];
   if (currentSection) document.getElementById('editSection').value = currentSection;
+  resetMdEditor();
   document.getElementById('modalOverlay').classList.add('open');
 }
 
@@ -1410,6 +1493,7 @@ async function openEditModal(id) {
   document.getElementById('editSource').value = n.source;
   document.getElementById('editLevel').value = n.level;
   document.getElementById('editDate').value = n.note_date;
+  resetMdEditor();
   document.getElementById('modalOverlay').classList.add('open');
 }
 
