@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>运行人员工作笔记管理系统 v2.2</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
 :root {
   --bg: #f0f2f5;
@@ -153,8 +154,31 @@ tbody tr.selected { background: #EBF5FB; }
 .preview-meta .meta-label { color: var(--text-secondary); }
 .preview-body {
   flex: 1; padding: 20px; overflow-y: auto; font-size: 14px; line-height: 1.8;
-  white-space: pre-wrap; word-break: break-word;
+  word-break: break-word;
 }
+/* Markdown 渲染样式 */
+.md-body h1, .md-body h2, .md-body h3 { margin: 16px 0 8px; font-weight: 600; line-height: 1.3; }
+.md-body h1 { font-size: 22px; border-bottom: 2px solid var(--border); padding-bottom: 6px; }
+.md-body h2 { font-size: 18px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.md-body h3 { font-size: 15px; }
+.md-body p { margin: 4px 0 8px; }
+.md-body ul, .md-body ol { margin: 4px 0 8px; padding-left: 24px; }
+.md-body li { margin: 2px 0; }
+.md-body code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; font-family: Consolas, monospace; font-size: 13px; }
+.md-body pre { background: #2d2d44; color: #e0e0e0; padding: 12px 16px; border-radius: 6px; overflow-x: auto; margin: 8px 0; font-size: 13px; line-height: 1.5; }
+.md-body pre code { background: none; padding: 0; color: inherit; }
+.md-body blockquote { border-left: 4px solid var(--primary-light); margin: 8px 0; padding: 4px 12px; color: var(--text-secondary); background: #f8f9fa; border-radius: 0 4px 4px 0; }
+.md-body table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
+.md-body th, .md-body td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+.md-body th { background: #f8f9fa; font-weight: 600; }
+.md-body a { color: var(--primary-light); }
+.md-body hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.md-body strong { font-weight: 600; }
+.md-body img { max-width: 100%; }
+/* 漫游卡片中的 md 适配 */
+.roam-card-content.md-body { color: var(--text); font-size: 15px; }
+.roam-card-content.md-body pre { background: #1a1a2e; }
+.roam-card-content.md-body blockquote { background: rgba(0,0,0,.04); }
 .preview-footer {
   padding: 12px 20px; border-top: 1px solid var(--border);
   display: flex; gap: 8px; justify-content: flex-end;
@@ -1287,7 +1311,8 @@ async function openPreview(id) {
     const n = await r.json();
     document.getElementById('previewCode').textContent = n.code + ' · ' + (n.section_name || n.section);
     document.getElementById('previewTitle').textContent = n.title;
-    document.getElementById('previewBody').textContent = n.content || '（无内容）';
+    document.getElementById('previewBody').innerHTML = marked.parse(n.content || '（无内容）');
+    document.getElementById('previewBody').classList.add('md-body');
 
     const sectionName = sections.find(s => s.code === n.section)?.name || '';
     document.getElementById('previewMeta').innerHTML = `
@@ -1568,7 +1593,8 @@ function renderRoamCard() {
 
   document.getElementById('roamCode').textContent = n.code;
   document.getElementById('roamTitle').textContent = n.title;
-  document.getElementById('roamContent').textContent = n.content || '（无内容）';
+  document.getElementById('roamContent').innerHTML = marked.parse(n.content || '（无内容）');
+  document.getElementById('roamContent').classList.add('md-body');
 
   const levelEl = document.getElementById('roamLevel');
   levelEl.textContent = n.level || '★';
