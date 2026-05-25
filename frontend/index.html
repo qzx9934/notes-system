@@ -49,6 +49,11 @@ body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; background: va
 
 /* Main */
 .main { margin-left: 260px; flex: 1; padding: 20px 24px; display:flex; flex-direction:column; min-height:100vh; }
+.site-footer { margin-top: auto; padding: 16px 0 8px; text-align: center; font-size: 12px; color: #999; }
+.site-footer a { color: #999; text-decoration: none; }
+.site-footer a:hover { color: #666; }
+.site-footer .beian-icon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 2px; }
+.footer-sep { margin: 0 8px; }
 .topbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
 .search-wrap { flex: 1; min-width: 200px; position: relative; }
 .search-wrap input { width: 100%; padding: 10px 40px 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 14px; outline: none; transition: border .2s; }
@@ -316,6 +321,11 @@ tbody tr.selected { background: #EBF5FB; }
 .login-error { color: var(--star3); font-size: 13px; margin-bottom: 12px; min-height: 20px; text-align: center; }
 .login-form .btn { width: 100%; padding: 12px; font-size: 15px; }
 .login-form .btn:disabled { opacity: .6; cursor: not-allowed; }
+.login-footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); text-align: center; font-size: 12px; color: #999; }
+.login-footer a { color: #999; text-decoration: none; }
+.login-footer a:hover { color: #666; }
+.login-footer .beian-icon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 2px; }
+.login-footer .footer-sep { margin: 0 6px; }
 
 /* Change Password Modal */
 .pwd-modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.4); z-index: 300; justify-content: center; align-items: center; }
@@ -442,6 +452,11 @@ body.roam-immersive .batch-bar { display: none; }
       <div class="login-error" id="loginError"></div>
       <button type="submit" class="btn btn-primary" id="loginBtn">登 录</button>
     </form>
+    <div class="login-footer">
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">苏ICP备2026032253号-1</a>
+      <span class="footer-sep">|</span>
+      <a href="https://beian.mps.gov.cn/#/query/webSearch?code=32092402000464" rel="noreferrer" target="_blank"><img class="beian-icon" src="备案图标.png" alt="公安备案">苏公网安备32092402000464号</a>
+    </div>
   </div>
 </div>
 
@@ -610,6 +625,12 @@ body.roam-immersive .batch-bar { display: none; }
       <p style="font-size:12px;margin-top:4px">点击"新增笔记"添加第一条知识条目</p>
     </div>
   </div>
+  <!-- 备案信息 -->
+  <footer class="site-footer">
+    <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">苏ICP备2026032253号-1</a>
+    <span class="footer-sep">|</span>
+    <a href="https://beian.mps.gov.cn/#/query/webSearch?code=32092402000464" rel="noreferrer" target="_blank"><img class="beian-icon" src="备案图标.png" alt="公安备案">苏公网安备32092402000464号</a>
+  </footer>
 </main>
 
 <!-- Roam Card View -->
