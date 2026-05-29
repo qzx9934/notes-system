@@ -123,10 +123,15 @@ DB_PATH = os.environ.get('NOTES_DB_PATH', os.path.join(BACKEND_DIR, 'notes.db'))
 # ---- 图片上传配置 ----
 # NOTES_UPLOAD_DIR：图片存储目录（需与数据库一样持久化，勿随重新部署清空）
 # NOTES_MAX_UPLOAD_MB：单张图片大小上限（MB），默认 5
+# NOTES_UPLOAD_GRACE_SECONDS：孤儿图片清理宽限期（秒），默认 86400(24h)，
+#   防止刚上传、尚未保存进笔记的图片被误删
 UPLOAD_DIR = os.environ.get('NOTES_UPLOAD_DIR', os.path.join(BACKEND_DIR, 'uploads'))
 MAX_UPLOAD_MB = int(os.environ.get('NOTES_MAX_UPLOAD_MB', '5'))
+UPLOAD_GRACE_SECONDS = int(os.environ.get('NOTES_UPLOAD_GRACE_SECONDS', '86400'))
 # 请求体上限：图片上限 + 1MB 余量（含 multipart 边界等开销）
 app.config['MAX_CONTENT_LENGTH'] = (MAX_UPLOAD_MB + 1) * 1024 * 1024
+# 匹配笔记内容里引用的上传图片文件名：/uploads/<name>
+_UPLOAD_REF_RE = re.compile(r'/uploads/([A-Za-z0-9._-]+)')
 
 def _sniff_image_ext(data):
     """按文件头魔数判定图片类型，返回 (规范扩展名, MIME)；非图片返回 (None, None)"""
@@ -139,6 +144,51 @@ def _sniff_image_ext(data):
     if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
         return 'webp', 'image/webp'
     return None, None
+
+def _referenced_uploads(db):
+    """扫描所有笔记内容，返回被引用的上传图片文件名集合"""
+    refs = set()
+    for row in db.execute('SELECT content FROM notes'):
+        for m in _UPLOAD_REF_RE.finditer(row['content'] or ''):
+            refs.add(m.group(1))
+    return refs
+
+def sweep_orphan_uploads(db, dry_run=False, grace=None):
+    """清理 UPLOAD_DIR 中未被任何笔记引用、且超过宽限期的图片文件。
+
+    宽限期（按文件修改时间）保护刚上传、还没保存进笔记的图片不被误删。
+    返回 {'removed': [...], 'freed': 字节数, 'kept': 保留数}。
+    """
+    grace = UPLOAD_GRACE_SECONDS if grace is None else grace
+    result = {'removed': [], 'freed': 0, 'kept': 0}
+    if not os.path.isdir(UPLOAD_DIR):
+        return result
+    refs = _referenced_uploads(db)
+    now = time.time()
+    for name in os.listdir(UPLOAD_DIR):
+        path = os.path.join(UPLOAD_DIR, name)
+        if not os.path.isfile(path):
+            continue
+        # 仍被引用，或还在宽限期内 -> 保留
+        if name in refs or (now - os.path.getmtime(path)) < grace:
+            result['kept'] += 1
+            continue
+        try:
+            size = os.path.getsize(path)
+            if not dry_run:
+                os.remove(path)
+        except OSError:
+            continue
+        result['removed'].append(name)
+        result['freed'] += size
+    return result
+
+def _sweep_quietly():
+    """删除笔记后顺手清理孤儿图片；失败绝不影响主流程。"""
+    try:
+        sweep_orphan_uploads(get_db())
+    except Exception:
+        app.logger.exception('孤儿图片清理失败（忽略，不影响删除操作）')
 
 # 跨平台浏览器打开（用列表式 subprocess，避免 shell 拼接/注入风险）
 def open_browser(url):
@@ -945,6 +995,10 @@ def api_note_update(id):
     )
     db.commit()
 
+    # 内容变更可能移除了图片引用 -> 顺手回收孤儿图片
+    if 'content' in data and content != existing['content']:
+        _sweep_quietly()
+
     row = db.execute('SELECT * FROM notes WHERE id=?', (id,)).fetchone()
     return jsonify(note_to_dict(row))
 
@@ -966,6 +1020,7 @@ def api_notes_batch_delete():
         db.rollback()
         app.logger.exception('批量删除失败')
         return jsonify({'error': '批量删除失败，请稍后重试'}), 500
+    _sweep_quietly()  # 顺手回收因删除而无人引用的图片
     return jsonify({'ok': True, 'deleted': cursor.rowcount})
 
 @app.route('/api/notes/batch', methods=['PUT'])
@@ -1041,6 +1096,7 @@ def api_note_delete(id):
     db = get_db()
     db.execute('DELETE FROM notes WHERE id=?', (id,))
     db.commit()
+    _sweep_quietly()  # 顺手回收因删除而无人引用的图片
     return jsonify({'ok': True})
 
 # --- 统计 ---
@@ -1286,6 +1342,18 @@ def serve_upload(name):
 def handle_413(e):
     """请求体超过 MAX_CONTENT_LENGTH（上传图片过大）时返回干净 JSON"""
     return jsonify({'error': f'上传内容过大，单张图片不得超过 {MAX_UPLOAD_MB}MB'}), 413
+
+@app.route('/api/uploads/cleanup', methods=['POST'])
+@admin_required
+def api_uploads_cleanup():
+    """手动清理孤儿图片（无任何笔记引用且超过宽限期的图片文件）。
+    传 ?dry_run=1 仅预览不删除。删除笔记时本就会自动清理，此接口用于按需手动触发。
+    """
+    dry = request.args.get('dry_run', '').strip().lower() in ('1', 'true', 'yes', 'on')
+    res = sweep_orphan_uploads(get_db(), dry_run=dry)
+    return jsonify({'ok': True, 'dry_run': dry,
+                    'removed': len(res['removed']), 'freed_bytes': res['freed'],
+                    'kept': res['kept'], 'removed_list': res['removed']})
 
 # ==================== 启动 ====================
 

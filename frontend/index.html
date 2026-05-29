@@ -954,6 +954,19 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         </div>
         <div class="user-error" id="tokenError"></div>
       </div>
+      <div class="add-user-form">
+        <h4>🧹 图片存储维护</h4>
+        <div class="token-hint">删除笔记时会自动回收无引用的图片；也可在此手动清理孤儿图片（无任何笔记引用、且上传超过 24 小时的图片文件）。</div>
+        <div class="form-row">
+          <div class="form-group flex-none">
+            <button type="button" class="btn btn-sm" onclick="doCleanupUploads(true)">预览可清理</button>
+          </div>
+          <div class="form-group flex-none">
+            <button type="button" class="btn btn-primary btn-sm" onclick="doCleanupUploads(false)">清理孤儿图片</button>
+          </div>
+          <div class="form-group"><label>&nbsp;</label><span id="cleanupResult" class="muted"></span></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1497,6 +1510,28 @@ function openTokenModal() {
 
 function closeTokenModal() {
   document.getElementById('tokenModalOverlay').classList.remove('open');
+}
+
+async function doCleanupUploads(dryRun) {
+  const out = document.getElementById('cleanupResult');
+  out.textContent = '处理中…';
+  try {
+    const r = await _origFetch('/api/uploads/cleanup' + (dryRun ? '?dry_run=1' : ''), { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '操作失败');
+    const mb = (d.freed_bytes / 1048576).toFixed(2);
+    if (d.removed === 0) {
+      out.textContent = dryRun ? '没有可清理的孤儿图片' : '没有需要清理的图片';
+    } else if (dryRun) {
+      out.textContent = `可清理 ${d.removed} 张，约 ${mb} MB（尚未删除）`;
+    } else {
+      out.textContent = `已清理 ${d.removed} 张，释放约 ${mb} MB`;
+      showToast(`已清理 ${d.removed} 张孤儿图片`, 'success');
+    }
+  } catch (err) {
+    out.textContent = '';
+    showToast(err.message || '清理失败', 'error');
+  }
 }
 
 async function loadTokens() {
@@ -2543,7 +2578,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '2.4';
+const APP_VERSION = '2.5';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 

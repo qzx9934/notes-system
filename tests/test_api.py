@@ -353,3 +353,79 @@ def test_upload_rejects_empty(admin):
                    data={'file': (io.BytesIO(b''), 'empty.png')},
                    content_type='multipart/form-data')
     assert r.status_code == 400
+
+
+# ---------------- 孤儿图片清理 ----------------
+import os
+import app as _app
+
+_upload_salt = [0]
+
+def _upload(admin):
+    """上传一张内容唯一的图片（避免跨用例哈希去重相互干扰），返回 (url, 磁盘路径)"""
+    _upload_salt[0] += 1
+    # PNG 头合法即可通过魔数校验；追加唯一尾字节让每次内容/哈希都不同
+    blob = _TINY_PNG + b'\x00salt' + str(_upload_salt[0]).encode()
+    u = admin.post('/api/upload', data={'file': (io.BytesIO(blob), 'p.png')},
+                   content_type='multipart/form-data').get_json()
+    return u['url'], os.path.join(_app.UPLOAD_DIR, u['filename'])
+
+
+def _backdate(path, seconds=3 * 86400):
+    """把文件修改时间往前拨，绕过清理宽限期以便测试真实删除。"""
+    past = os.path.getmtime(path) - seconds
+    os.utime(path, (past, past))
+
+
+def test_cleanup_grace_protects_fresh_orphan(admin):
+    # 刚上传、未被任何笔记引用，但在宽限期内 -> 不应被删
+    url, path = _upload(admin)
+    r = admin.post('/api/uploads/cleanup')
+    assert r.status_code == 200 and r.get_json()['removed'] == 0
+    assert os.path.exists(path)
+
+
+def test_cleanup_removes_aged_orphan(admin):
+    url, path = _upload(admin)
+    _backdate(path)  # 超过宽限期且无引用
+    r = admin.post('/api/uploads/cleanup').get_json()
+    assert r['removed'] == 1 and url.split('/')[-1] in r['removed_list']
+    assert not os.path.exists(path)
+
+
+def test_cleanup_keeps_referenced_image(admin):
+    url, path = _upload(admin)
+    _backdate(path)  # 即便超期，只要被笔记引用就保留
+    admin.post('/api/notes', json={'section': 'A01', 'title': '带图笔记',
+                                    'content': f'见图：![x]({url})'})
+    r = admin.post('/api/uploads/cleanup').get_json()
+    assert r['removed'] == 0
+    assert os.path.exists(path)
+
+
+def test_cleanup_dry_run_does_not_delete(admin):
+    url, path = _upload(admin)
+    _backdate(path)
+    r = admin.post('/api/uploads/cleanup?dry_run=1').get_json()
+    assert r['dry_run'] is True and r['removed'] == 1
+    assert os.path.exists(path)  # 预览不真删
+
+
+def test_delete_note_reclaims_orphan_image(admin):
+    url, path = _upload(admin)
+    _backdate(path)
+    c = admin.post('/api/notes', json={'section': 'A01', 'title': '待删带图',
+                                        'content': f'![x]({url})'}).get_json()
+    nid = c['id'] if 'id' in c else None
+    # 取回 id（创建响应若不含 id 则按 code 查）
+    if nid is None:
+        items = admin.get('/api/notes?q=待删带图').get_json()['items']
+        nid = items[0]['id']
+    assert os.path.exists(path)
+    admin.delete(f'/api/notes/{nid}')
+    # 笔记删除后图片不再被引用且已超期 -> 被自动回收
+    assert not os.path.exists(path)
+
+
+def test_cleanup_requires_admin(client):
+    assert client.post('/api/uploads/cleanup').status_code == 401

@@ -187,6 +187,13 @@ Authorization: Bearer <你的令牌>
 
 ### `GET /uploads/<name>` —— 下发已上传图片（公开，强缓存）
 
+### `POST /api/uploads/cleanup` —— 清理孤儿图片（admin）
+
+回收**无任何笔记引用、且上传超过宽限期**（默认 24h，`NOTES_UPLOAD_GRACE_SECONDS` 可调）的图片文件。删除/编辑笔记时本就会自动清理，此接口用于按需手动触发。宽限期可避免刚上传、还没保存进笔记的图片被误删。
+
+- 传 `?dry_run=1` 仅预览不删除。
+- 响应：`{"ok": true, "dry_run": false, "removed": 2, "freed_bytes": 34567, "kept": 5, "removed_list": [...]}`。
+
 ---
 
 ## 六、令牌管理接口（admin）
