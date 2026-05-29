@@ -17,6 +17,15 @@ from flask import Flask, request, jsonify, g, session
 from flask_cors import CORS
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+
+def _env_bool(name, default=False):
+    """读取布尔型环境变量（1/true/yes/on 视为真）"""
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ('1', 'true', 'yes', 'on')
 
 # ---- 跨平台路径计算 ----
 # 项目根目录 = backend 的上级目录
@@ -26,7 +35,24 @@ BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__,
             static_folder=os.path.join(BASE_DIR, 'frontend'),
             static_url_path='')
-CORS(app)
+
+# ---- 公网安全相关开关（均可用环境变量配置，默认对本地/便携部署友好） ----
+# NOTES_HTTPS=1        ：站点经 HTTPS 提供，开启后下发 Secure Cookie 并发送 HSTS
+# NOTES_TRUST_PROXY=1  ：位于反向代理(nginx/caddy 等)之后，按 X-Forwarded-* 还原真实 IP/协议
+# NOTES_CORS_ORIGINS   ：允许跨域的来源（逗号分隔）；不设则不开放跨域（同源前端无需 CORS）
+# NOTES_COOKIE_SAMESITE：会话 Cookie 的 SameSite，默认 Lax（可设 Strict/None）
+HTTPS_ENABLED = _env_bool('NOTES_HTTPS', False)
+TRUST_PROXY = _env_bool('NOTES_TRUST_PROXY', False)
+
+# 反向代理之后：让 request.remote_addr / scheme 反映真实客户端（限流、Secure 判断依赖它）
+if TRUST_PROXY:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
+# 跨域：仅当显式配置来源时开启（携带凭证），否则不下发 CORS 头（更安全）
+_cors_origins = os.environ.get('NOTES_CORS_ORIGINS', '').strip()
+if _cors_origins:
+    CORS(app, origins=[o.strip() for o in _cors_origins.split(',') if o.strip()],
+         supports_credentials=True)
 
 # ---- 会话密钥（自动生成并持久化） ----
 _secret_key = os.environ.get('NOTES_SECRET_KEY', '')
@@ -44,6 +70,22 @@ app.secret_key = _secret_key
 
 # ---- 会话有效期 8 小时（防止浏览器恢复会话导致自动登录） ----
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+
+# ---- 会话 Cookie 安全加固 ----
+app.config['SESSION_COOKIE_HTTPONLY'] = True          # 禁止 JS 读取会话 Cookie（配合 XSS 防御）
+app.config['SESSION_COOKIE_SAMESITE'] = os.environ.get('NOTES_COOKIE_SAMESITE', 'Lax')  # 防 CSRF
+app.config['SESSION_COOKIE_SECURE'] = HTTPS_ENABLED   # HTTPS 下仅经加密连接发送，防明文泄露
+
+@app.after_request
+def set_security_headers(resp):
+    """统一注入基础安全响应头"""
+    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')      # 禁止 MIME 嗅探
+    resp.headers.setdefault('X-Frame-Options', 'DENY')                # 防点击劫持
+    resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    if HTTPS_ENABLED:
+        # 强制后续访问走 HTTPS（仅在确为 HTTPS 部署时下发）
+        resp.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    return resp
 
 # ---- 安全拦截：禁止访问隐藏文件/目录（.git / .env 等） ----
 BANNED_PREFIXES = ('.git', '.svn', '.env', '.htaccess', '.htpasswd', '.DS_Store')
@@ -332,9 +374,8 @@ _LOGIN_FAILS = {}          # ip -> [fail_count, window_start_ts, locked_until_ts
 DEFAULT_ADMIN_PW = 'admin123'
 
 def _client_ip():
-    fwd = request.headers.get('X-Forwarded-For', '')
-    if fwd:
-        return fwd.split(',')[0].strip()
+    # remote_addr 已由 ProxyFix（当 NOTES_TRUST_PROXY 开启时）按可信代理还原为真实客户端 IP；
+    # 不直接读取 X-Forwarded-For，避免未经可信代理时被伪造头绕过限流。
     return request.remote_addr or 'unknown'
 
 def login_lock_remaining(ip):
