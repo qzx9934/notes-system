@@ -1811,6 +1811,11 @@ function rowKey(e, id) {
 }
 function levelClass(level) { return level === '★★★' ? 'star3' : level === '★★' ? 'star2' : 'star1'; }
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+// Markdown 渲染选项：breaks=单个回车即换行（更符合直觉，编辑敲一次 Enter 预览即换行）；
+// gfm=保留表格/任务列表等 GitHub 风格扩展。preview/roam/编辑预览统一走 mdSafe，行为一致。
+if (typeof marked !== 'undefined' && marked.setOptions) {
+  marked.setOptions({ breaks: true, gfm: true });
+}
 // 安全渲染 Markdown：先解析再用 DOMPurify 消毒，防止存储型 XSS
 function mdSafe(s) { return DOMPurify.sanitize(marked.parse(s || '（无内容）')); }
 
@@ -2561,7 +2566,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '2.7';
+const APP_VERSION = '2.8';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
