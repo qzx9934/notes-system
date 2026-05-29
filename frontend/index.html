@@ -555,8 +555,12 @@ body.roam-immersive .batch-bar { display: none; }
 .preview-meta .editable { cursor: pointer; border-radius: 6px; padding: 2px 6px; margin: -2px -2px; transition: background .15s; }
 .preview-meta .editable:hover { background: rgba(0,0,0,.06); outline: 1px dashed var(--border); }
 .preview-meta .editable .meta-label::after { content: ' ✎'; opacity: .35; font-size: 10px; }
-.inline-edit { font-size: 13px; padding: 2px 5px; border: 1px solid var(--primary-light); border-radius: 4px; outline: none; background: var(--card); color: var(--text); }
+.inline-edit { font-size: 13px; padding: 2px 5px; border: 1px solid var(--primary-light); border-radius: 4px; outline: none; background: var(--card); color: var(--text); animation: inlineEditIn .12s ease; }
 .inline-edit.tags-edit { min-width: 220px; }
+@keyframes inlineEditIn { from { opacity: .4; } to { opacity: 1; } }
+/* 星级值固定宽度：★↔★★★ 切换时不顶动相邻的「来源/日期」，消除跳动 */
+.preview-meta .pm-stars { display: inline-block; min-width: 46px; }
+.preview-meta .pm-val { display: inline-block; }
 
 /* 来源文件 + 总结时间小标注 */
 .back-srcfile { font-size: 12px; color: var(--text-secondary); background: rgba(0,0,0,.04); border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; word-break: break-all; }
@@ -566,11 +570,12 @@ body.roam-immersive .batch-bar { display: none; }
 .summary-empty { color: var(--text-secondary); text-align: center; padding: 24px 0; }
 .summary-spin { color: var(--primary-light); }
 
-/* 漫游卡片 3D 翻转 */
-.roam-flip { position: relative; width: 100%; flex: 1; min-height: 0; transform-style: preserve-3d; transition: transform .55s cubic-bezier(.4,.2,.2,1); }
-.roam-flip.flipped { transform: rotateY(180deg); }
-.roam-face { display: flex; flex-direction: column; height: 100%; min-height: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-.roam-face.roam-back { position: absolute; inset: 0; transform: rotateY(180deg); overflow-y: auto; }
+/* 漫游卡片翻面：用「转到 90° → 换面 → 转回」的两段动画，不用 preserve-3d
+   （preserve-3d 会让其内部的 overflow 滚动失效，导致长笔记无法下滑） */
+.roam-flip { display: flex; flex-direction: column; width: 100%; flex: 1; min-height: 0; transition: transform .18s ease; transform: perspective(1200px) rotateY(0deg); }
+.roam-flip.flip-half { transform: perspective(1200px) rotateY(90deg); }
+.roam-face { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.roam-face.roam-back { overflow-y: auto; }
 .roam-flip-btn { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--text-secondary); transition: all .15s; }
 .roam-flip-btn:hover { background: rgba(0,0,0,.06); color: var(--text); }
 .roam-back-title { font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; }
@@ -1306,6 +1311,7 @@ let selectedIds = new Set();
 let previewNoteId = null;
 let previewNote = null;        // 当前预览抽屉的完整笔记对象（供内联编辑/背面用）
 let previewFlipped = false;    // 预览抽屉是否翻到背面
+let previewDirty = false;      // 抽屉内有内联修改，关闭时再静默刷新列表，避免编辑时闪动
 let allLoadedItems = []; // current page items for checkbox reference
 let sectionCounts = {};  // 章节编码 -> 条目数（用于侧栏徽章）
 let totalCount = 0;      // 笔记总数（"全部笔记"徽章）
@@ -2246,6 +2252,7 @@ async function openPreview(id) {
     document.getElementById('previewTitle').textContent = n.title;
     document.getElementById('previewBody').innerHTML = mdSafe(n.content);
     document.getElementById('previewBody').classList.add('md-body');
+    previewDirty = false;
     renderPreviewMeta(n);
     renderPreviewBack(n);
     setPreviewFace(false);  // 每次打开都先显示正面
@@ -2257,90 +2264,137 @@ async function openPreview(id) {
   }
 }
 
-// 渲染详情页元数据；管理员可点击 等级/来源/日期/标签 直接修改
+// 渲染详情页元数据；管理员可点击 等级/来源/日期/标签 直接修改。
+// 每个值放在独立的 .pm-val 容器里，内联编辑只替换对应容器，避免整块重渲染造成跳动。
 function renderPreviewMeta(n) {
   const admin = currentRole === 'admin';
   const ec = admin ? ' editable' : '';
-  const tags = (n.tags || '').split(',').map(t => t.trim()).filter(Boolean);
-  const tagsHtml = tags.length
-    ? tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')
-    : '<span class="muted">无标签</span>';
   document.getElementById('previewMeta').innerHTML = `
-    <span class="meta-item${ec}" id="pmLevel" ${admin ? 'onclick="editPreviewLevel()"' : ''}><span class="meta-label">等级</span> <span class="${levelClass(n.level)}">${esc(n.level)}</span></span>
-    <span class="meta-item${ec}" id="pmSource" ${admin ? 'onclick="editPreviewSource(event)"' : ''}><span class="meta-label">来源</span> <span>${esc(n.source)}</span></span>
-    <span class="meta-item${ec}" id="pmDate" ${admin ? 'onclick="editPreviewDate(event)"' : ''}><span class="meta-label">日期</span> <span>${esc(n.note_date)}</span></span>
-    <span class="meta-item${ec}" id="pmTags" ${admin ? 'onclick="editPreviewTags()"' : ''}><span class="meta-label">标签</span> ${tagsHtml}</span>
+    <span class="meta-item${ec}" id="pmLevel" ${admin ? 'onclick="editPreviewLevel()"' : ''}><span class="meta-label">等级</span> <span class="pm-val pm-stars ${levelClass(n.level)}" id="pmLevelVal">${esc(n.level)}</span></span>
+    <span class="meta-item${ec}" id="pmSource" ${admin ? 'onclick="editPreviewSource(event)"' : ''}><span class="meta-label">来源</span> <span class="pm-val" id="pmSourceVal">${esc(n.source)}</span></span>
+    <span class="meta-item${ec}" id="pmDate" ${admin ? 'onclick="editPreviewDate(event)"' : ''}><span class="meta-label">日期</span> <span class="pm-val" id="pmDateVal">${esc(n.note_date)}</span></span>
+    <span class="meta-item meta-tags${ec}" id="pmTags" ${admin ? 'onclick="editPreviewTags(event)"' : ''}><span class="meta-label">标签</span> <span class="pm-val" id="pmTagsVal"></span></span>
   `;
+  renderTagsVal(n);
 }
 
-// 把补丁字段 PUT 到后端，成功后刷新本地数据 + 列表 + 统计
-async function patchPreviewNote(patch) {
+function renderTagsVal(n) {
+  const c = document.getElementById('pmTagsVal');
+  if (!c) return;
+  const tags = ((n || previewNote).tags || '').split(',').map(t => t.trim()).filter(Boolean);
+  c.innerHTML = tags.length
+    ? tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')
+    : '<span class="muted">无标签</span>';
+}
+
+// 提交单个字段：成功后只更新对应 chip，不整块重渲染；列表刷新延到关闭抽屉时再做（不闪）。
+async function patchField(patch, onOk) {
   if (!previewNote) return;
   try {
     const r = await fetch('/api/notes/' + previewNote.id, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch)
     });
-    if (!r.ok) { showToast('保存失败', 'error'); renderPreviewMeta(previewNote); return; }
+    if (!r.ok) { showToast('保存失败', 'error'); if (onOk) onOk(false); return; }
     previewNote = await r.json();
-    renderPreviewMeta(previewNote);
+    previewDirty = true;
+    if (onOk) onOk(true);
     renderPreviewBack(previewNote);
-    doSearch(); loadStats();
     showToast('已更新', 'success');
-  } catch(e) { showToast('保存失败', 'error'); renderPreviewMeta(previewNote); }
+  } catch(e) { showToast('保存失败', 'error'); if (onOk) onOk(false); }
+}
+
+function setLevelChip(level) {
+  const v = document.getElementById('pmLevelVal');
+  if (v) { v.textContent = level; v.className = 'pm-val pm-stars ' + levelClass(level); }
 }
 
 function editPreviewLevel() {
   const order = ['★', '★★', '★★★'];
   const next = order[(order.indexOf(previewNote.level || '★') + 1) % 3];
-  patchPreviewNote({ level: next });
+  setLevelChip(next);  // 乐观更新：星格固定宽度，不会顶动相邻项
+  patchField({ level: next }, ok => { if (!ok) setLevelChip(previewNote.level); });
+}
+
+// 通用：把某 chip 的值区临时替换成编辑控件，提交后只刷新该值区
+function beginInlineEdit(chipId, valId, makeControl) {
+  const chip = document.getElementById(chipId);
+  const valEl = document.getElementById(valId);
+  if (!chip || !valEl || chip.querySelector('.inline-edit')) return;
+  const ctrl = makeControl();
+  ctrl.classList.add('inline-edit');
+  const savedClick = chip.getAttribute('onclick');
+  chip.onclick = null;
+  valEl.style.display = 'none';
+  chip.appendChild(ctrl);
+  ctrl.focus();
+  let closed = false;
+  const restore = () => {
+    if (closed) return; closed = true;
+    if (ctrl.parentNode) ctrl.remove();
+    valEl.style.display = '';
+    if (savedClick) chip.setAttribute('onclick', savedClick);
+  };
+  return { ctrl, valEl, restore };
 }
 
 function editPreviewSource(event) {
   if (event) event.stopPropagation();
-  const span = document.getElementById('pmSource');
   const opts = ['规程', '培训', '操作票', '事故预案', '事故通报', '经验反馈', '技术文件', '个人总结', '规章制度'];
   const cur = previewNote.source || '';
   if (cur && !opts.includes(cur)) opts.unshift(cur);
-  const sel = document.createElement('select');
-  sel.className = 'inline-edit';
-  opts.forEach(o => { const op = document.createElement('option'); op.value = o; op.textContent = o; if (o === cur) op.selected = true; sel.appendChild(op); });
-  span.onclick = null;
-  span.innerHTML = '<span class="meta-label">来源</span> ';
-  span.appendChild(sel); sel.focus();
+  const ctx = beginInlineEdit('pmSource', 'pmSourceVal', () => {
+    const sel = document.createElement('select');
+    opts.forEach(o => { const op = document.createElement('option'); op.value = o; op.textContent = o; if (o === cur) op.selected = true; sel.appendChild(op); });
+    return sel;
+  });
+  if (!ctx) return;
   let done = false;
-  sel.onchange = () => { done = true; patchPreviewNote({ source: sel.value }); };
-  sel.onblur = () => { if (!done) renderPreviewMeta(previewNote); };
+  ctx.ctrl.onchange = () => {
+    done = true; const v = ctx.ctrl.value;
+    ctx.valEl.textContent = v; ctx.restore();
+    if (v !== cur) patchField({ source: v });
+  };
+  ctx.ctrl.onblur = () => { if (!done) ctx.restore(); };
 }
 
 function editPreviewDate(event) {
   if (event) event.stopPropagation();
-  const span = document.getElementById('pmDate');
-  const inp = document.createElement('input');
-  inp.type = 'date'; inp.className = 'inline-edit'; inp.value = previewNote.note_date || '';
-  span.onclick = null;
-  span.innerHTML = '<span class="meta-label">日期</span> ';
-  span.appendChild(inp); inp.focus();
+  const cur = previewNote.note_date || '';
+  const ctx = beginInlineEdit('pmDate', 'pmDateVal', () => {
+    const inp = document.createElement('input'); inp.type = 'date'; inp.value = cur; return inp;
+  });
+  if (!ctx) return;
   let done = false;
-  inp.onchange = () => { if (inp.value) { done = true; patchPreviewNote({ note_date: inp.value }); } };
-  inp.onblur = () => { if (!done) renderPreviewMeta(previewNote); };
+  ctx.ctrl.onchange = () => {
+    if (!ctx.ctrl.value) return;
+    done = true; const v = ctx.ctrl.value;
+    ctx.valEl.textContent = v; ctx.restore();
+    if (v !== cur) patchField({ note_date: v });
+  };
+  ctx.ctrl.onblur = () => { if (!done) ctx.restore(); };
 }
 
-function editPreviewTags() {
-  const span = document.getElementById('pmTags');
-  const inp = document.createElement('input');
-  inp.type = 'text'; inp.className = 'inline-edit tags-edit';
-  inp.value = previewNote.tags || ''; inp.placeholder = '逗号分隔，如：MFT,炉膛保护';
-  span.onclick = null;
-  span.innerHTML = '<span class="meta-label">标签</span> ';
-  span.appendChild(inp); inp.focus();
+function editPreviewTags(event) {
+  if (event) event.stopPropagation();
+  const cur = previewNote.tags || '';
+  const ctx = beginInlineEdit('pmTags', 'pmTagsVal', () => {
+    const inp = document.createElement('input'); inp.type = 'text';
+    inp.classList.add('tags-edit'); inp.value = cur; inp.placeholder = '逗号分隔，如：MFT,炉膛保护';
+    return inp;
+  });
+  if (!ctx) return;
   let done = false;
-  const commit = () => { if (done) return; done = true; patchPreviewNote({ tags: inp.value.trim() }); };
-  inp.onkeydown = (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
-    else if (e.key === 'Escape') { done = true; renderPreviewMeta(previewNote); }
+  const commit = () => {
+    if (done) return; done = true;
+    const v = ctx.ctrl.value.trim(); ctx.restore();
+    if (v !== cur) { patchField({ tags: v }, ok => { if (ok) renderTagsVal(previewNote); }); }
   };
-  inp.onblur = commit;
+  ctx.ctrl.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    else if (e.key === 'Escape') { done = true; ctx.restore(); }
+  };
+  ctx.ctrl.onblur = commit;
 }
 
 // 详情抽屉正/背面切换
@@ -2362,6 +2416,8 @@ function closePreview() {
   document.getElementById('previewDrawer').classList.remove('open');
   previewNoteId = null;
   previewNote = null;
+  // 编辑过才刷新列表/统计，且延到关闭后，避免编辑过程中表格在抽屉后面闪动
+  if (previewDirty) { previewDirty = false; doSearch(); loadStats(); }
 }
 
 // ==================== 卡片背面：来源文件 + AI 总结 ====================
@@ -2429,10 +2485,22 @@ function summarizeRoam() {
   });
 }
 
-// 漫游卡片正/背面翻转
+// 漫游卡片正/背面翻转：转到 90° 时换面，再转回，模拟翻转且不破坏内容滚动
+function showRoamFace(toBack) {
+  const front = document.querySelector('.roam-face.roam-front');
+  const back = document.querySelector('.roam-face.roam-back');
+  if (front) front.style.display = toBack ? 'none' : 'flex';
+  if (back) back.style.display = toBack ? 'flex' : 'none';
+}
 function flipRoam() {
-  roamFlipped = !roamFlipped;
-  document.getElementById('roamFlip').classList.toggle('flipped', roamFlipped);
+  const flip = document.getElementById('roamFlip');
+  const toBack = !roamFlipped;
+  flip.classList.add('flip-half');
+  setTimeout(() => {
+    roamFlipped = toBack;
+    showRoamFace(toBack);
+    flip.classList.remove('flip-half');
+  }, 180);
 }
 function renderRoamBack(n) {
   renderBackContent(n, 'roamBackSrcFile', 'roamBackSummary', 'roamSummaryMeta', 'roamSummarizeBtn');
@@ -2710,7 +2778,8 @@ function renderRoamCard() {
   // 背面内容 + 每张卡复位到正面
   renderRoamBack(n);
   roamFlipped = false;
-  document.getElementById('roamFlip').classList.remove('flipped');
+  document.getElementById('roamFlip').classList.remove('flip-half');
+  showRoamFace(false);
 
   document.getElementById('roamPos').textContent = (roamIndex + 1) + ' / ' + roamNotes.length;
   document.getElementById('roamPrev').disabled = roamIndex <= 0;
@@ -2883,7 +2952,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '2.9';
+const APP_VERSION = '3.0';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
