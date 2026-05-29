@@ -6,6 +6,9 @@ __pycache__/
 ~$*
 # 数据库（含用户数据，不上传）
 backend/notes.db
+# SQLite WAL 模式的临时文件
+backend/notes.db-wal
+backend/notes.db-shm
 # 密钥文件
 *.secret_key
 # 部署配置（服务器相关）
