@@ -549,6 +549,142 @@ body.roam-immersive .batch-bar { display: none; }
   .roam-controls { gap: 8px; }
   .roam-btn { padding: 8px 16px; font-size: 13px; }
 }
+
+/* ============================================================
+   Liquid Glass 主题（叠加层 · 试验，置于样式末尾以覆盖前面规则）
+   纯视觉：半透明 + backdrop-filter 毛玻璃 + 高光描边 + 折射极光背景
+   不喜欢可整段删除，不影响功能与布局。
+   ============================================================ */
+:root {
+  --glass-bg: rgba(255,255,255,.55);
+  --glass-brd: rgba(255,255,255,.65);
+  --glass-blur: blur(18px) saturate(180%);
+  --glass-hi: inset 0 1px 0 rgba(255,255,255,.7);
+  --glass-sh: 0 8px 30px rgba(31,78,121,.12), 0 2px 8px rgba(31,78,121,.07);
+  --glass-sh-lg: 0 18px 50px rgba(31,78,121,.22);
+}
+
+/* 折射背景：柔和极光色块，毛玻璃才有"折射"质感 */
+body { background: #eef2f8; }
+body::before {
+  content: ''; position: fixed; inset: -12%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(38% 36% at 16% 20%, rgba(46,117,182,.42), transparent 60%),
+    radial-gradient(34% 32% at 84% 16%, rgba(142,68,173,.30), transparent 60%),
+    radial-gradient(44% 40% at 78% 84%, rgba(39,174,96,.24), transparent 60%),
+    radial-gradient(40% 38% at 18% 86%, rgba(230,126,34,.20), transparent 60%);
+  filter: saturate(1.05);
+}
+
+/* 浅色玻璃面板 */
+.table-wrap, .stat-card, .batch-bar, .modal, .pwd-modal,
+.user-mgmt-modal, .preview-drawer, .roam-card, .login-card {
+  background: var(--glass-bg) !important;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-brd);
+  box-shadow: var(--glass-sh), var(--glass-hi) !important;
+}
+.table-wrap, .stat-card, .login-card { border-radius: 16px; }
+.batch-bar { background: rgba(235,245,251,.55) !important; }
+/* 桌面端把弹窗/抽屉等也加大圆角；移动端保持原有满屏(0 圆角)不被覆盖 */
+@media (min-width: 769px) {
+  .modal, .pwd-modal, .user-mgmt-modal, .preview-drawer, .roam-card, .batch-bar { border-radius: 16px; }
+}
+
+/* 统计卡：悬浮微抬 + 顶部品牌色高光条 */
+.stat-card { position: relative; overflow: hidden; transition: transform .18s, box-shadow .18s; }
+.stat-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--primary-light), var(--accent-E));
+  opacity: .85;
+}
+.stat-card:hover { transform: translateY(-2px); box-shadow: var(--glass-sh-lg), var(--glass-hi) !important; }
+.stat-card .num { font-variant-numeric: tabular-nums; }
+
+/* 深色玻璃：侧边栏 + 移动端顶栏 */
+.sidebar {
+  background: linear-gradient(160deg, rgba(31,78,121,.80), rgba(18,42,70,.74)) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+  border-right: 1px solid rgba(255,255,255,.16);
+  box-shadow: 0 8px 30px rgba(0,0,0,.18);
+}
+.mobile-topbar {
+  background: linear-gradient(160deg, rgba(31,78,121,.72), rgba(18,42,70,.64)) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+  border-bottom: 1px solid rgba(255,255,255,.16);
+}
+/* 侧栏导航 active：左侧高光条 + 展开动画 */
+.nav-item.active { box-shadow: inset 3px 0 0 #fff; }
+.nav-domain, .nav-item { transition: background .15s; }
+
+/* 按钮：主按钮玻璃光泽 + 悬浮微抬；次按钮做成玻璃 */
+.btn { border-radius: 12px; }
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary-light), var(--primary)) !important;
+  box-shadow: 0 6px 18px rgba(46,117,182,.32), inset 0 1px 0 rgba(255,255,255,.35);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(46,117,182,.42), inset 0 1px 0 rgba(255,255,255,.4); }
+.btn-warning {
+  background: linear-gradient(135deg, #f0a13c, var(--accent-C)) !important;
+  box-shadow: 0 6px 18px rgba(230,126,34,.28), inset 0 1px 0 rgba(255,255,255,.3);
+}
+.btn-warning:hover { transform: translateY(-1px); }
+.btn-outline {
+  background: var(--glass-bg) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(160%);
+  backdrop-filter: blur(10px) saturate(160%);
+  border: 1px solid var(--glass-brd) !important;
+  box-shadow: var(--glass-hi);
+}
+.btn-outline:hover { transform: translateY(-1px); background: rgba(255,255,255,.72) !important; }
+
+/* 输入 / 下拉 / 分页 / 搜索：轻玻璃 + 统一圆角与聚焦光环 */
+.search-wrap input, .filter-group select, .filter-group button,
+.batch-bar select, .pagination button {
+  background: rgba(255,255,255,.55) !important;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid var(--glass-brd) !important; border-radius: 10px !important;
+}
+.search-wrap input:focus, .filter-group select:focus {
+  border-color: var(--primary-light) !important;
+  box-shadow: 0 0 0 3px rgba(46,117,182,.18) !important;
+}
+.pagination button:not(:disabled):hover { background: rgba(255,255,255,.8) !important; }
+
+/* 表格在玻璃面板内：表头/行半透明，去掉硬白底 */
+thead th { background: rgba(255,255,255,.45) !important; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border-bottom: 1px solid var(--glass-brd) !important; }
+tbody td { border-bottom: 1px solid rgba(255,255,255,.45); }
+tbody tr { background: transparent; }
+tbody tr:hover { background: rgba(255,255,255,.45) !important; }
+tbody tr.selected { background: rgba(46,117,182,.16) !important; }
+/* 截断渐隐改用遮罩淡出文字本身，避免玻璃上的白斑 */
+.col-content .truncated::after { display: none; }
+.col-content .truncated {
+  -webkit-mask-image: linear-gradient(180deg, #000 62%, transparent);
+  mask-image: linear-gradient(180deg, #000 62%, transparent);
+}
+
+/* 标签玻璃化 */
+.tag { background: rgba(46,117,182,.14) !important; border: 1px solid rgba(46,117,182,.20); color: var(--primary); }
+
+/* 弹窗遮罩加一层背景虚化，强化层次 */
+.modal-overlay, .preview-overlay, .pwd-modal-overlay {
+  background: rgba(18,28,46,.34) !important;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+}
+
+/* 关闭按钮等小图标的命中区域 */
+.modal-close { border-radius: 8px; }
+
+/* 低性能/不支持 backdrop-filter 时，回退为较实的底色，保证可读 */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .table-wrap, .stat-card, .batch-bar, .modal, .pwd-modal,
+  .user-mgmt-modal, .preview-drawer, .roam-card, .login-card { background: rgba(255,255,255,.92) !important; }
+  .sidebar { background: var(--primary) !important; }
+}
 </style>
 </head>
 <body>
