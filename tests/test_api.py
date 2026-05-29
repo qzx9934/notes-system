@@ -167,6 +167,39 @@ def test_batch_move_section_regenerates_code(admin):
     assert moved['code'].startswith('E04-')  # 编号已按新章节重新生成
 
 
+def test_batch_append_uses_exact_title_dedup(admin):
+    """/api/notes/batch (POST) 按精确标题去重：子串标题不应被误并、丢内容。"""
+    admin.post('/api/notes/batch', json={'section': 'A08', 'entries': [
+        {'title': '给水泵', 'content': 'c1'}
+    ]})
+    # 子串标题应作为新条目新增，而不是并入已有的"给水泵"
+    r = admin.post('/api/notes/batch', json={'section': 'A08', 'entries': [
+        {'title': '给水泵备用联启逻辑', 'content': 'c2'}
+    ]})
+    assert r.get_json()['added'] == 1 and r.get_json()['merged'] == 0
+    # 标题完全相同才合并更新（且会更新内容）
+    r2 = admin.post('/api/notes/batch', json={'section': 'A08', 'entries': [
+        {'title': '给水泵', 'content': 'c1-更新'}
+    ]})
+    assert r2.get_json()['merged'] == 1 and r2.get_json()['added'] == 0
+    item = admin.get('/api/notes?section=A08&q=给水泵备用联启逻辑').get_json()['items'][0]
+    assert item['content'] == 'c2'  # 子串条目内容未被覆盖
+
+
+# ---------------- 令牌管理员删除用户（回归：session KeyError → 500） ----------------
+
+def test_token_admin_can_delete_user(admin, client):
+    """API 令牌管理员（无浏览器会话）删除用户应成功，不再因 session['user_id'] 抛 500。"""
+    admin.post('/api/users', json={'username': 'victim', 'password': 'orig123', 'role': 'viewer'})
+    uid = next(u['id'] for u in admin.get('/api/users').get_json() if u['username'] == 'victim')
+
+    token = admin.post('/api/tokens', json={'label': 'del', 'role': 'admin'}).get_json()['token']
+    fresh = client.application.test_client()  # 全新、无会话
+    r = fresh.delete('/api/users/%d' % uid, headers={'X-API-Token': token})
+    assert r.status_code == 200
+    assert r.get_json()['deleted']['username'] == 'victim'
+
+
 # ---------------- 安全加固（响应头 / Cookie / CORS） ----------------
 
 def test_security_headers_present(client):
