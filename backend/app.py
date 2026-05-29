@@ -153,6 +153,28 @@ def _referenced_uploads(db):
             refs.add(m.group(1))
     return refs
 
+# 匹配正文里的 Markdown 图片（仅本系统上传的 /uploads/ 图片）
+_MD_UPLOAD_IMG_RE = re.compile(r'!\[[^\]]*\]\((/uploads/[A-Za-z0-9._/-]+)\)')
+
+def merge_preserved_images(old_content, new_content):
+    """ingest 去重更新会整体覆盖正文，导致用户手动插入的图片丢失。
+    此函数把「旧正文里有、新正文里没有」的上传图片追加到新正文末尾，确保不丢图。
+    多次重新整理也幂等：每张图最多保留一份。
+    """
+    old_content = old_content or ''
+    new_content = new_content or ''
+    preserved, seen = [], set()
+    for m in _MD_UPLOAD_IMG_RE.finditer(old_content):
+        token, url = m.group(0), m.group(1)
+        if url in seen or url in new_content:  # 已收过，或新正文已含该图
+            continue
+        seen.add(url)
+        preserved.append(token)
+    if not preserved:
+        return new_content
+    marker = '\n\n---\n*以下图片为手动补充，整理更新时自动保留*\n\n'
+    return new_content.rstrip() + marker + '\n\n'.join(preserved)
+
 def sweep_orphan_uploads(db, dry_run=False, grace=None):
     """清理 UPLOAD_DIR 中未被任何笔记引用、且超过宽限期的图片文件。
 
@@ -1162,10 +1184,16 @@ def api_note_batch():
 
             if title in existing_titles:
                 # 命中已有条目：更新其内容/标签/来源/等级/日期（不再只改日期）
+                old = db.execute(
+                    'SELECT content FROM notes WHERE section=? AND title=?',
+                    (section, title)).fetchone()
+                # 保留手动插入、而新正文缺失的图片，避免重新整理时丢图
+                content = merge_preserved_images(
+                    old['content'] if old else '', entry.get('content', ''))
                 db.execute(
                     'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
                     'updated_at=datetime("now","localtime") WHERE section=? AND title=?',
-                    (entry.get('content', ''), entry.get('tags', ''),
+                    (content, entry.get('tags', ''),
                      entry.get('source', '个人总结'), norm_level(entry),
                      norm_date(entry), section, title)
                 )
@@ -1260,13 +1288,15 @@ def api_notes_ingest():
 
             if dedup:
                 dup = db.execute(
-                    'SELECT code FROM notes WHERE section=? AND title=?', (section, title)
+                    'SELECT code, content FROM notes WHERE section=? AND title=?', (section, title)
                 ).fetchone()
                 if dup:
+                    # 保留手动插入、而新正文缺失的图片，避免重新整理时丢图
+                    content = merge_preserved_images(dup['content'], entry.get('content', ''))
                     db.execute(
                         'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
                         'updated_at=datetime("now","localtime") WHERE code=?',
-                        (entry.get('content', ''), entry.get('tags', ''),
+                        (content, entry.get('tags', ''),
                          entry.get('source', '个人总结'), pick_level(entry),
                          pick_date(entry), dup['code'])
                     )

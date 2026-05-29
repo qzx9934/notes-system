@@ -429,3 +429,40 @@ def test_delete_note_reclaims_orphan_image(admin):
 
 def test_cleanup_requires_admin(client):
     assert client.post('/api/uploads/cleanup').status_code == 401
+
+
+# ---------------- 重新整理保留手动图片 ----------------
+
+def test_merge_preserved_images_unit():
+    f = _app.merge_preserved_images
+    # 旧有图、新没图 -> 追加保留
+    out = f('正文\n\n![截图](/uploads/a.png)', '新正文')
+    assert '/uploads/a.png' in out and '新正文' in out
+    # 新正文已含该图 -> 不重复
+    assert f('![x](/uploads/a.png)', '见![x](/uploads/a.png)').count('/uploads/a.png') == 1
+    # 没有旧图 -> 原样返回
+    assert f('纯文本', '新正文') == '新正文'
+    # 幂等：把上一轮结果当旧正文再合并，仍只保留一份
+    once = f('![x](/uploads/a.png)', '新正文')
+    twice = f(once, '又一版新正文')
+    assert twice.count('/uploads/a.png') == 1
+
+
+def test_ingest_preserves_manual_image_on_recompile(admin):
+    # 1) 首次整理录入（纯文本）
+    admin.post('/api/notes/ingest', json={'notes': [
+        {'section': 'A02', 'title': '给水泵联启', 'content': '原始要点'}]})
+    # 2) 人工在网页端编辑，加入图片
+    nid = admin.get('/api/notes?q=给水泵联启').get_json()['items'][0]['id']
+    admin.put(f'/api/notes/{nid}', json={'content': '原始要点\n\n![现场图](/uploads/x.png)'})
+    # 3) 重新整理：同 section+title 再次 ingest，新正文不含图片
+    admin.post('/api/notes/ingest', json={'notes': [
+        {'section': 'A02', 'title': '给水泵联启', 'content': '更新后的要点'}]})
+    content = admin.get(f'/api/notes/{nid}').get_json()['content']
+    assert '更新后的要点' in content          # 文本已更新
+    assert '/uploads/x.png' in content        # 图片被保留
+    # 4) 再整理一次仍只保留一份图片（幂等）
+    admin.post('/api/notes/ingest', json={'notes': [
+        {'section': 'A02', 'title': '给水泵联启', 'content': '第三版要点'}]})
+    content2 = admin.get(f'/api/notes/{nid}').get_json()['content']
+    assert content2.count('/uploads/x.png') == 1 and '第三版要点' in content2
