@@ -72,7 +72,7 @@ table tbody tr[tabindex]:focus-visible { outline: 2px solid var(--primary-light)
 
 /* Sidebar */
 .sidebar {
-  width: 260px; background: var(--primary); color: #fff; display: flex; flex-direction: column;
+  width: 232px; background: var(--primary); color: #fff; display: flex; flex-direction: column;
   position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; overflow-y: auto;
 }
 .sidebar-header { padding: 20px 16px; border-bottom: 1px solid rgba(255,255,255,.15); }
@@ -102,7 +102,7 @@ table tbody tr[tabindex]:focus-visible { outline: 2px solid var(--primary-light)
 .icon-btn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 
 /* Main */
-.main { margin-left: 260px; flex: 1; padding: 20px 24px; display:flex; flex-direction:column; min-height:100vh; }
+.main { margin-left: 232px; flex: 1; padding: 20px 24px; display:flex; flex-direction:column; min-height:100vh; }
 .site-footer { margin-top: auto; padding: 16px 0 8px; text-align: center; font-size: 12px; color: #999; }
 .site-footer a { color: #999; text-decoration: none; }
 .site-footer a:hover { color: #666; }
@@ -173,9 +173,9 @@ tbody tr.selected { background: #EBF5FB; }
 }
 .col-content .expand-hint { font-size: 11px; color: var(--primary-light); margin-top: 2px; }
 .col-tags { min-width: 120px; }
-.col-source { width: 80px; text-align: center; }
+.col-source { width: 92px; text-align: center; white-space: nowrap; }
 .col-level { width: 60px; text-align: center; }
-.col-date { width: 90px; text-align: center; }
+.col-date { width: 104px; text-align: center; white-space: nowrap; }
 .tag { display: inline-block; padding: 2px 8px; margin: 1px 3px; border-radius: 12px; font-size: 11px; background: #EBF5FB; color: var(--primary-light); }
 .star3 { color: var(--star3); font-weight: bold; }
 .star2 { color: var(--star2); font-weight: bold; }
@@ -186,6 +186,7 @@ tbody tr.selected { background: #EBF5FB; }
 .pagination button { padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); cursor: pointer; font-size: 13px; }
 .pagination button:disabled { opacity: .4; cursor: default; }
 .pagination .page-info { font-size: 13px; color: var(--text-secondary); }
+.pagination .page-ellipsis { padding: 0 2px; color: var(--text-secondary); user-select: none; }
 
 /* Preview Modal (centered) */
 .preview-overlay {
@@ -755,6 +756,37 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
   .user-mgmt-modal, .preview-drawer, .roam-card, .login-card { background: rgba(255,255,255,.92) !important; }
   .sidebar { background: var(--primary) !important; }
 }
+
+/* ===== 性能 / 无障碍降级 ===== */
+/* 移动端：去掉昂贵的位移折射(url(#lg-distortion))，仅保留纯模糊，减轻手机 GPU 负担 */
+@media (max-width: 768px) {
+  .stat-card, .batch-bar, .modal, .pwd-modal, .user-mgmt-modal,
+  .preview-drawer, .roam-card, .login-card, .btn-outline {
+    -webkit-backdrop-filter: var(--glass-blur) !important;
+    backdrop-filter: var(--glass-blur) !important;
+  }
+}
+/* 用户偏好"减少透明度"：改为接近不透明纯色，彻底去掉毛玻璃与极光背景 */
+@media (prefers-reduced-transparency: reduce) {
+  .table-wrap, .stat-card, .batch-bar, .modal, .pwd-modal,
+  .user-mgmt-modal, .preview-drawer, .roam-card, .login-card {
+    background: rgba(255,255,255,.97) !important;
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  }
+  .sidebar, .mobile-topbar {
+    background: var(--primary) !important;
+    -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+  }
+  body::before { display: none; }
+}
+/* 用户偏好"减少动效"：禁用过渡/动画与悬浮位移，避免眩晕、省电 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important; scroll-behavior: auto !important;
+  }
+  .stat-card:hover, .btn-primary:hover, .btn-warning:hover, .btn-outline:hover { transform: none !important; }
+}
 </style>
 </head>
 <body>
@@ -812,8 +844,8 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
 
 <!-- ===== 修改密码弹窗 ===== -->
 <div class="pwd-modal-overlay" id="pwdModalOverlay">
-  <div class="pwd-modal">
-    <h3>🔒 修改密码</h3>
+  <div class="pwd-modal" role="dialog" aria-modal="true" aria-labelledby="pwdModalTitle">
+    <h3 id="pwdModalTitle">🔒 修改密码</h3>
     <div class="form-group">
       <label>原密码</label>
       <input type="password" id="pwdOld" placeholder="请输入原密码">
@@ -837,9 +869,9 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
 
 <!-- ===== 用户管理弹窗 ===== -->
 <div class="modal-overlay" id="userModalOverlay">
-  <div class="user-mgmt-modal">
+  <div class="user-mgmt-modal" role="dialog" aria-modal="true" aria-labelledby="userMgmtTitle">
     <div class="modal-header">
-      <h3>👥 用户管理</h3>
+      <h3 id="userMgmtTitle">👥 用户管理</h3>
       <button class="modal-close" onclick="closeUserModal()">×</button>
     </div>
     <div class="modal-body" id="userModalBody">
@@ -878,9 +910,9 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
 
 <!-- ===== API 令牌管理弹窗 ===== -->
 <div class="modal-overlay" id="tokenModalOverlay">
-  <div class="user-mgmt-modal">
+  <div class="user-mgmt-modal" role="dialog" aria-modal="true" aria-labelledby="tokenMgmtTitle">
     <div class="modal-header">
-      <h3>🎫 API 令牌管理</h3>
+      <h3 id="tokenMgmtTitle">🎫 API 令牌管理</h3>
       <button class="modal-close" onclick="closeTokenModal()">×</button>
     </div>
     <div class="modal-body" id="tokenModalBody">
@@ -960,7 +992,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
     </div>
     <div class="filter-group">
       <select id="filterLevel" onchange="doSearch()"><option value="">全部等级</option><option value="★★★">★★★ 核心</option><option value="★★">★★ 重要</option><option value="★">★ 参考</option></select>
-      <select id="filterSource" onchange="doSearch()"><option value="">全部来源</option><option>规程</option><option>培训</option><option>工作票</option><option>事故预案</option><option>事故通报</option><option>经验反馈</option><option>技术文件</option><option>个人总结</option></select>
+      <select id="filterSource" onchange="doSearch()"><option value="">全部来源</option><option>规程</option><option>培训</option><option>操作票</option><option>事故预案</option><option>事故通报</option><option>经验反馈</option><option>技术文件</option><option>个人总结</option><option>规章制度</option></select>
       <select id="filterDomain" onchange="onDomainFilter()"><option value="">全部领域</option><option value="A">A 系统设备</option><option value="B">B 运行操作</option><option value="C">C 安全管理</option><option value="D">D 技术标准</option><option value="E">E 综合管理</option></select>
       <button class="btn btn-outline" onclick="resetFilters()">重置</button>
     </div>
@@ -1024,8 +1056,9 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
     <div class="pagination" id="pagination"></div>
     <div class="empty" id="emptyState" style="display:none">
       <div class="icon">📝</div>
-      <p>暂无笔记记录</p>
-      <p class="empty-sub">点击"新增笔记"添加第一条知识条目</p>
+      <p>暂无符合条件的笔记</p>
+      <p class="empty-sub">换个筛选条件试试，或新增第一条知识条目</p>
+      <button class="btn btn-primary" id="emptyAddBtn" style="display:none;margin-top:14px" onclick="openAddModal()">+ 新增笔记</button>
     </div>
   </div>
   <!-- 备案信息 -->
@@ -1074,7 +1107,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
 
 <!-- Preview Modal -->
 <div class="preview-overlay" id="previewOverlay" onclick="closePreview()">
-  <div class="preview-drawer" id="previewDrawer" onclick="event.stopPropagation()">
+  <div class="preview-drawer" id="previewDrawer" role="dialog" aria-modal="true" aria-labelledby="previewTitle" onclick="event.stopPropagation()">
     <div class="preview-header">
       <div class="title-area">
         <div class="code" id="previewCode"></div>
@@ -1094,7 +1127,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
 
 <!-- Edit Modal -->
 <div class="modal-overlay" id="modalOverlay">
-  <div class="modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-header">
       <h3 id="modalTitle">新增笔记</h3>
       <button class="modal-close" onclick="closeModal()">×</button>
@@ -1143,7 +1176,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         </div>
         <div class="form-group">
           <label>来源</label>
-          <select id="editSource"><option>规程</option><option>培训</option><option>工作票</option><option>事故预案</option><option>事故通报</option><option>经验反馈</option><option>技术文件</option><option selected>个人总结</option></select>
+          <select id="editSource"><option>规程</option><option>培训</option><option>操作票</option><option>事故预案</option><option>事故通报</option><option>经验反馈</option><option>技术文件</option><option selected>个人总结</option><option>规章制度</option></select>
         </div>
       </div>
       <div class="form-group">
@@ -1174,6 +1207,8 @@ let isRoamMode = false;
 let selectedIds = new Set();
 let previewNoteId = null;
 let allLoadedItems = []; // current page items for checkbox reference
+let sectionCounts = {};  // 章节编码 -> 条目数（用于侧栏徽章）
+let totalCount = 0;      // 笔记总数（"全部笔记"徽章）
 
 // ==================== Auth ====================
 let isAuthenticated = false;
@@ -1295,6 +1330,9 @@ function applyRoleUI() {
   const importBtn = document.getElementById('importBtn');
   if (addBtn) addBtn.style.display = isAdmin ? '' : 'none';
   if (importBtn) importBtn.style.display = isAdmin ? '' : 'none';
+  // 空状态里的"新增笔记"按钮：仅管理员可见
+  const emptyAddBtn = document.getElementById('emptyAddBtn');
+  if (emptyAddBtn) emptyAddBtn.style.display = isAdmin ? '' : 'none';
   // 批量操作栏（viewer 永远不显示）
   document.getElementById('batchBar').classList.remove('show');
   // 表头复选框：viewer 隐藏
@@ -1575,6 +1613,11 @@ async function loadStats() {
     <div class="stat-card"><div class="num c-star1">${byLevel['★'] || 0}</div><div class="label">★ 参考</div></div>
     <div class="stat-card"><div class="num">${s.by_section.filter(x=>x.cnt>0).length}</div><div class="label">涉及章节</div></div>
   `;
+  // 缓存各章节条目数 + 总数，刷新侧栏徽章（领域/章节条数一目了然）
+  totalCount = s.total;
+  sectionCounts = {};
+  (s.by_section || []).forEach(x => { sectionCounts[x.section] = x.cnt; });
+  if (domains.length && sections.length) renderSidebar();
 }
 
 function populateBatchSectionSelect() {
@@ -1595,19 +1638,24 @@ function renderSidebar() {
     <div class="nav-domain ${currentSection === '' ? 'active-all' : ''}" onclick="selectSection('')">
       <span class="dot dot-all"></span>
       📋 全部笔记
+      ${totalCount ? `<span class="count">${totalCount}</span>` : ''}
     </div>
   </div>`;
   domains.forEach(d => {
     const domainSections = sections.filter(s => s.domain === d.code);
+    const domainTotal = domainSections.reduce((sum, s) => sum + (sectionCounts[s.code] || 0), 0);
     html += `<div class="nav-section">
       <div class="nav-domain" onclick="toggleDomain('${d.code}')">
         <span class="dot" style="background:${domainColors[d.code]}"></span>
         ${d.code} ${d.name}
+        ${domainTotal ? `<span class="count">${domainTotal}</span>` : ''}
       </div>
       <div class="nav-items" id="navItems-${d.code}">`;
     domainSections.forEach(s => {
+      const c = sectionCounts[s.code] || 0;
       html += `<div class="nav-item ${currentSection === s.code ? 'active' : ''}" onclick="selectSection('${s.code}')">
-        ${s.code} ${s.name}
+        <span>${s.code} ${s.name}</span>
+        ${c ? `<span class="badge">${c}</span>` : ''}
       </div>`;
     });
     html += '</div></div>';
@@ -1805,13 +1853,21 @@ mdGetTA().addEventListener('keydown', function(e) {
 function renderPagination(data) {
   const pg = document.getElementById('pagination');
   if (data.pages <= 1) { pg.innerHTML = ''; return; }
-  let html = `<button ${data.page <= 1 ? 'disabled' : ''} onclick="goPage(${data.page - 1})">上一页</button>`;
-  for (let i = 1; i <= data.pages; i++) {
-    if (i === data.page) html += `<button class="page-active">${i}</button>`;
-    else html += `<button onclick="goPage(${i})">${i}</button>`;
+  const cur = data.page, last = data.pages;
+  // 窗口化：仅显示 首页 / 末页 / 当前页±2，其余折叠为省略号，避免页数多时铺满几百个按钮
+  const want = new Set([1, last, cur, cur - 1, cur + 1, cur - 2, cur + 2]);
+  const pages = [...want].filter(n => n >= 1 && n <= last).sort((a, b) => a - b);
+  let html = `<button ${cur <= 1 ? 'disabled' : ''} onclick="goPage(${cur - 1})">上一页</button>`;
+  let prev = 0;
+  for (const n of pages) {
+    if (n - prev > 1) html += `<span class="page-ellipsis">…</span>`;
+    html += (n === cur)
+      ? `<button class="page-active">${n}</button>`
+      : `<button onclick="goPage(${n})">${n}</button>`;
+    prev = n;
   }
-  html += `<button ${data.page >= data.pages ? 'disabled' : ''} onclick="goPage(${data.page + 1})">下一页</button>`;
-  html += `<span class="page-info">第 ${data.page}/${data.pages} 页</span>`;
+  html += `<button ${cur >= last ? 'disabled' : ''} onclick="goPage(${cur + 1})">下一页</button>`;
+  html += `<span class="page-info">第 ${cur}/${last} 页</span>`;
   pg.innerHTML = html;
 }
 function goPage(p) { currentPage = p; doSearch(); window.scrollTo({top: 400, behavior: 'smooth'}); }
@@ -2050,6 +2106,16 @@ function openAddModal() {
   document.getElementById('modalOverlay').classList.add('open');
 }
 
+// 确保下拉框含有给定值：兼容历史/自定义来源（如旧"工作票"），避免编辑时被静默改写
+function ensureSelectOption(sel, value) {
+  if (!value) return;
+  if (![...sel.options].some(o => o.value === value || o.textContent === value)) {
+    const opt = document.createElement('option');
+    opt.value = value; opt.textContent = value;
+    sel.appendChild(opt);
+  }
+}
+
 async function openEditModal(id) {
   const r = await fetch('/api/notes/' + id);
   const n = await r.json();
@@ -2059,6 +2125,7 @@ async function openEditModal(id) {
   document.getElementById('editTitle').value = n.title;
   document.getElementById('editContent').value = n.content;
   document.getElementById('editTags').value = n.tags;
+  ensureSelectOption(document.getElementById('editSource'), n.source);
   document.getElementById('editSource').value = n.source;
   document.getElementById('editLevel').value = n.level;
   document.getElementById('editDate').value = n.note_date;
@@ -2104,84 +2171,66 @@ async function deleteNote(id, title) {
 
 // ==================== Excel 导入 ====================
 function importExcel() {
+  // 加载守卫：xlsx 组件在页面末尾才加载，点太快时可能尚未就绪
+  if (typeof XLSX === 'undefined') {
+    showToast('Excel 组件尚未加载完成，请稍候再试', 'error');
+    return;
+  }
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.xlsx,.xls';
-  input.onchange = async e => {
+  input.onchange = e => {
     const file = e.target.files[0];
     if (!file) return;
-    showToast('Loading Excel...', 'success');
+    showToast('正在解析 Excel…', 'success');
     const reader = new FileReader();
     reader.onload = async ev => {
-      const data = new Uint8Array(ev.target.result);
-      const XLSX = window.XLSX;
-      const wb = XLSX.read(data, { type: 'array' });
-
-      // Fetch existing notes for dedup check
-      let existingMap = {};
       try {
-        const allRes = await fetch('/api/notes?per=9999');
-        const allData = await allRes.json();
-        allData.items.forEach(n => {
-          const key = n.section + '::' + n.title.trim();
-          existingMap[key] = n;
-        });
-      } catch(err) { console.error('Failed to load existing notes for dedup'); }
+        const data = new Uint8Array(ev.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const SKIP = ['总览目录', '附录-编码速查', '附录-来源与等级', '附录-Agent操作手册'];
 
-      let added = 0, skipped = 0, updated = 0;
-      for (const sheetName of wb.SheetNames) {
-        if (['总览目录','附录-编码速查','附录-来源与等级','附录-Agent操作手册'].includes(sheetName)) continue;
-        const ws = wb.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        const codePrefix = sheetName.split(' ')[0];
-        for (let i = 3; i < rows.length; i++) {
-          const r = rows[i];
-          if (!r || !r[0] || !r[1]) continue;
-          const section = codePrefix;
-          const title = String(r[1] || '').trim();
-          const content = String(r[2] || '').trim();
-          const tags = String(r[3] || '').trim();
-          const source = String(r[4] || '个人总结').trim();
-          let level = String(r[5] || '★').trim();
-          if (!['★','★★','★★★'].includes(level)) level = '★';  // 与后端校验一致，避免整行被拒
-          let note_date = String(r[6] || new Date().toISOString().split('T')[0]).trim();
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(note_date)) note_date = new Date().toISOString().split('T')[0];
-          const key = section + '::' + title;
-
-          if (existingMap[key]) {
-            const existing = existingMap[key];
-            if (existing.content !== content || existing.tags !== tags || existing.source !== source || existing.level !== level) {
-              try {
-                await fetch('/api/notes/' + existing.id, {
-                  method: 'PUT',
-                  headers: {'Content-Type':'application/json'},
-                  body: JSON.stringify({ title, content, tags, source, level, note_date, section: existing.section })
-                });
-                updated++;
-              } catch (err) { console.error(err); }
-            } else {
-              skipped++;
-            }
-            continue;
+        // 汇总成一个 notes 数组，交给后端 /api/notes/ingest 一次性批量入库
+        const notes = [];
+        for (const sheetName of wb.SheetNames) {
+          if (SKIP.includes(sheetName)) continue;
+          const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
+          const section = sheetName.split(' ')[0];
+          for (let i = 3; i < rows.length; i++) {
+            const r = rows[i];
+            if (!r || !r[0] || !r[1]) continue;
+            notes.push({
+              section,
+              title: String(r[1] || '').trim(),
+              content: String(r[2] || '').trim(),
+              tags: String(r[3] || '').trim(),
+              source: String(r[4] || '个人总结').trim(),
+              level: String(r[5] || '★').trim(),       // 非法值后端会自动归一为 ★
+              date: String(r[6] || '').trim()           // 空/非法日期后端自动取今天
+            });
           }
-
-          const entry = { section, title, content, tags, source, level, note_date };
-          try {
-            const res = await fetch('/api/notes', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(entry) });
-            if (res.ok) {
-              const newNote = await res.json();
-              existingMap[key] = newNote;
-              added++;
-            }
-          } catch (err) { console.error(err); }
         }
+        if (notes.length === 0) { showToast('未在 Excel 中找到可导入的笔记', 'error'); return; }
+
+        showToast(`正在上传 ${notes.length} 条…`, 'success');
+        // 一次请求批量写入：后端按「章节+标题」去重合并，远快于逐行 fetch
+        const res = await fetch('/api/notes/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notes })
+        });
+        if (!res.ok) { showToast('导入失败，请检查文件或权限', 'error'); return; }
+        const out = await res.json();
+        let msg = `导入完成：新增 ${out.added}`;
+        if (out.merged) msg += `，更新 ${out.merged}`;
+        if (out.skipped) msg += `，跳过 ${out.skipped}`;
+        showToast(msg, 'success');
+        doSearch();
+        loadStats();
+      } catch (err) {
+        console.error('Excel 导入出错:', err);
+        showToast('解析 Excel 失败，请确认文件格式是否为系统模板', 'error');
       }
-      let msg = `Import done: ${added} added`;
-      if (updated > 0) msg += `, ${updated} updated`;
-      if (skipped > 0) msg += `, ${skipped} unchanged`;
-      showToast(msg, 'success');
-      doSearch();
-      loadStats();
     };
     reader.readAsArrayBuffer(file);
   };
@@ -2367,6 +2416,9 @@ document.addEventListener('keydown', e => {
     if (document.getElementById('previewDrawer').classList.contains('open')) {
       closePreview(); return;
     }
+    if (document.getElementById('pwdModalOverlay').classList.contains('open')) { closePwdModal(); return; }
+    if (document.getElementById('userModalOverlay').classList.contains('open')) { closeUserModal(); return; }
+    if (document.getElementById('tokenModalOverlay').classList.contains('open')) { closeTokenModal(); return; }
     if (document.getElementById('modalOverlay').classList.contains('open')) {
       closeModal(); return;
     }
@@ -2379,9 +2431,58 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// ==================== 弹窗无障碍：焦点陷阱 + 打开聚焦 + 关闭还焦 ====================
+(function setupModalA11y() {
+  const overlayIds = ['pwdModalOverlay', 'userModalOverlay', 'tokenModalOverlay', 'modalOverlay', 'previewOverlay'];
+  const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  const openers = new WeakMap();  // overlay -> 打开前持有焦点的元素
+
+  const isOpen = ov => ov.classList.contains('open');
+  const dialogOf = ov => ov.querySelector('[role="dialog"]') || ov.firstElementChild || ov;
+  const focusables = box => [...box.querySelectorAll(FOCUSABLE)].filter(el => el.offsetParent !== null);
+  function topOpenOverlay() {
+    const open = overlayIds.map(id => document.getElementById(id)).filter(ov => ov && isOpen(ov));
+    return open.length ? open[open.length - 1] : null;
+  }
+
+  // 监听每个弹窗 .open 的变化：打开→记录来源并聚焦首个控件；关闭→把焦点还给来源
+  overlayIds.forEach(id => {
+    const ov = document.getElementById(id);
+    if (!ov) return;
+    let wasOpen = isOpen(ov);
+    new MutationObserver(() => {
+      const now = isOpen(ov);
+      if (now === wasOpen) return;
+      wasOpen = now;
+      if (now) {
+        openers.set(ov, document.activeElement);
+        const f = focusables(dialogOf(ov));
+        if (f.length) setTimeout(() => f[0].focus(), 30);
+      } else {
+        const opener = openers.get(ov);
+        if (opener && typeof opener.focus === 'function') opener.focus();
+        openers.delete(ov);
+      }
+    }).observe(ov, { attributes: true, attributeFilter: ['class'] });
+  });
+
+  // Tab 焦点陷阱：把 Tab 循环限制在最顶层打开的弹窗内
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const ov = topOpenOverlay();
+    if (!ov) return;
+    const f = focusables(dialogOf(ov));
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (!ov.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+})();
+
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '2.2';
+const APP_VERSION = '2.3';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 

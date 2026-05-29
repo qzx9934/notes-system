@@ -12,6 +12,7 @@ import sys
 import time
 import hashlib
 import platform
+import subprocess
 import mimetypes
 
 # 确保 PWA 清单以正确 MIME 类型下发（开启了 nosniff，类型错误会被浏览器拒绝）
@@ -86,6 +87,10 @@ def set_security_headers(resp):
     resp.headers.setdefault('X-Content-Type-Options', 'nosniff')      # 禁止 MIME 嗅探
     resp.headers.setdefault('X-Frame-Options', 'DENY')                # 防点击劫持
     resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    # HTML 外壳（index.html）禁用强缓存：代码更新后用户刷新即可拿到新版，
+    # 避免浏览器拿旧缓存导致"看起来没变化"。静态资源(js/图标)仍可被 SW/浏览器缓存。
+    if resp.mimetype == 'text/html':
+        resp.headers['Cache-Control'] = 'no-cache'
     if HTTPS_ENABLED:
         # 强制后续访问走 HTTPS（仅在确为 HTTPS 部署时下发）
         resp.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
@@ -101,17 +106,33 @@ def block_sensitive_paths():
         if segment.startswith(BANNED_PREFIXES):
             return jsonify({'error': 'forbidden'}), 404
 
+# ---- 全局错误处理：API 路径统一返回干净 JSON，避免泄露堆栈或返回 HTML ----
+@app.errorhandler(404)
+def handle_404(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'not found'}), 404
+    return e  # 非 API（静态资源/页面）保留默认 404 处理
+
+@app.errorhandler(500)
+def handle_500(e):
+    app.logger.exception('未处理的服务端错误')   # 堆栈仅进服务端日志
+    return jsonify({'error': '服务器内部错误'}), 500
+
 DB_PATH = os.environ.get('NOTES_DB_PATH', os.path.join(BACKEND_DIR, 'notes.db'))
 
-# 跨平台浏览器打开
+# 跨平台浏览器打开（用列表式 subprocess，避免 shell 拼接/注入风险）
 def open_browser(url):
     s = platform.system()
-    if s == 'Darwin':
-        os.system(f'open "{url}"')
-    elif s == 'Windows':
-        os.system(f'start "" "{url}"')
-    else:
-        os.system(f'xdg-open "{url}" 2>/dev/null')
+    try:
+        if s == 'Darwin':
+            subprocess.Popen(['open', url])
+        elif s == 'Windows':
+            os.startfile(url)  # Windows 上打开默认浏览器的标准做法
+        else:
+            subprocess.Popen(['xdg-open', url],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass  # 打开浏览器失败不影响服务正常启动
 
 # ==================== 数据库 ====================
 
@@ -237,7 +258,7 @@ SAMPLE_NOTES = [
     ('A02-001', 'A02', '汽轮机冲转参数', '主汽压力:5.88MPa 主汽温度:>=380℃ 再热汽温:>=320℃ 真空:>=-85kPa', '冲转,参数,启动', '规程', '★★★', '2026-05-17'),
     ('A03-001', 'A03', '6kV厂用电切换', '正常切换采用并联切换，切换时间<200ms；事故切换采用快速切换，残压法切换时残压<30%额定电压', '厂用电,切换,6kV', '规程', '★★★', '2026-05-17'),
     ('A04-001', 'A04', 'DCS画面调出快捷方式', 'F1-F12对应12幅主画面；Ctrl+数字键调出系统分组画面；ALT+P调出参数趋势', 'DCS,快捷键,操作', '培训', '★', '2026-05-17'),
-    ('A05-001', 'A05', '10kV高压辅机停送电要点', '一次风机/真空泵/烟气再循环风机等10kV高压辅机动力电源不计入停送电记录，仅记录控制电源', '10kV,高压辅机,停送电', '工作票', '★★★', '2026-05-17'),
+    ('A05-001', 'A05', '10kV高压辅机停送电要点', '一次风机/真空泵/烟气再循环风机等10kV高压辅机动力电源不计入停送电记录，仅记录控制电源', '10kV,高压辅机,停送电', '操作票', '★★★', '2026-05-17'),
     ('A06-001', 'A06', '脱硫浆液循环泵切换', '切换时先启备用泵运行稳定后再停运行泵；注意吸收塔液位>8m，pH值5.2-5.8', '脱硫,浆液循环泵,切换', '规程', '★★', '2026-05-17'),
     ('B01-001', 'B01', '冷态启动曲线要点', '冲转至3000r/min保持30min暖机；并网后以3%负荷率升荷；500MW以上注意汽温匹配', '冷态启动,冲转,暖机', '规程', '★★★', '2026-05-17'),
     ('B05-001', 'B05', '安措命名规范', '非旋转设备（电动门/挡板门/调整门/加热器）后缀用"电源"；旋转设备（风机/泵）后缀用"电机电源"；10kV高压辅机动力电源排除不计', '安措,命名规范,停送电', '个人总结', '★★★', '2026-05-17'),
@@ -576,14 +597,20 @@ def api_user_create():
         db.commit()
         user = db.execute('SELECT id, username, role, created_at FROM users WHERE username=?', (username,)).fetchone()
         return jsonify(dict(user)), 201
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        db.rollback()
+        app.logger.exception('创建用户失败')          # 详情仅记录到服务端日志
+        return jsonify({'error': '创建用户失败，请稍后重试'}), 500
 
 @app.route('/api/users/<int:id>', methods=['DELETE'])
 @admin_required
 def api_user_delete(id):
-    """删除用户（管理员专用，不能删除自己）"""
-    if id == session['user_id']:
+    """删除用户（管理员专用，不能删除自己）
+
+    注意：@admin_required 也允许 API 令牌管理员（无浏览器会话）调用，
+    此时 session 中没有 user_id，用 .get() 避免 KeyError 导致 500。
+    """
+    if id == session.get('user_id'):
         return jsonify({'error': '不能删除当前登录的管理员账号'}), 400
 
     db = get_db()
@@ -799,13 +826,16 @@ def api_notes_list():
     total = db.execute(f'SELECT COUNT(*) FROM notes n WHERE {where_clause}', params).fetchone()[0]
 
     # data
+    # 'code' 按「章节 + 编号数字部分」排序：避免纯文本排序在某章节超过 999 条时
+    # 把 A01-1000 排到 A01-999 之前（编号 :03d 仅是最小宽度，可自然增长到 4 位以上）
+    code_order = 'n.section, CAST(substr(n.code, instr(n.code, "-") + 1) AS INTEGER)'
     order_map = {
-        'code':    'n.code',
+        'code':    code_order,
         'updated': 'n.updated_at DESC',
         'created': 'n.created_at DESC',
         'random':  'RANDOM()'
     }
-    order_by = order_map.get(sort, 'n.code')
+    order_by = order_map.get(sort, code_order)
     rows = db.execute(
         f'SELECT n.*, s.name as section_name, s.domain as domain_code '
         f'FROM notes n LEFT JOIN sections s ON n.section = s.code '
@@ -908,9 +938,14 @@ def api_notes_batch_delete():
     if not ids:
         return jsonify({'error': 'ids 不能为空'}), 400
     db = get_db()
-    placeholders = ','.join(['?'] * len(ids))
-    cursor = db.execute(f'DELETE FROM notes WHERE id IN ({placeholders})', ids)
-    db.commit()
+    try:
+        placeholders = ','.join(['?'] * len(ids))
+        cursor = db.execute(f'DELETE FROM notes WHERE id IN ({placeholders})', ids)
+        db.commit()
+    except sqlite3.Error:
+        db.rollback()
+        app.logger.exception('批量删除失败')
+        return jsonify({'error': '批量删除失败，请稍后重试'}), 500
     return jsonify({'ok': True, 'deleted': cursor.rowcount})
 
 @app.route('/api/notes/batch', methods=['PUT'])
@@ -947,31 +982,37 @@ def api_notes_batch_update():
 
     placeholders = ','.join(['?'] * len(ids))
 
-    if target_section is not None:
-        # 移动章节：逐条按新章节重新生成编号（编号前缀与所在章节保持一致）
-        rows = db.execute(
-            f'SELECT id, section FROM notes WHERE id IN ({placeholders})', ids
-        ).fetchall()
-        updated = 0
-        for r in rows:
-            if r['section'] == target_section:
-                # 已在目标章节，编号无需变动，仅更新附加字段
-                if extra:
-                    cols = [f'{k}=?' for k in extra] + ['updated_at=datetime("now","localtime")']
-                    db.execute(f'UPDATE notes SET {", ".join(cols)} WHERE id=?',
-                               list(extra.values()) + [r['id']])
-            else:
-                move_note_to_section(db, r['id'], target_section, extra)
-            updated += 1
-        db.commit()
-        return jsonify({'ok': True, 'updated': updated})
+    try:
+        if target_section is not None:
+            # 移动章节：逐条按新章节重新生成编号（编号前缀与所在章节保持一致）
+            rows = db.execute(
+                f'SELECT id, section FROM notes WHERE id IN ({placeholders})', ids
+            ).fetchall()
+            updated = 0
+            for r in rows:
+                if r['section'] == target_section:
+                    # 已在目标章节，编号无需变动，仅更新附加字段
+                    if extra:
+                        cols = [f'{k}=?' for k in extra] + ['updated_at=datetime("now","localtime")']
+                        db.execute(f'UPDATE notes SET {", ".join(cols)} WHERE id=?',
+                                   list(extra.values()) + [r['id']])
+                else:
+                    move_note_to_section(db, r['id'], target_section, extra)
+                updated += 1
+            db.commit()
+            return jsonify({'ok': True, 'updated': updated})
 
-    # 仅批量更新 level/source
-    cols = [f'{k}=?' for k in extra] + ['updated_at=datetime("now","localtime")']
-    sql = f'UPDATE notes SET {", ".join(cols)} WHERE id IN ({placeholders})'
-    cursor = db.execute(sql, list(extra.values()) + ids)
-    db.commit()
-    return jsonify({'ok': True, 'updated': cursor.rowcount})
+        # 仅批量更新 level/source
+        cols = [f'{k}=?' for k in extra] + ['updated_at=datetime("now","localtime")']
+        sql = f'UPDATE notes SET {", ".join(cols)} WHERE id IN ({placeholders})'
+        cursor = db.execute(sql, list(extra.values()) + ids)
+        db.commit()
+        return jsonify({'ok': True, 'updated': cursor.rowcount})
+    except sqlite3.Error:
+        # 中途异常：回滚整批，避免半提交 / 连接停留在错误事务态
+        db.rollback()
+        app.logger.exception('批量更新失败')
+        return jsonify({'error': '批量更新失败，请稍后重试'}), 500
 
 # --- 单条笔记 CRUD ---
 @app.route('/api/notes/<int:id>', methods=['DELETE'])
@@ -1032,39 +1073,46 @@ def api_note_batch():
         d = entry.get('date', '')
         return d if valid_date(d) else datetime.now().strftime('%Y-%m-%d')
 
-    # 获取已有标题用于重复检测
-    existing_titles = [r['title'] for r in db.execute('SELECT title FROM notes WHERE section=?', (section,)).fetchall()]
+    # 已有标题集合，用于精确去重（与 /ingest 一致：按「章节+标题」完全相等才算重复；
+    # 旧版用子串匹配会把"给水泵"误并入"给水泵备用联启逻辑"并丢内容，已弃用）
+    existing_titles = {r['title'] for r in db.execute(
+        'SELECT title FROM notes WHERE section=?', (section,)).fetchall()}
 
-    for entry in entries:
-        title = entry.get('title', '').strip()
-        if not title:
-            continue
+    try:
+        for entry in entries:
+            title = entry.get('title', '').strip()
+            if not title:
+                continue
 
-        # 重复检测（简单标题相似）
-        is_dup = False
-        for et in existing_titles:
-            if title in et or et in title:
-                # 合并：更新已有条目日期
-                db.execute('UPDATE notes SET updated_at=datetime("now","localtime"), note_date=? WHERE section=? AND title=?',
-                          (norm_date(entry), section, et))
-                merged.append({'title': title, 'merged_to': et})
-                is_dup = True
-                break
+            if title in existing_titles:
+                # 命中已有条目：更新其内容/标签/来源/等级/日期（不再只改日期）
+                db.execute(
+                    'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
+                    'updated_at=datetime("now","localtime") WHERE section=? AND title=?',
+                    (entry.get('content', ''), entry.get('tags', ''),
+                     entry.get('source', '个人总结'), norm_level(entry),
+                     norm_date(entry), section, title)
+                )
+                merged.append({'title': title, 'merged_to': title})
+                continue
 
-        if is_dup:
-            continue
+            code = insert_note(
+                db, section, title,
+                content=entry.get('content', ''),
+                tags=entry.get('tags', ''),
+                source=entry.get('source', '个人总结'),
+                level=norm_level(entry),
+                note_date=norm_date(entry)
+            )
+            existing_titles.add(title)  # 防止同一批内重复标题被重复插入
+            added.append({'code': code, 'title': title})
 
-        code = insert_note(
-            db, section, title,
-            content=entry.get('content', ''),
-            tags=entry.get('tags', ''),
-            source=entry.get('source', '个人总结'),
-            level=norm_level(entry),
-            note_date=norm_date(entry)
-        )
-        added.append({'code': code, 'title': title})
+        db.commit()
+    except sqlite3.Error:
+        db.rollback()
+        app.logger.exception('批量追加失败')
+        return jsonify({'error': '批量追加失败，请稍后重试'}), 500
 
-    db.commit()
     return jsonify({'added': len(added), 'merged': len(merged), 'skipped': len(skipped),
                     'added_list': added, 'merged_list': merged})
 
@@ -1119,44 +1167,50 @@ def api_notes_ingest():
         return lv if valid_level(lv) else '★'
 
     added, merged, skipped = [], [], []
-    for idx, entry in enumerate(notes):
-        if not isinstance(entry, dict):
-            skipped.append({'index': idx, 'reason': '条目不是对象'})
-            continue
-        title = (entry.get('title') or '').strip()
-        section = (entry.get('section') or default_section or '').strip()
-        if not title:
-            skipped.append({'index': idx, 'reason': 'title 为空'})
-            continue
-        if section not in valid_sections:
-            skipped.append({'index': idx, 'title': title,
-                            'reason': f'未知 section: {section or "(空)"}'})
-            continue
-
-        if dedup:
-            dup = db.execute(
-                'SELECT code FROM notes WHERE section=? AND title=?', (section, title)
-            ).fetchone()
-            if dup:
-                db.execute(
-                    'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
-                    'updated_at=datetime("now","localtime") WHERE code=?',
-                    (entry.get('content', ''), entry.get('tags', ''),
-                     entry.get('source', '个人总结'), pick_level(entry),
-                     pick_date(entry), dup['code'])
-                )
-                merged.append({'code': dup['code'], 'title': title})
+    try:
+        for idx, entry in enumerate(notes):
+            if not isinstance(entry, dict):
+                skipped.append({'index': idx, 'reason': '条目不是对象'})
+                continue
+            title = (entry.get('title') or '').strip()
+            section = (entry.get('section') or default_section or '').strip()
+            if not title:
+                skipped.append({'index': idx, 'reason': 'title 为空'})
+                continue
+            if section not in valid_sections:
+                skipped.append({'index': idx, 'title': title,
+                                'reason': f'未知 section: {section or "(空)"}'})
                 continue
 
-        code = insert_note(
-            db, section, title,
-            content=entry.get('content', ''), tags=entry.get('tags', ''),
-            source=entry.get('source', '个人总结'),
-            level=pick_level(entry), note_date=pick_date(entry)
-        )
-        added.append({'code': code, 'title': title})
+            if dedup:
+                dup = db.execute(
+                    'SELECT code FROM notes WHERE section=? AND title=?', (section, title)
+                ).fetchone()
+                if dup:
+                    db.execute(
+                        'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
+                        'updated_at=datetime("now","localtime") WHERE code=?',
+                        (entry.get('content', ''), entry.get('tags', ''),
+                         entry.get('source', '个人总结'), pick_level(entry),
+                         pick_date(entry), dup['code'])
+                    )
+                    merged.append({'code': dup['code'], 'title': title})
+                    continue
 
-    db.commit()
+            code = insert_note(
+                db, section, title,
+                content=entry.get('content', ''), tags=entry.get('tags', ''),
+                source=entry.get('source', '个人总结'),
+                level=pick_level(entry), note_date=pick_date(entry)
+            )
+            added.append({'code': code, 'title': title})
+
+        db.commit()
+    except sqlite3.Error:
+        # 整批回滚：避免中途异常留下半提交、连接停留在错误事务态
+        db.rollback()
+        app.logger.exception('批量录入(ingest)失败')
+        return jsonify({'error': '批量录入失败，请稍后重试'}), 500
     return jsonify({'ok': True,
                     'added': len(added), 'merged': len(merged), 'skipped': len(skipped),
                     'added_list': added, 'merged_list': merged, 'skipped_list': skipped})
