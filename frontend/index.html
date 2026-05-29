@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>运行人员工作笔记管理系统 v2.2</title>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- 本地内置，确保离线/U盘环境可用；版本锁定 marked 12.0.2 / DOMPurify 3.1.6 -->
+<script src="vendor/marked.min.js"></script>
+<script src="vendor/purify.min.js"></script>
 <style>
 :root {
   --bg: #f0f2f5;
@@ -361,6 +363,17 @@ tbody tr.selected { background: #EBF5FB; }
 .add-user-form .form-group input:focus, .add-user-form .form-group select:focus { border-color: var(--primary-light); }
 .user-error { color: var(--star3); font-size: 13px; min-height: 18px; margin-top: 8px; }
 
+/* API Token Management */
+.token-hint { font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.6; }
+.token-table .token-label { font-weight: 500; }
+.token-table .token-empty { color: var(--text-secondary); }
+.token-table td code { font-size: 11px; color: var(--text-secondary); }
+.token-new { margin: 12px 0 18px; padding: 12px 14px; border: 1px dashed var(--accent-D); border-radius: 6px; background: #F4FBF6; }
+.token-new .token-label-line { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+.token-new .token-value-row { display: flex; gap: 8px; align-items: center; }
+.token-new code { flex: 1; font-size: 12px; word-break: break-all; background: #fff; padding: 7px 10px; border: 1px solid var(--border); border-radius: 5px; }
+.token-new .token-warn { font-size: 11px; color: var(--star3); margin-top: 6px; }
+
 /* Sort dropdown */
 .sort-select { padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; background: var(--card); cursor: pointer; outline: none; color: var(--text); }
 
@@ -526,6 +539,56 @@ body.roam-immersive .batch-bar { display: none; }
   </div>
 </div>
 
+<!-- ===== API 令牌管理弹窗 ===== -->
+<div class="modal-overlay" id="tokenModalOverlay">
+  <div class="user-mgmt-modal">
+    <div class="modal-header">
+      <h3>🎫 API 令牌管理</h3>
+      <button class="modal-close" onclick="closeTokenModal()">×</button>
+    </div>
+    <div class="modal-body" id="tokenModalBody">
+      <div class="token-hint">
+        令牌用于在命令行 / 脚本 / 大模型流水线中调用接口写入笔记，无需登录浏览器。<br>
+        调用时在请求头携带 <code>X-API-Token: 令牌</code>。详见项目内 <strong>API文档.md</strong>。
+      </div>
+      <table class="user-table token-table">
+        <thead><tr><th>用途备注</th><th>角色</th><th>创建时间</th><th>最近使用</th><th style="width:60px">操作</th></tr></thead>
+        <tbody id="tokenTableBody"></tbody>
+      </table>
+      <!-- 新建令牌后明文仅显示一次 -->
+      <div class="token-new" id="tokenNewBox" style="display:none">
+        <div class="token-label-line">✅ 令牌已创建，请立即复制保存（此明文仅显示这一次）：</div>
+        <div class="token-value-row">
+          <code id="tokenNewValue"></code>
+          <button class="btn btn-primary btn-sm" onclick="copyNewToken()">复制</button>
+        </div>
+        <div class="token-warn">关闭后将无法再次查看完整令牌，如遗失请删除并重新创建。</div>
+      </div>
+      <div class="add-user-form">
+        <h4>+ 创建令牌</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label>用途备注</label>
+            <input type="text" id="newTokenLabel" placeholder="如：大模型整理脚本">
+          </div>
+          <div class="form-group">
+            <label>角色</label>
+            <select id="newTokenRole">
+              <option value="admin">admin（可读写）</option>
+              <option value="viewer">viewer（只读）</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:0 0 auto">
+            <label>&nbsp;</label>
+            <button class="btn btn-primary btn-sm" onclick="doCreateToken()">创建</button>
+          </div>
+        </div>
+        <div class="user-error" id="tokenError"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Sidebar -->
 <button class="hamburger" id="hamburgerBtn" onclick="toggleSidebar()" title="菜单">☰</button>
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
@@ -541,6 +604,7 @@ body.roam-immersive .batch-bar { display: none; }
       <span style="display:flex;align-items:center;gap:4px">
         <span id="currentUser" style="font-size:11px;opacity:.7"></span>
         <span id="userMgmtBtn" style="cursor:pointer;font-size:13px;display:none" onclick="openUserModal()" title="用户管理">👥</span>
+        <span id="tokenMgmtBtn" style="cursor:pointer;font-size:13px;display:none" onclick="openTokenModal()" title="API 令牌管理">🎫</span>
         <span style="cursor:pointer;font-size:13px" onclick="openPwdModal()" title="修改密码">🔑</span>
         <span style="cursor:pointer;font-size:13px" onclick="doLogout()" title="退出登录">🚪</span>
       </span>
@@ -802,6 +866,7 @@ async function checkAuth() {
       document.getElementById('loginOverlay').classList.add('hidden');
       document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : ' (只读)');
       document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
+      document.getElementById('tokenMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
       applyRoleUI();
       init();
       return true;
@@ -843,6 +908,7 @@ async function doLogin(e) {
       document.getElementById('loginOverlay').classList.add('hidden');
       document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : ' (只读)');
       document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
+      document.getElementById('tokenMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
       applyRoleUI();
       init(); // 登录成功 → 初始化主应用
     } else {
@@ -1022,6 +1088,103 @@ async function doDeleteUser(id, username) {
   }
 }
 
+// ---- API 令牌管理 ----
+function openTokenModal() {
+  document.getElementById('tokenModalOverlay').classList.add('open');
+  document.getElementById('tokenError').textContent = '';
+  document.getElementById('tokenNewBox').style.display = 'none';
+  document.getElementById('newTokenLabel').value = '';
+  loadTokens();
+}
+
+function closeTokenModal() {
+  document.getElementById('tokenModalOverlay').classList.remove('open');
+}
+
+async function loadTokens() {
+  const tbody = document.getElementById('tokenTableBody');
+  try {
+    const r = await _origFetch('/api/tokens');
+    const tokens = await r.json();
+    if (!tokens.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center" class="token-empty">暂无令牌，请在下方创建</td></tr>';
+      return;
+    }
+    tbody.innerHTML = tokens.map(t => `
+      <tr>
+        <td class="token-label">${esc(t.label) || '<span class="token-empty">（无备注）</span>'}</td>
+        <td><span class="role-badge ${t.role === 'admin' ? 'role-admin' : 'role-viewer'}">${t.role}</span></td>
+        <td style="color:var(--text-secondary)">${t.created_at}</td>
+        <td style="color:var(--text-secondary)">${t.last_used_at || '<span class="token-empty">从未</span>'}</td>
+        <td><button class="btn-del" onclick="doDeleteToken(${t.id}, '${esc(t.label) || '该令牌'}')">删除</button></td>
+      </tr>
+    `).join('');
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center" class="token-empty">加载失败</td></tr>';
+  }
+}
+
+async function doCreateToken() {
+  const label = document.getElementById('newTokenLabel').value.trim();
+  const role = document.getElementById('newTokenRole').value;
+  const errEl = document.getElementById('tokenError');
+  errEl.textContent = '';
+
+  try {
+    const r = await _origFetch('/api/tokens', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ label, role })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      document.getElementById('tokenNewValue').textContent = data.token;
+      document.getElementById('tokenNewBox').style.display = 'block';
+      document.getElementById('newTokenLabel').value = '';
+      showToast('令牌创建成功，请复制保存', 'success');
+      await loadTokens();
+    } else {
+      errEl.textContent = data.error || '创建失败';
+    }
+  } catch(e) {
+    errEl.textContent = '网络错误';
+  }
+}
+
+function copyNewToken() {
+  const val = document.getElementById('tokenNewValue').textContent;
+  const done = () => showToast('已复制到剪贴板', 'success');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(val).then(done).catch(() => fallbackCopy(val, done));
+  } else {
+    fallbackCopy(val, done);
+  }
+}
+
+function fallbackCopy(text, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); cb(); } catch(e) { showToast('复制失败，请手动选择', 'error'); }
+  document.body.removeChild(ta);
+}
+
+async function doDeleteToken(id, label) {
+  if (!confirm(`确认删除令牌「${label}」？删除后使用该令牌的脚本将立即失效！`)) return;
+  try {
+    const r = await _origFetch('/api/tokens/' + id, { method: 'DELETE' });
+    const data = await r.json();
+    if (r.ok) {
+      showToast('令牌已删除', 'success');
+      await loadTokens();
+    } else {
+      showToast(data.error || '删除失败', 'error');
+    }
+  } catch(e) {
+    showToast('网络错误', 'error');
+  }
+}
+
 // ==================== Init ====================
 async function init() {
   await Promise.all([loadDomains(), loadSections(), loadStats()]);
@@ -1189,14 +1352,16 @@ function renderTable(items) {
       </td>
       <td class="col-tags">${(n.tags || '').split(',').filter(Boolean).map(t => `<span class="tag">${esc(t.trim())}</span>`).join('')}</td>
       <td class="col-source">${esc(n.source)}</td>
-      <td class="col-level ${levelClass(n.level)}">${n.level}</td>
-      <td class="col-date">${n.note_date}</td>
+      <td class="col-level ${levelClass(n.level)}">${esc(n.level)}</td>
+      <td class="col-date">${esc(n.note_date)}</td>
     </tr>`;
   }).join('');
 }
 
 function levelClass(level) { return level === '★★★' ? 'star3' : level === '★★' ? 'star2' : 'star1'; }
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+// 安全渲染 Markdown：先解析再用 DOMPurify 消毒，防止存储型 XSS
+function mdSafe(s) { return DOMPurify.sanitize(marked.parse(s || '（无内容）')); }
 
 // ==================== Markdown Editor ====================
 function mdGetTA() { return document.getElementById('editContent'); }
@@ -1229,7 +1394,7 @@ function toggleMdPreview() {
   const preview = document.getElementById('mdPreview');
   const btn = document.getElementById('mdPreviewToggle');
   if (preview.style.display === 'none') {
-    preview.innerHTML = marked.parse(ta.value || '（无内容）');
+    preview.innerHTML = mdSafe(ta.value);
     preview.style.display = 'block';
     ta.style.display = 'none';
     btn.textContent = '✏';
@@ -1414,14 +1579,14 @@ async function openPreview(id) {
     const n = await r.json();
     document.getElementById('previewCode').textContent = n.code + ' · ' + (n.section_name || n.section);
     document.getElementById('previewTitle').textContent = n.title;
-    document.getElementById('previewBody').innerHTML = marked.parse(n.content || '（无内容）');
+    document.getElementById('previewBody').innerHTML = mdSafe(n.content);
     document.getElementById('previewBody').classList.add('md-body');
 
     const sectionName = sections.find(s => s.code === n.section)?.name || '';
     document.getElementById('previewMeta').innerHTML = `
-      <span class="meta-item"><span class="meta-label">等级</span> <span class="${levelClass(n.level)}">${n.level}</span></span>
+      <span class="meta-item"><span class="meta-label">等级</span> <span class="${levelClass(n.level)}">${esc(n.level)}</span></span>
       <span class="meta-item"><span class="meta-label">来源</span> ${esc(n.source)}</span>
-      <span class="meta-item"><span class="meta-label">日期</span> ${n.note_date}</span>
+      <span class="meta-item"><span class="meta-label">日期</span> ${esc(n.note_date)}</span>
       ${(n.tags || '').split(',').filter(Boolean).map(t => `<span class="tag">${esc(t.trim())}</span>`).join('')}
     `;
 
@@ -1594,8 +1759,10 @@ function importExcel() {
           const content = String(r[2] || '').trim();
           const tags = String(r[3] || '').trim();
           const source = String(r[4] || '个人总结').trim();
-          const level = String(r[5] || '★').trim();
-          const note_date = String(r[6] || new Date().toISOString().split('T')[0]).trim();
+          let level = String(r[5] || '★').trim();
+          if (!['★','★★','★★★'].includes(level)) level = '★';  // 与后端校验一致，避免整行被拒
+          let note_date = String(r[6] || new Date().toISOString().split('T')[0]).trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(note_date)) note_date = new Date().toISOString().split('T')[0];
           const key = section + '::' + title;
 
           if (existingMap[key]) {
@@ -1698,7 +1865,7 @@ function renderRoamCard() {
 
   document.getElementById('roamCode').textContent = n.code;
   document.getElementById('roamTitle').textContent = n.title;
-  document.getElementById('roamContent').innerHTML = marked.parse(n.content || '（无内容）');
+  document.getElementById('roamContent').innerHTML = mdSafe(n.content);
   document.getElementById('roamContent').classList.add('md-body');
 
   const levelEl = document.getElementById('roamLevel');

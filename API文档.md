@@ -75,8 +75,11 @@ Authorization: Bearer <你的令牌>
 | `content` | string | 否 | 内容详情，支持 Markdown |
 | `tags` | string | 否 | 关键词标签，**逗号分隔**，如 `MFT,保护` |
 | `source` | string | 否 | 来源，默认 `个人总结`（常见：规程 / 培训 / 工作票 / 事故预案 / 事故通报 / 个人总结） |
-| `level` | string | 否 | 重要等级，`★` / `★★` / `★★★`，默认 `★` |
-| `note_date` / `date` | string | 否 | 日期 `YYYY-MM-DD`，默认今天 |
+| `level` | string | 否 | 重要等级，**只能为** `★` / `★★` / `★★★`，默认 `★` |
+| `note_date` / `date` | string | 否 | 日期，**须为** `YYYY-MM-DD` 格式，默认今天 |
+
+> **字段校验：** 单条接口（`POST /api/notes`、`PUT /api/notes/<id>`、`PUT /api/notes/batch`）会严格校验 `section`（须存在）、`level`、`note_date`，非法时返回 `400`。
+> 批量接口（`POST /api/notes/ingest`、`POST /api/notes/batch`）更宽容：非法的 `level`/`date` 会**自动回退**为默认值（`★` / 今天），便于大模型批量上传；但 `section` 非法仍会被跳过。
 
 ---
 

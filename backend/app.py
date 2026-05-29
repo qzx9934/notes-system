@@ -7,6 +7,7 @@ Flask + SQLite RESTful接口
 
 import sqlite3
 import os
+import re
 import sys
 import hashlib
 import platform
@@ -510,6 +511,39 @@ def api_sections():
     rows = db.execute('SELECT s.*,d.name as domain_name FROM sections s LEFT JOIN domains d ON s.domain=d.code ORDER BY s.sort_order').fetchall()
     return jsonify([dict(r) for r in rows])
 
+# --- 字段校验 ---
+VALID_LEVELS = {'★', '★★', '★★★'}
+_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+MAX_PER = 200  # 单页最大返回条数，防止超大查询
+
+def valid_level(v):
+    return v in VALID_LEVELS
+
+def valid_date(v):
+    """校验 YYYY-MM-DD 且为真实日期"""
+    if not _DATE_RE.match(v or ''):
+        return False
+    try:
+        datetime.strptime(v, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
+
+def section_exists(db, code):
+    return db.execute('SELECT 1 FROM sections WHERE code=?', (code,)).fetchone() is not None
+
+def parse_int(value, default, lo=None, hi=None):
+    """安全地解析整数查询参数，非法时回退默认值并夹在 [lo, hi] 区间"""
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return default
+    if lo is not None and n < lo:
+        n = lo
+    if hi is not None and n > hi:
+        n = hi
+    return n
+
 # --- 笔记 CRUD ---
 @app.route('/api/notes')
 @login_required
@@ -521,8 +555,8 @@ def api_notes_list():
     source  = request.args.get('source', '').strip()
     domain  = request.args.get('domain', '').strip()
     sort    = request.args.get('sort', 'code').strip()
-    page   = int(request.args.get('page', 1))
-    per    = int(request.args.get('per', 50))
+    page   = parse_int(request.args.get('page'), 1, lo=1)
+    per    = parse_int(request.args.get('per'), 50, lo=1, hi=MAX_PER)
     offset = (page - 1) * per
 
     where = ['1=1']
@@ -599,6 +633,16 @@ def api_note_create():
         return jsonify({'error': 'section 和 title 为必填'}), 400
 
     db = get_db()
+    if not section_exists(db, section):
+        return jsonify({'error': f'未知的章节编码: {section}'}), 400
+
+    level   = data.get('level', '★')
+    note_date = data.get('note_date', datetime.now().strftime('%Y-%m-%d'))
+    if not valid_level(level):
+        return jsonify({'error': 'level 只能为 ★ / ★★ / ★★★'}), 400
+    if not valid_date(note_date):
+        return jsonify({'error': 'note_date 格式应为 YYYY-MM-DD'}), 400
+
     # 自动生成编号
     max_code = db.execute(
         'SELECT code FROM notes WHERE section=? ORDER BY id DESC LIMIT 1', (section,)
@@ -613,8 +657,6 @@ def api_note_create():
     content = data.get('content', '')
     tags    = data.get('tags', '')
     source  = data.get('source', '个人总结')
-    level   = data.get('level', '★')
-    note_date = data.get('note_date', datetime.now().strftime('%Y-%m-%d'))
 
     db.execute(
         'INSERT INTO notes(code,section,title,content,tags,source,level,note_date) VALUES(?,?,?,?,?,?,?,?)',
@@ -643,6 +685,11 @@ def api_note_update(id):
     source  = data.get('source', existing['source'])
     level   = data.get('level', existing['level'])
     note_date = data.get('note_date', existing['note_date'])
+
+    if not valid_level(level):
+        return jsonify({'error': 'level 只能为 ★ / ★★ / ★★★'}), 400
+    if not valid_date(note_date):
+        return jsonify({'error': 'note_date 格式应为 YYYY-MM-DD'}), 400
 
     db.execute(
         'UPDATE notes SET title=?,content=?,tags=?,source=?,level=?,note_date=?,updated_at=datetime("now","localtime") WHERE id=?',
@@ -680,19 +727,24 @@ def api_notes_batch_update():
     if not ids or not updates:
         return jsonify({'error': 'ids 和 updates 不能为空'}), 400
 
+    db = get_db()
+
     # 只允许批量更新这些字段
     allowed = {'level', 'section', 'source'}
     set_parts = []
     params = []
     for k, v in updates.items():
-        if k in allowed:
-            set_parts.append(f'{k}=?')
-            params.append(v)
+        if k not in allowed:
+            continue
+        if k == 'level' and not valid_level(v):
+            return jsonify({'error': 'level 只能为 ★ / ★★ / ★★★'}), 400
+        if k == 'section' and not section_exists(db, v):
+            return jsonify({'error': f'未知的章节编码: {v}'}), 400
+        set_parts.append(f'{k}=?')
+        params.append(v)
 
     if not set_parts:
         return jsonify({'error': '无有效更新字段'}), 400
-
-    db = get_db()
     placeholders = ','.join(['?'] * len(ids))
     sql = f'UPDATE notes SET {", ".join(set_parts)}, updated_at=datetime("now","localtime") WHERE id IN ({placeholders})'
     params.extend(ids)
@@ -744,9 +796,20 @@ def api_note_batch():
         return jsonify({'error': 'section 和 entries 为必填'}), 400
 
     db = get_db()
+    if not section_exists(db, section):
+        return jsonify({'error': f'未知的章节编码: {section}'}), 400
+
     added = []
     skipped = []
     merged = []
+
+    def norm_level(entry):
+        lv = entry.get('level', '★')
+        return lv if valid_level(lv) else '★'
+
+    def norm_date(entry):
+        d = entry.get('date', '')
+        return d if valid_date(d) else datetime.now().strftime('%Y-%m-%d')
 
     # 获取当前最大序号
     max_code_row = db.execute(
@@ -771,7 +834,7 @@ def api_note_batch():
             if title in et or et in title:
                 # 合并：更新已有条目日期
                 db.execute('UPDATE notes SET updated_at=datetime("now","localtime"), note_date=? WHERE section=? AND title=?',
-                          (entry.get('date', datetime.now().strftime('%Y-%m-%d')), section, et))
+                          (norm_date(entry), section, et))
                 merged.append({'title': title, 'merged_to': et})
                 is_dup = True
                 break
@@ -786,8 +849,8 @@ def api_note_batch():
              entry.get('content', ''),
              entry.get('tags', ''),
              entry.get('source', '个人总结'),
-             entry.get('level', '★'),
-             entry.get('date', datetime.now().strftime('%Y-%m-%d')))
+             norm_level(entry),
+             norm_date(entry))
         )
         added.append({'code': code, 'title': title})
         next_num += 1
@@ -851,8 +914,12 @@ def api_notes_ingest():
         return f'{sec}-{num:03d}'
 
     def pick_date(entry):
-        return (entry.get('date') or entry.get('note_date')
-                or datetime.now().strftime('%Y-%m-%d'))
+        d = entry.get('date') or entry.get('note_date') or ''
+        return d if valid_date(d) else datetime.now().strftime('%Y-%m-%d')
+
+    def pick_level(entry):
+        lv = entry.get('level', '★')
+        return lv if valid_level(lv) else '★'
 
     added, merged, skipped = [], [], []
     for idx, entry in enumerate(notes):
@@ -878,7 +945,7 @@ def api_notes_ingest():
                     'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
                     'updated_at=datetime("now","localtime") WHERE code=?',
                     (entry.get('content', ''), entry.get('tags', ''),
-                     entry.get('source', '个人总结'), entry.get('level', '★'),
+                     entry.get('source', '个人总结'), pick_level(entry),
                      pick_date(entry), dup['code'])
                 )
                 merged.append({'code': dup['code'], 'title': title})
@@ -889,7 +956,7 @@ def api_notes_ingest():
             'INSERT INTO notes(code,section,title,content,tags,source,level,note_date) '
             'VALUES(?,?,?,?,?,?,?,?)',
             (code, section, title, entry.get('content', ''), entry.get('tags', ''),
-             entry.get('source', '个人总结'), entry.get('level', '★'), pick_date(entry))
+             entry.get('source', '个人总结'), pick_level(entry), pick_date(entry))
         )
         added.append({'code': code, 'title': title})
 
