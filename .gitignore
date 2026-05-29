@@ -12,5 +12,5 @@ backend/notes.db-wal
 backend/notes.db-shm
 # 密钥文件
 *.secret_key
-# 部署配置（服务器相关）
-deploy/
+# 部署配置（服务器相关，仅忽略仓库根目录的 deploy/，不影响 docs/deploy/ 文档）
+/deploy/
