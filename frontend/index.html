@@ -446,6 +446,12 @@ tbody tr.selected { background: #EBF5FB; }
 .user-table .role-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 500; }
 .user-table .role-admin { background: #EBF5FB; color: var(--primary-light); }
 .user-table .role-viewer { background: #F0F0F0; color: #7F8C8D; }
+.user-table .role-contributor { background: #FEF5E7; color: #E67E22; }
+.loglink { color: var(--primary-light); text-decoration: none; margin-left: 4px; }
+.loglink:hover { text-decoration: underline; }
+.login-log-box { margin-top: 10px; padding: 10px 12px; background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px; max-height: 220px; overflow-y: auto; }
+.loglog-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+.loglog-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px dashed var(--border); }
 .user-table .btn-del { padding: 3px 10px; font-size: 11px; border: 1px solid #E74C3C; color: #E74C3C; background: #fff; border-radius: 4px; cursor: pointer; }
 .user-table .btn-del:hover { background: #E74C3C; color: #fff; }
 .add-user-form { border-top: 1px solid var(--border); padding-top: 16px; }
@@ -512,7 +518,8 @@ body.roam-immersive .batch-bar { display: none; }
   background: var(--card); border-radius: 12px;
   box-shadow: 0 4px 32px rgba(0,0,0,.35);
   padding: 40px 48px; max-width: 800px; width: 100%;
-  min-height: 40vh; max-height: 85vh; overflow: hidden;
+  /* 固定高度：翻面时正/背面共用同一尺寸，卡片大小不变，翻转更顺 */
+  height: 72vh; overflow: hidden;
   display: flex; flex-direction: column;
   transition: opacity .25s ease;
 }
@@ -544,7 +551,7 @@ body.roam-immersive .batch-bar { display: none; }
 
 /* Roam responsive */
 @media (max-width: 768px) {
-  .roam-card { padding: 24px; min-height: 50vh; max-height: 90vh; }
+  .roam-card { padding: 24px; height: 82vh; }
   .roam-card-title { font-size: 20px; }
   .roam-card-content { font-size: 14px; }
   .roam-controls { gap: 8px; }
@@ -561,6 +568,18 @@ body.roam-immersive .batch-bar { display: none; }
 /* 星级值固定宽度：★↔★★★ 切换时不顶动相邻的「来源/日期」，消除跳动 */
 .preview-meta .pm-stars { display: inline-block; min-width: 46px; }
 .preview-meta .pm-val { display: inline-block; }
+/* 标签就地编辑：点一下出现右上角小叉、再点删除；行尾 ＋ 新增 */
+#pmTagsVal { display: inline-flex; flex-wrap: wrap; gap: 5px; align-items: center; vertical-align: middle; }
+.tagchip { position: relative; cursor: pointer; user-select: none; }
+.tagchip .tagchip-x { display: none; position: absolute; top: -6px; right: -6px; width: 15px; height: 15px;
+  background: #E74C3C; color: #fff; border-radius: 50%; font-size: 11px; line-height: 15px; text-align: center; }
+.tagchip.armed { outline: 1px solid #E74C3C; }
+.tagchip.armed .tagchip-x { display: block; }
+.tagchip-add { border: 1px dashed var(--border); background: none; border-radius: 12px; cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 2px 8px; color: var(--text-secondary); }
+.tagchip-add:hover { background: rgba(0,0,0,.05); color: var(--text); }
+.tagchip-input { width: 84px; font-size: 12px; padding: 2px 7px; border: 1px solid var(--primary-light);
+  border-radius: 12px; outline: none; animation: inlineEditIn .12s ease; }
 
 /* 来源文件 + 总结时间小标注 */
 .back-srcfile { font-size: 12px; color: var(--text-secondary); background: rgba(0,0,0,.04); border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; word-break: break-all; }
@@ -595,6 +614,30 @@ body.roam-immersive .batch-bar { display: none; }
 .dup-code { font-family: 'Consolas', monospace; font-size: 12px; color: var(--primary-light); flex-shrink: 0; }
 .dup-title { flex: 1; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dup-date { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+
+/* 待审申请入口徽标 */
+.proposal-entry { position: relative; }
+.proposal-badge { position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px;
+  background: #E74C3C; color: #fff; border-radius: 8px; font-size: 10px; line-height: 16px; text-align: center; font-weight: 700; }
+/* AI 填充按钮 */
+.ai-fill-btn { margin-left: 10px; font-size: 12px; font-weight: 400; padding: 2px 10px; border: 1px solid var(--primary-light);
+  color: var(--primary-light); background: #fff; border-radius: 12px; cursor: pointer; }
+.ai-fill-btn:hover { background: var(--primary-light); color: #fff; }
+.ai-fill-btn:disabled { opacity: .55; cursor: default; }
+/* AI 提示词编辑框 */
+.ai-prompt-text { width: 100%; min-height: 120px; font-size: 13px; line-height: 1.6; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 6px; resize: vertical; font-family: inherit; box-sizing: border-box; margin-bottom: 8px; }
+/* 变更申请列表 */
+.proposal-list { display: flex; flex-direction: column; gap: 10px; }
+.prop-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: #fafbfc; }
+.prop-head { font-size: 13px; font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.prop-body { font-size: 13px; color: var(--text); margin: 6px 0; line-height: 1.6; word-break: break-word; }
+.prop-note { font-size: 12px; color: var(--text-secondary); }
+.prop-actions { display: flex; gap: 8px; margin-top: 6px; }
+.prop-st { font-size: 11px; padding: 1px 8px; border-radius: 10px; font-weight: 500; }
+.prop-st.pending { background: #FEF5E7; color: #E67E22; }
+.prop-st.ok { background: #EAFAF1; color: #27AE60; }
+.prop-st.rej { background: #FDEDEC; color: #E74C3C; }
 
 /* ============================================================
    Liquid Glass 主题（叠加层 · 试验，置于样式末尾以覆盖前面规则）
@@ -904,9 +947,10 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
     </div>
     <div class="modal-body" id="userModalBody">
       <table class="user-table">
-        <thead><tr><th>用户名</th><th>角色</th><th>创建时间</th><th class="col-actions">操作</th></tr></thead>
+        <thead><tr><th>用户名</th><th>角色</th><th>最后上线</th><th>创建时间</th><th class="col-actions">操作</th></tr></thead>
         <tbody id="userTableBody"></tbody>
       </table>
+      <div id="loginLogBox" class="login-log-box" style="display:none"></div>
       <div class="add-user-form">
         <h4>+ 添加用户</h4>
         <div class="form-row">
@@ -922,6 +966,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
             <label>角色</label>
             <select id="newUserRole">
               <option value="viewer">viewer（只读）</option>
+              <option value="contributor">contributor（共建·需审批）</option>
               <option value="admin">admin（管理）</option>
             </select>
           </div>
@@ -972,6 +1017,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
             <label>角色</label>
             <select id="newTokenRole">
               <option value="admin">admin（可读写）</option>
+              <option value="contributor">contributor（共建·需审批）</option>
               <option value="viewer">viewer（只读）</option>
             </select>
           </div>
@@ -1022,6 +1068,30 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         </div>
         <div id="dupResult" class="dup-result"></div>
       </div>
+      <div class="add-user-form">
+        <h4>🤖 AI 总结提示词</h4>
+        <div class="token-hint">自定义 AI 总结时发给大模型的系统提示词。留空保存即恢复内置默认。修改后立即对后续「AI 总结 / 一键总结」生效。</div>
+        <textarea id="aiPromptText" class="ai-prompt-text" placeholder="加载中…"></textarea>
+        <div class="form-row">
+          <div class="form-group flex-none"><button type="button" class="btn btn-primary btn-sm" onclick="saveAiPrompt()">保存提示词</button></div>
+          <div class="form-group flex-none"><button type="button" class="btn btn-sm" onclick="resetAiPrompt()">恢复默认</button></div>
+          <div class="form-group"><label>&nbsp;</label><span id="aiPromptResult" class="muted"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 变更申请审批弹窗 ===== -->
+<div class="modal-overlay" id="proposalModalOverlay">
+  <div class="user-mgmt-modal" role="dialog" aria-modal="true" aria-labelledby="proposalTitle">
+    <div class="modal-header">
+      <h3 id="proposalTitle">📥 变更申请</h3>
+      <button class="modal-close" onclick="closeProposalModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="token-hint" id="proposalHint">共建者提交的新增/编辑/删除需管理员确认后才生效。</div>
+      <div id="proposalList" class="proposal-list"></div>
     </div>
   </div>
 </div>
@@ -1042,6 +1112,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
     <div class="footer-bar">
       <span class="footer-actions">
         <span id="currentUser" class="current-user"></span>
+        <button type="button" class="icon-btn proposal-entry" id="proposalEntry" style="display:none" onclick="openProposalModal()" title="变更申请审批" aria-label="变更申请">📥<span class="proposal-badge" id="proposalBadge" style="display:none">0</span></button>
         <button type="button" class="icon-btn" id="userMgmtBtn" style="display:none" onclick="openUserModal()" title="用户管理" aria-label="用户管理">👥</button>
         <button type="button" class="icon-btn" id="tokenMgmtBtn" style="display:none" onclick="openTokenModal()" title="API 令牌管理" aria-label="API 令牌管理">🎫</button>
         <button type="button" class="icon-btn" onclick="openPwdModal()" title="修改密码" aria-label="修改密码">🔑</button>
@@ -1087,6 +1158,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         <option value="">改章节…</option>
       </select>
       <button class="btn btn-sm btn-outline" onclick="batchUpdateSection()">应用章节</button>
+      <button class="btn btn-sm btn-outline" onclick="batchSummarize()" title="对选中且尚无总结的笔记一键生成 AI 总结">🤖 一键总结</button>
       <button class="btn btn-sm btn-danger" onclick="batchDelete()">删除选中</button>
       <button class="btn btn-sm btn-outline" onclick="clearSelection()">取消选择</button>
     </div>
@@ -1219,8 +1291,8 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
     <div class="preview-footer">
       <button class="btn btn-outline" id="previewFlipBtn" onclick="flipPreview()">🔄 翻面</button>
       <button class="btn btn-outline" onclick="copyFromPreview()">📋 复制内容</button>
-      <button class="btn btn-outline admin-only" onclick="editFromPreview()">✎ 编辑</button>
-      <button class="btn btn-danger admin-only" onclick="deleteFromPreview()">✕ 删除</button>
+      <button class="btn btn-outline writer-only" onclick="editFromPreview()">✎ 编辑</button>
+      <button class="btn btn-danger writer-only" onclick="deleteFromPreview()">✕ 删除</button>
     </div>
   </div>
 </div>
@@ -1248,7 +1320,9 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         <input type="text" id="editTitle" placeholder="简洁概括，不超过20字">
       </div>
       <div class="form-group">
-        <label>内容详情</label>
+        <label>内容详情
+          <button type="button" class="ai-fill-btn" id="aiFillBtn" onclick="doAiFill()" title="根据正文用 AI 推断并填充：标题/标签/章节/等级/来源">🪄 AI 填充</button>
+        </label>
         <div class="md-toolbar">
           <button title="标题2" onclick="mdInsert('## ')">H2</button>
           <button title="标题3" onclick="mdInsert('### ')">H3</button>
@@ -1319,6 +1393,9 @@ let totalCount = 0;      // 笔记总数（"全部笔记"徽章）
 // ==================== Auth ====================
 let isAuthenticated = false;
 let currentRole = 'viewer';
+let currentUsername = '';
+function canWrite() { return currentRole === 'admin' || currentRole === 'contributor'; }
+function isContributor() { return currentRole === 'contributor'; }
 
 // 全局 fetch 拦截：未登录时自动弹出登录界面
 const _origFetch = window.fetch;
@@ -1344,7 +1421,8 @@ async function checkAuth() {
       isAuthenticated = true;
       currentRole = data.role || 'viewer';
       document.getElementById('loginOverlay').classList.add('hidden');
-      document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : ' (只读)');
+      currentUsername = data.username;
+      document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : currentRole === 'contributor' ? ' (共建)' : ' (只读)');
       document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
       document.getElementById('tokenMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
       maybeShowDefaultPwBanner(data.default_password);
@@ -1387,7 +1465,8 @@ async function doLogin(e) {
       isAuthenticated = true;
       currentRole = data.role || 'viewer';
       document.getElementById('loginOverlay').classList.add('hidden');
-      document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : ' (只读)');
+      currentUsername = data.username;
+      document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : currentRole === 'contributor' ? ' (共建)' : ' (只读)');
       document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
       document.getElementById('tokenMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
       maybeShowDefaultPwBanner(data.default_password);
@@ -1429,28 +1508,29 @@ document.addEventListener('click', function(e) {
 });
 
 // ---- 根据角色控制 UI ----
+// 两档可见性：.admin-only 仅管理员；.writer-only 管理员或共建者（共建者写操作会转为待审申请）
 function applyRoleUI() {
   const isAdmin = currentRole === 'admin';
-  // 顶栏按钮
+  const writer = canWrite();
+  // 顶栏：新增（写者可见，共建者点了是提交申请）；批量导入仍仅管理员
   const addBtn = document.querySelector('.topbar .btn-primary');
   const importBtn = document.getElementById('importBtn');
-  if (addBtn) addBtn.style.display = isAdmin ? '' : 'none';
+  if (addBtn) addBtn.style.display = writer ? '' : 'none';
   if (importBtn) importBtn.style.display = isAdmin ? '' : 'none';
-  // 空状态里的"新增笔记"按钮：仅管理员可见
   const emptyAddBtn = document.getElementById('emptyAddBtn');
-  if (emptyAddBtn) emptyAddBtn.style.display = isAdmin ? '' : 'none';
-  // 批量操作栏（viewer 永远不显示）
+  if (emptyAddBtn) emptyAddBtn.style.display = writer ? '' : 'none';
+  // 批量操作栏与多选：仅管理员
   document.getElementById('batchBar').classList.remove('show');
-  // 表头复选框：viewer 隐藏
   const headerCheck = document.getElementById('headerCheck');
   if (headerCheck) headerCheck.style.display = isAdmin ? '' : 'none';
-  // 预览弹窗底部按钮：复制对所有人可见，编辑/删除仅 admin
   const previewFooter = document.querySelector('.preview-footer');
   if (previewFooter) previewFooter.style.display = '';
-  // 所有 .admin-only 元素（含详情/漫游背面的 AI 总结按钮）按角色显隐
-  document.querySelectorAll('.admin-only').forEach(el => {
-    el.style.display = isAdmin ? '' : 'none';
-  });
+  document.querySelectorAll('.admin-only').forEach(el => { el.style.display = isAdmin ? '' : 'none'; });
+  document.querySelectorAll('.writer-only').forEach(el => { el.style.display = writer ? '' : 'none'; });
+  // 待审申请入口：管理员看全部，共建者看自己提交的
+  const pe = document.getElementById('proposalEntry');
+  if (pe) pe.style.display = (isAdmin || isContributor()) ? '' : 'none';
+  if (isAdmin || isContributor()) refreshProposalBadge();
 }
 
 // ---- 修改密码 ----
@@ -1527,22 +1607,45 @@ function closeUserModal() {
   document.getElementById('userModalOverlay').classList.remove('open');
 }
 
+function roleBadgeClass(role) {
+  return role === 'admin' ? 'role-admin' : role === 'contributor' ? 'role-contributor' : 'role-viewer';
+}
+function roleLabel(role) {
+  return role === 'admin' ? 'admin' : role === 'contributor' ? '共建者' : 'viewer';
+}
+
 async function loadUsers() {
   try {
     const r = await _origFetch('/api/users');
     const users = await r.json();
     const tbody = document.getElementById('userTableBody');
+    const me = currentUsername;
     tbody.innerHTML = users.map(u => `
       <tr>
-        <td>${esc(u.username)}${u.username === document.getElementById('currentUser').textContent.replace(' (只读)','') ? ' <span class="muted fs-xs">(当前)</span>' : ''}</td>
-        <td><span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-viewer'}">${u.role}</span></td>
-        <td class="muted">${u.created_at}</td>
+        <td>${esc(u.username)}${u.username === me ? ' <span class="muted fs-xs">(当前)</span>' : ''}</td>
+        <td><span class="role-badge ${roleBadgeClass(u.role)}">${roleLabel(u.role)}</span></td>
+        <td class="muted fs-xs">${u.last_login_at ? esc(u.last_login_at) + ` <a href="#" class="loglink" onclick="showLoginLog(${u.id},'${esc(u.username)}');return false">历史</a>` : '从未登录'}</td>
+        <td class="muted fs-xs">${esc(u.created_at)}</td>
         <td>${u.role !== 'admin' ? `<button class="btn-del" onclick="doDeleteUser(${u.id}, '${esc(u.username)}')">删除</button>` : '<span class="muted fs-xs">-</span>'}</td>
       </tr>
     `).join('');
   } catch(e) {
-    document.getElementById('userTableBody').innerHTML = '<tr><td colspan="4" class="cell-center muted">加载失败</td></tr>';
+    document.getElementById('userTableBody').innerHTML = '<tr><td colspan="5" class="cell-center muted">加载失败</td></tr>';
   }
+}
+
+async function showLoginLog(userId, username) {
+  const box = document.getElementById('loginLogBox');
+  box.style.display = '';
+  box.innerHTML = '<span class="muted">加载登录历史…</span>';
+  try {
+    const r = await _origFetch('/api/login-log?per=30&user_id=' + userId);
+    const d = await r.json();
+    if (!d.items.length) { box.innerHTML = `<div class="loglog-title">${esc(username)} 的登录历史</div><div class="muted">暂无记录</div>`; return; }
+    box.innerHTML = `<div class="loglog-title">${esc(username)} 的登录历史（最近 ${d.items.length} 次，共 ${d.total}）
+      <button class="btn-del" style="float:right" onclick="document.getElementById('loginLogBox').style.display='none'">收起</button></div>` +
+      d.items.map(it => `<div class="loglog-row"><span>${esc(it.login_at)}</span><span class="muted">${esc(it.ip || '-')}</span></div>`).join('');
+  } catch(e) { box.innerHTML = '<span class="muted">加载失败</span>'; }
 }
 
 async function doCreateUser() {
@@ -1597,7 +1700,153 @@ function openTokenModal() {
   document.getElementById('tokenError').textContent = '';
   document.getElementById('tokenNewBox').style.display = 'none';
   document.getElementById('newTokenLabel').value = '';
+  document.getElementById('aiPromptResult').textContent = '';
+  document.getElementById('dupResult').innerHTML = '';
   loadTokens();
+  loadAiPrompt();
+}
+
+// ---- AI 总结提示词 ----
+let _aiPromptDefault = '';
+async function loadAiPrompt() {
+  const ta = document.getElementById('aiPromptText');
+  try {
+    const d = await (await _origFetch('/api/config/ai-prompt')).json();
+    _aiPromptDefault = d.default || '';
+    ta.value = d.is_custom ? d.prompt : '';
+    ta.placeholder = '（留空 = 使用内置默认提示词）\n\n内置默认：\n' + _aiPromptDefault;
+  } catch (e) { ta.placeholder = '加载失败'; }
+}
+async function saveAiPrompt() {
+  const out = document.getElementById('aiPromptResult');
+  const prompt = document.getElementById('aiPromptText').value;
+  out.textContent = '保存中…';
+  try {
+    const r = await _origFetch('/api/config/ai-prompt', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '保存失败');
+    out.textContent = d.is_custom ? '已保存自定义提示词' : '已恢复内置默认';
+    showToast('提示词已更新', 'success');
+  } catch (e) { out.textContent = ''; showToast(e.message || '保存失败', 'error'); }
+}
+function resetAiPrompt() {
+  document.getElementById('aiPromptText').value = '';
+  saveAiPrompt();
+}
+
+// ---- 变更申请审批 ----
+async function refreshProposalBadge() {
+  if (!(currentRole === 'admin' || currentRole === 'contributor')) return;
+  try {
+    const d = await (await _origFetch('/api/proposals?status=pending')).json();
+    const badge = document.getElementById('proposalBadge');
+    if (d.pending > 0) { badge.textContent = d.pending; badge.style.display = ''; }
+    else badge.style.display = 'none';
+  } catch (e) {}
+}
+function openProposalModal() {
+  document.getElementById('proposalModalOverlay').classList.add('open');
+  document.getElementById('proposalHint').textContent = currentRole === 'admin'
+    ? '共建者提交的新增/编辑/删除需你确认后才生效。' : '你提交的变更，待管理员确认后生效。';
+  loadProposals();
+}
+function closeProposalModal() {
+  document.getElementById('proposalModalOverlay').classList.remove('open');
+}
+const _kindLabel = { create: '➕ 新增', update: '✎ 修改', delete: '🗑 删除' };
+function _payloadSummary(p) {
+  const f = p.payload || {};
+  if (p.kind === 'delete') return '删除：' + esc((p.current && p.current.title) || f.title || ('#' + p.note_id));
+  const parts = [];
+  if (f.title !== undefined) parts.push('标题=' + esc(f.title));
+  if (f.section !== undefined) parts.push('章节=' + esc(f.section));
+  if (f.level !== undefined) parts.push('等级=' + esc(f.level));
+  if (f.source !== undefined) parts.push('来源=' + esc(f.source));
+  if (f.tags !== undefined) parts.push('标签=' + esc(f.tags));
+  if (f.content !== undefined) parts.push('正文(' + (f.content || '').length + '字)');
+  let head = '';
+  if (p.kind === 'update' && p.current) head = '原标题：' + esc(p.current.title) + '<br>';
+  return head + parts.join('；');
+}
+async function loadProposals() {
+  const box = document.getElementById('proposalList');
+  box.innerHTML = '<span class="muted">加载中…</span>';
+  try {
+    const d = await (await _origFetch('/api/proposals')).json();
+    if (!d.items.length) { box.innerHTML = '<div class="muted" style="padding:12px">暂无变更申请</div>'; return; }
+    const isAdmin = currentRole === 'admin';
+    box.innerHTML = d.items.map(p => {
+      const st = p.status === 'pending' ? '<span class="prop-st pending">待审</span>'
+        : p.status === 'approved' ? '<span class="prop-st ok">已通过</span>'
+        : '<span class="prop-st rej">已驳回</span>';
+      const actions = (isAdmin && p.status === 'pending')
+        ? `<div class="prop-actions"><button class="btn btn-sm btn-success" onclick="approveProposal(${p.id})">批准</button>`
+          + `<button class="btn btn-sm btn-danger" onclick="rejectProposal(${p.id})">驳回</button></div>` : '';
+      const note = p.review_note ? `<div class="prop-note">审批备注：${esc(p.review_note)}</div>` : '';
+      return `<div class="prop-card">
+        <div class="prop-head">${_kindLabel[p.kind] || p.kind} ${st}
+          <span class="muted fs-xs">${esc(p.proposer_name)} · ${esc(p.created_at)}</span></div>
+        <div class="prop-body">${_payloadSummary(p)}</div>${note}${actions}</div>`;
+    }).join('');
+  } catch (e) { box.innerHTML = '<span class="muted">加载失败</span>'; }
+}
+async function approveProposal(id) {
+  const r = await _origFetch('/api/proposals/' + id + '/approve', { method: 'POST' });
+  const d = await r.json().catch(() => ({}));
+  if (r.ok) { showToast(d.message || '已批准并生效', 'success'); }
+  else { showToast(d.error || '操作失败', 'error'); }
+  loadProposals(); refreshProposalBadge(); doSearch(); loadStats();
+}
+async function rejectProposal(id) {
+  const note = prompt('驳回原因（可留空）：') || '';
+  const r = await _origFetch('/api/proposals/' + id + '/reject', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ review_note: note })
+  });
+  if (r.ok) showToast('已驳回', 'success'); else showToast('操作失败', 'error');
+  loadProposals(); refreshProposalBadge();
+}
+
+// ---- AI 填充（编辑页根据正文推断字段） ----
+async function doAiFill() {
+  const content = document.getElementById('editContent').value.trim();
+  if (!content) { showToast('请先填写内容正文', 'error'); return; }
+  const btn = document.getElementById('aiFillBtn');
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ 分析中…';
+  try {
+    const r = await fetch('/api/ai/fill', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(d.error || 'AI 填充失败', 'error'); return; }
+    const f = d.fields || {};
+    if (f.title) document.getElementById('editTitle').value = f.title;
+    if (f.tags) document.getElementById('editTags').value = f.tags;
+    if (f.section) document.getElementById('editSection').value = f.section;
+    if (f.level) document.getElementById('editLevel').value = f.level;
+    if (f.source) { ensureSelectOption(document.getElementById('editSource'), f.source); document.getElementById('editSource').value = f.source; }
+    showToast('已按正文填充，可再调整后保存', 'success');
+  } catch (e) { showToast('AI 填充请求失败', 'error'); }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+
+// ---- 一键（批量）总结选中笔记 ----
+async function batchSummarize() {
+  const ids = Array.from(selectedIds);
+  if (!ids.length) { showToast('请先勾选笔记', 'error'); return; }
+  if (ids.length > 50) { showToast('一次最多 50 条，请分批', 'error'); return; }
+  if (!confirm(`对选中的 ${ids.length} 条笔记生成 AI 总结？（已有总结的会自动跳过）`)) return;
+  showToast('正在生成总结，请稍候…', 'success');
+  try {
+    const r = await fetch('/api/notes/summarize-batch', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(d.error || '批量总结失败', 'error'); return; }
+    showToast(`完成：成功 ${d.done}，跳过 ${d.skipped}，失败 ${d.failed}`, d.failed ? 'error' : 'success');
+  } catch (e) { showToast('批量总结请求失败', 'error'); }
 }
 
 function closeTokenModal() {
@@ -1676,7 +1925,7 @@ async function loadTokens() {
     tbody.innerHTML = tokens.map(t => `
       <tr>
         <td class="token-label">${esc(t.label) || '<span class="token-empty">（无备注）</span>'}</td>
-        <td><span class="role-badge ${t.role === 'admin' ? 'role-admin' : 'role-viewer'}">${t.role}</span></td>
+        <td><span class="role-badge ${roleBadgeClass(t.role)}">${roleLabel(t.role)}</span></td>
         <td class="muted">${t.created_at}</td>
         <td class="muted">${t.last_used_at || '<span class="token-empty">从未</span>'}</td>
         <td><button class="btn-del" onclick="doDeleteToken(${t.id}, '${esc(t.label) || '该令牌'}')">删除</button></td>
@@ -2273,18 +2522,68 @@ function renderPreviewMeta(n) {
     <span class="meta-item${ec}" id="pmLevel" ${admin ? 'onclick="editPreviewLevel()"' : ''}><span class="meta-label">等级</span> <span class="pm-val pm-stars ${levelClass(n.level)}" id="pmLevelVal">${esc(n.level)}</span></span>
     <span class="meta-item${ec}" id="pmSource" ${admin ? 'onclick="editPreviewSource(event)"' : ''}><span class="meta-label">来源</span> <span class="pm-val" id="pmSourceVal">${esc(n.source)}</span></span>
     <span class="meta-item${ec}" id="pmDate" ${admin ? 'onclick="editPreviewDate(event)"' : ''}><span class="meta-label">日期</span> <span class="pm-val" id="pmDateVal">${esc(n.note_date)}</span></span>
-    <span class="meta-item meta-tags${ec}" id="pmTags" ${admin ? 'onclick="editPreviewTags(event)"' : ''}><span class="meta-label">标签</span> <span class="pm-val" id="pmTagsVal"></span></span>
+    <span class="meta-item meta-tags" id="pmTags"><span class="meta-label">标签</span> <span class="pm-val" id="pmTagsVal"></span></span>
   `;
   renderTagsVal(n);
 }
 
+function currentTagList() {
+  return (previewNote.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+}
+
+// 标签就地编辑：每个标签点一下出现右上角小叉、再点删除；行尾「＋」新增。不挪动其它标签、不抖动。
 function renderTagsVal(n) {
   const c = document.getElementById('pmTagsVal');
   if (!c) return;
+  const admin = currentRole === 'admin';
   const tags = ((n || previewNote).tags || '').split(',').map(t => t.trim()).filter(Boolean);
-  c.innerHTML = tags.length
-    ? tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')
-    : '<span class="muted">无标签</span>';
+  if (!admin) {
+    c.innerHTML = tags.length ? tags.map(t => `<span class="tag">${esc(t)}</span>`).join('') : '<span class="muted">无标签</span>';
+    return;
+  }
+  c.innerHTML = tags.map((t, i) =>
+    `<span class="tag tagchip" data-idx="${i}" onclick="onTagChipClick(event,this)">${esc(t)}<span class="tagchip-x">×</span></span>`
+  ).join('') + '<button type="button" class="tagchip-add" title="新增标签" onclick="addTagInline(event)">＋</button>';
+}
+
+function commitTags(tags) {
+  patchField({ tags: tags.join(',') }, () => renderTagsVal(previewNote));
+}
+
+function onTagChipClick(event, el) {
+  event.stopPropagation();
+  if (el.classList.contains('armed')) {
+    const idx = +el.dataset.idx;
+    const tags = currentTagList();
+    tags.splice(idx, 1);
+    commitTags(tags);
+  } else {
+    document.querySelectorAll('#pmTagsVal .tagchip.armed').forEach(x => x.classList.remove('armed'));
+    el.classList.add('armed');
+  }
+}
+
+function addTagInline(event) {
+  event.stopPropagation();
+  const c = document.getElementById('pmTagsVal');
+  if (c.querySelector('.tagchip-input')) return;
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.className = 'tagchip-input'; inp.placeholder = '标签名';
+  c.insertBefore(inp, c.querySelector('.tagchip-add'));
+  inp.focus();
+  let done = false;
+  const commit = () => {
+    if (done) return; done = true;
+    const v = inp.value.trim();
+    const tags = currentTagList();
+    if (v && !tags.includes(v)) { tags.push(v); commitTags(tags); }
+    else renderTagsVal(previewNote);
+  };
+  inp.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    else if (e.key === 'Escape') { done = true; renderTagsVal(previewNote); }
+  };
+  inp.onblur = commit;
 }
 
 // 提交单个字段：成功后只更新对应 chip，不整块重渲染；列表刷新延到关闭抽屉时再做（不闪）。
@@ -2373,28 +2672,6 @@ function editPreviewDate(event) {
     if (v !== cur) patchField({ note_date: v });
   };
   ctx.ctrl.onblur = () => { if (!done) ctx.restore(); };
-}
-
-function editPreviewTags(event) {
-  if (event) event.stopPropagation();
-  const cur = previewNote.tags || '';
-  const ctx = beginInlineEdit('pmTags', 'pmTagsVal', () => {
-    const inp = document.createElement('input'); inp.type = 'text';
-    inp.classList.add('tags-edit'); inp.value = cur; inp.placeholder = '逗号分隔，如：MFT,炉膛保护';
-    return inp;
-  });
-  if (!ctx) return;
-  let done = false;
-  const commit = () => {
-    if (done) return; done = true;
-    const v = ctx.ctrl.value.trim(); ctx.restore();
-    if (v !== cur) { patchField({ tags: v }, ok => { if (ok) renderTagsVal(previewNote); }); }
-  };
-  ctx.ctrl.onkeydown = (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commit(); }
-    else if (e.key === 'Escape') { done = true; ctx.restore(); }
-  };
-  ctx.ctrl.onblur = commit;
 }
 
 // 详情抽屉正/背面切换
@@ -2547,12 +2824,15 @@ async function deleteFromPreview() {
   const title = document.getElementById('previewTitle').textContent;
   if (!confirm(`确认删除「${title}」？`)) return;
   const r = await fetch('/api/notes/' + id, { method: 'DELETE' });
-  if (r.ok) {
+  const body = await r.json().catch(() => ({}));
+  if (r.status === 202) {
+    showToast(body.message || '删除申请已提交，待管理员确认', 'success');
+    previewDirty = false; closePreview(); refreshProposalBadge();
+  } else if (r.ok) {
     showToast('已删除', 'success');
-    closePreview();
-    doSearch();
-    loadStats();
-  } else showToast('删除失败', 'error');
+    previewDirty = false; closePreview();
+    doSearch(); loadStats();
+  } else showToast(body.error || '删除失败', 'error');
 }
 
 // ==================== CRUD ====================
@@ -2615,22 +2895,28 @@ async function saveNote() {
   const url = id ? '/api/notes/' + id : '/api/notes';
   const method = id ? 'PUT' : 'POST';
   const r = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
-  if (r.ok) {
+  const body = await r.json().catch(() => ({}));
+  if (r.status === 202) {  // 共建者：转为待审申请
+    showToast(body.message || '已提交，待管理员确认', 'success');
+    closeModal();
+    refreshProposalBadge();
+  } else if (r.ok) {
     showToast(id ? '已更新' : '已创建', 'success');
     closeModal();
     doSearch();
     loadStats();
   } else {
-    const e = await r.json();
-    showToast(e.error || '保存失败', 'error');
+    showToast(body.error || '保存失败', 'error');
   }
 }
 
 async function deleteNote(id, title) {
   if (!confirm(`确认删除笔记「${title}」？`)) return;
   const r = await fetch('/api/notes/' + id, { method: 'DELETE' });
-  if (r.ok) { showToast('已删除', 'success'); doSearch(); loadStats(); }
-  else showToast('删除失败', 'error');
+  const body = await r.json().catch(() => ({}));
+  if (r.status === 202) { showToast(body.message || '删除申请已提交，待管理员确认', 'success'); refreshProposalBadge(); }
+  else if (r.ok) { showToast('已删除', 'success'); doSearch(); loadStats(); }
+  else showToast(body.error || '删除失败', 'error');
 }
 
 // ==================== Excel 导入 ====================
@@ -2952,7 +3238,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '3.0';
+const APP_VERSION = '3.1';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
