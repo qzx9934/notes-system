@@ -175,6 +175,18 @@ Authorization: Bearer <你的令牌>
 ### `GET /api/domains` —— 领域列表
 ### `GET /api/stats` —— 统计（按等级/来源/章节）
 
+### `POST /api/upload` —— 上传图片（admin）
+
+`multipart/form-data`，字段名 `file`，单张图片，支持 JPG/PNG/GIF/WEBP，默认上限 5MB（可用 `NOTES_MAX_UPLOAD_MB` 调整）。按文件头魔数校验真实类型，文件名取内容 SHA256，内容相同自动去重。
+
+响应：`{"ok": true, "url": "/uploads/<hash>.png", "filename": "...", "size": 1234, "mime": "image/png"}`。
+
+把返回的 `url` 写进笔记 `content` 的 Markdown 即可显示：`![说明](/uploads/<hash>.png)`。网页编辑器已内置「🖼 插入图片」按钮，并支持**直接粘贴截图**和**拖拽图片**自动上传。
+
+> 图片文件存于服务器 `NOTES_UPLOAD_DIR`（默认 `backend/uploads/`），需与数据库一样**持久化**，勿随重新部署清空。
+
+### `GET /uploads/<name>` —— 下发已上传图片（公开，强缓存）
+
 ---
 
 ## 六、令牌管理接口（admin）

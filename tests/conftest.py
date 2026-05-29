@@ -8,6 +8,7 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 _TMPDIR = tempfile.mkdtemp(prefix='notes_test_')
 os.environ['NOTES_DB_PATH'] = os.path.join(_TMPDIR, 'test_notes.db')
+os.environ['NOTES_UPLOAD_DIR'] = os.path.join(_TMPDIR, 'uploads')
 os.environ['NOTES_SECRET_KEY'] = 'test-secret-key'
 os.environ.pop('NOTES_API_TOKEN', None)  # 确保不受外部主令牌影响
 
