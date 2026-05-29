@@ -252,9 +252,70 @@ def seed_db():
     db.commit()
     db.close()
 
+# ==================== 全文搜索（FTS5） ====================
+
+# 运行时标志：FTS5 + trigram 是否可用（不可用则自动回退到 LIKE 搜索）
+FTS_ENABLED = False
+
+def init_fts():
+    """创建 FTS5 全文索引（trigram 分词器，支持中文子串匹配）并保持与 notes 同步。
+
+    采用「外部内容表」模式（content='notes'），索引只存倒排数据、不重复存正文；
+    通过触发器在增删改时自动更新。若当前 SQLite 不支持 FTS5/trigram，则静默回退。
+    """
+    global FTS_ENABLED
+    db = sqlite3.connect(DB_PATH)
+    try:
+        db.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+                title, content, tags,
+                content='notes', content_rowid='id',
+                tokenize='trigram'
+            )
+        """)
+        # 触发器：保持 FTS 索引与 notes 表同步
+        db.executescript("""
+            CREATE TRIGGER IF NOT EXISTS notes_fts_ai AFTER INSERT ON notes BEGIN
+                INSERT INTO notes_fts(rowid, title, content, tags)
+                VALUES (new.id, new.title, new.content, new.tags);
+            END;
+            CREATE TRIGGER IF NOT EXISTS notes_fts_ad AFTER DELETE ON notes BEGIN
+                INSERT INTO notes_fts(notes_fts, rowid, title, content, tags)
+                VALUES ('delete', old.id, old.title, old.content, old.tags);
+            END;
+            CREATE TRIGGER IF NOT EXISTS notes_fts_au AFTER UPDATE ON notes BEGIN
+                INSERT INTO notes_fts(notes_fts, rowid, title, content, tags)
+                VALUES ('delete', old.id, old.title, old.content, old.tags);
+                INSERT INTO notes_fts(rowid, title, content, tags)
+                VALUES (new.id, new.title, new.content, new.tags);
+            END;
+        """)
+        # 首次启用时全量回填（含历史数据库的存量笔记）
+        built = db.execute("SELECT value FROM config WHERE key='fts_built'").fetchone()
+        if not built:
+            db.execute("INSERT INTO notes_fts(notes_fts) VALUES('rebuild')")
+            db.execute("INSERT OR REPLACE INTO config(key,value) VALUES('fts_built','1')")
+        db.commit()
+        FTS_ENABLED = True
+        print('[搜索] FTS5 trigram 全文索引已启用')
+    except sqlite3.Error as e:
+        FTS_ENABLED = False
+        print(f'[搜索] FTS5 不可用，已回退到 LIKE 搜索：{e}')
+    finally:
+        db.close()
+
+# 全文搜索 trigram 的最小匹配长度（少于此长度回退到 LIKE）
+FTS_MIN_LEN = 3
+
+def fts_match_expr(q):
+    """把用户输入转成安全的 FTS5 MATCH 表达式：用双引号包成字符串字面量，
+    避免输入中的 FTS 运算符（如 * : - NEAR 等）被解释。"""
+    return '"' + q.replace('"', '""') + '"'
+
 # 模块加载时自动初始化数据库（兼容 gunicorn/wsgi 导入）
 init_db()
 seed_db()
+init_fts()
 
 # ==================== 认证 ====================
 
@@ -656,9 +717,15 @@ def api_notes_list():
     params = []
 
     if q:
-        where.append('(n.title LIKE ? OR n.content LIKE ? OR n.tags LIKE ? OR n.code LIKE ?)')
-        like = f'%{q}%'
-        params.extend([like, like, like, like])
+        if FTS_ENABLED and len(q) >= FTS_MIN_LEN:
+            # FTS5 全文索引：title/content/tags 走倒排索引；code 仍用 LIKE 兜底
+            where.append('(n.id IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH ?) OR n.code LIKE ?)')
+            params.extend([fts_match_expr(q), f'%{q}%'])
+        else:
+            # 回退：FTS 不可用或查询过短（trigram 需 ≥3 字符）
+            where.append('(n.title LIKE ? OR n.content LIKE ? OR n.tags LIKE ? OR n.code LIKE ?)')
+            like = f'%{q}%'
+            params.extend([like, like, like, like])
 
     if section:
         where.append('n.section = ?')
