@@ -466,3 +466,131 @@ def test_ingest_preserves_manual_image_on_recompile(admin):
         {'section': 'A02', 'title': '给水泵联启', 'content': '第三版要点'}]})
     content2 = admin.get(f'/api/notes/{nid}').get_json()['content']
     assert content2.count('/uploads/x.png') == 1 and '第三版要点' in content2
+
+
+# ---------------- 来源文件字段（source_file） ----------------
+
+def test_new_columns_present_and_default_empty(admin):
+    r = admin.post('/api/notes', json={'section': 'A01', 'title': '新列默认值'})
+    body = r.get_json()
+    assert body['source_file'] == ''
+    assert body['ai_summary'] == ''
+    assert body['ai_summary_at'] is None
+
+
+def test_create_note_records_source_file(admin):
+    r = admin.post('/api/notes', json={
+        'section': 'A01', 'title': '带来源文件', 'source_file': '运行规程.docx'})
+    assert r.get_json()['source_file'] == '运行规程.docx'
+
+
+def test_ingest_records_source_file_top_level_and_entry(admin):
+    # 顶层 source_file 作缺省，条目可覆盖
+    admin.post('/api/notes/ingest', json={
+        'source_file': '交接班记录.pdf',
+        'notes': [
+            {'section': 'A03', 'title': '来源缺省继承'},
+            {'section': 'A03', 'title': '来源条目覆盖', 'source_file': '专项.xlsx'},
+        ]})
+    items = admin.get('/api/notes?section=A03&per=200').get_json()['items']
+    by_title = {it['title']: it for it in items}
+    assert by_title['来源缺省继承']['source_file'] == '交接班记录.pdf'
+    assert by_title['来源条目覆盖']['source_file'] == '专项.xlsx'
+
+
+def test_ingest_redo_without_source_file_keeps_existing(admin):
+    admin.post('/api/notes/ingest', json={'notes': [
+        {'section': 'A04', 'title': '保留来源文件', 'source_file': '台账.docx'}]})
+    # 重新整理但不带 source_file -> 原值应保留
+    admin.post('/api/notes/ingest', json={'notes': [
+        {'section': 'A04', 'title': '保留来源文件', 'content': '更新'}]})
+    nid = admin.get('/api/notes?q=保留来源文件').get_json()['items'][0]['id']
+    assert admin.get(f'/api/notes/{nid}').get_json()['source_file'] == '台账.docx'
+
+
+def test_source_file_not_required_for_plain_text(admin):
+    admin.post('/api/notes/ingest', json={'notes': [
+        {'section': 'A05', 'title': '纯文本无来源'}]})
+    nid = admin.get('/api/notes?q=纯文本无来源').get_json()['items'][0]['id']
+    assert admin.get(f'/api/notes/{nid}').get_json()['source_file'] == ''
+
+
+# ---------------- 查重 ----------------
+
+def test_duplicates_requires_admin(client):
+    assert client.get('/api/notes/duplicates').status_code == 401
+
+
+def test_duplicates_same_title_clustered(admin):
+    admin.post('/api/notes/ingest', json={'notes': [
+        {'section': 'A06', 'title': '脱硫浆液 循环泵切换', 'content': '甲版本内容'},
+        {'section': 'A06', 'title': '脱硫浆液循环泵切换', 'content': '乙完全不同的内容'},
+    ]})
+    data = admin.get('/api/notes/duplicates').get_json()
+    titles = {n['title'] for c in data['clusters'] for n in c}
+    # 归一标题相等 -> 即便正文不同也应聚为一簇
+    assert '脱硫浆液 循环泵切换' in titles and '脱硫浆液循环泵切换' in titles
+
+
+def test_duplicates_similar_content_clustered(admin):
+    base = '锅炉MFT动作条件共十六项，包含炉膛压力高低、汽包水位高低、全炉膛失火等保护' * 2
+    admin.post('/api/notes/ingest', json={'notes': [
+        {'section': 'A07', 'title': 'MFT条件甲', 'content': base},
+        {'section': 'A07', 'title': 'MFT条件乙', 'content': base + '（另补充一句）'},
+    ]})
+    data = admin.get('/api/notes/duplicates').get_json()
+    sizes = [len(c) for c in data['clusters']]
+    assert any(s >= 2 for s in sizes)
+
+
+def test_duplicates_distinct_notes_not_clustered(admin):
+    admin.post('/api/notes/ingest', json={'notes': [
+        {'section': 'A08', 'title': '输煤皮带', 'content': '输煤系统皮带巡检要点完全独立'},
+        {'section': 'A08', 'title': '燃油泵', 'content': '燃油系统油泵切换毫不相干'},
+    ]})
+    data = admin.get('/api/notes/duplicates?scope=section').get_json()
+    flat = {n['title'] for c in data['clusters'] for n in c}
+    assert '输煤皮带' not in flat and '燃油泵' not in flat
+
+
+# ---------------- AI 总结（DeepSeek，打桩） ----------------
+
+def test_summarize_requires_admin(client):
+    assert client.post('/api/notes/1/summarize').status_code == 401
+
+
+def test_summarize_missing_key_returns_503(admin, monkeypatch):
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', '')
+    nid = admin.post('/api/notes', json={
+        'section': 'A01', 'title': '待总结', 'content': '一些内容'}).get_json()['id']
+    r = admin.post(f'/api/notes/{nid}/summarize')
+    assert r.status_code == 503
+
+
+def test_summarize_empty_content_returns_400(admin):
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '空内容'}).get_json()['id']
+    assert admin.post(f'/api/notes/{nid}/summarize').status_code == 400
+
+
+def test_summarize_success_saves_to_note(admin, monkeypatch):
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'test-key')
+    monkeypatch.setattr(_app, '_deepseek_summarize',
+                        lambda title, content: '## 要点\n- 总结好的内容')
+    nid = admin.post('/api/notes', json={
+        'section': 'A01', 'title': '可总结', 'content': '原始笔记内容'}).get_json()['id']
+    r = admin.post(f'/api/notes/{nid}/summarize')
+    assert r.status_code == 200
+    assert '总结好的内容' in r.get_json()['ai_summary']
+    # 已落库，可在背面读取
+    got = admin.get(f'/api/notes/{nid}').get_json()
+    assert '总结好的内容' in got['ai_summary'] and got['ai_summary_at']
+
+
+def test_summarize_upstream_error_returns_502(admin, monkeypatch):
+    def boom(title, content):
+        raise RuntimeError('DeepSeek 接口返回 500：err')
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'test-key')
+    monkeypatch.setattr(_app, '_deepseek_summarize', boom)
+    nid = admin.post('/api/notes', json={
+        'section': 'A01', 'title': '上游错误', 'content': '内容'}).get_json()['id']
+    assert admin.post(f'/api/notes/{nid}/summarize').status_code == 502

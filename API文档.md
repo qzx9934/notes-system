@@ -80,6 +80,9 @@ Authorization: Bearer <你的令牌>
 | `source` | string | 否 | 来源，默认 `个人总结`（推荐取值：规程 / 培训 / 操作票 / 事故预案 / 事故通报 / 经验反馈 / 技术文件 / 个人总结 / 规章制度；字段不强校验，可自定义） |
 | `level` | string | 否 | 重要等级，**只能为** `★` / `★★` / `★★★`，默认 `★` |
 | `note_date` / `date` | string | 否 | 日期，**须为** `YYYY-MM-DD` 格式，默认今天 |
+| `source_file` | string | 否 | 来源文件名（含格式，如 `运行规程.docx`）。大模型整理文件录入时自动记录；直接处理文本则留空。**不在总览列表显示**，仅在卡片背面顶部展示 |
+| `ai_summary` | string | 只读 | AI 总结正文（Markdown），由 `POST /api/notes/<id>/summarize` 生成并保存，显示在卡片背面 |
+| `ai_summary_at` | string | 只读 | AI 总结生成时间；若笔记此后又被更新，前端会提示总结可能已过时 |
 
 > **字段校验：** 单条接口（`POST /api/notes`、`PUT /api/notes/<id>`、`PUT /api/notes/batch`）会严格校验 `section`（须存在）、`level`、`note_date`，非法时返回 `400`。
 > 批量接口（`POST /api/notes/ingest`、`POST /api/notes/batch`）更宽容：非法的 `level`/`date` 会**自动回退**为默认值（`★` / 今天），便于大模型批量上传；但 `section` 非法仍会被跳过。
@@ -126,8 +129,10 @@ Authorization: Bearer <你的令牌>
 | --- | --- | --- |
 | `section` | — | 缺省章节；当某条 note 未指定 `section` 时使用 |
 | `dedup` | `true` | 是否按「章节 + 标题」去重；命中已有条目时**更新**而非新增 |
+| `source_file` | — | 缺省来源文件名（含格式）；某条 note 未指定 `source_file` 时使用。整理同一个文件出的多条笔记可在顶层统一指定。重新整理时若未带 `source_file`，原有值会保留不被清空 |
 
 > 兼容写法：顶层数组可放在 `notes` 或 `entries` 字段下。
+> 每条 note 也可单独带 `source_file` 覆盖顶层缺省。
 
 **响应 `200`：**
 
@@ -195,6 +200,22 @@ Authorization: Bearer <你的令牌>
 
 - 传 `?dry_run=1` 仅预览不删除。
 - 响应：`{"ok": true, "dry_run": false, "removed": 2, "freed_bytes": 34567, "kept": 5, "removed_list": [...]}`。
+
+### `POST /api/notes/<id>/summarize` —— AI 总结（admin）
+
+调用 DeepSeek 大模型，按「电厂集控运行人员」视角把该笔记内容总结成 Markdown 要点，保存到笔记的 `ai_summary` 字段（显示在卡片背面），可重复调用覆盖。
+
+- 模型/密钥/地址全部走环境变量：`NOTES_DEEPSEEK_API_KEY`（必填，否则返回 `503`）、`NOTES_DEEPSEEK_MODEL`（默认 `deepseek-v4-flash`）、`NOTES_DEEPSEEK_BASE_URL`（默认 `https://api.deepseek.com`）、`NOTES_DEEPSEEK_TIMEOUT`（默认 `60` 秒）。
+- 响应：`{"ok": true, "ai_summary": "## 要点…", "ai_summary_at": "2026-05-29 10:00:00"}`。
+- 错误码：`400` 笔记内容为空 / `503` 未配置密钥 / `502` 上游调用失败或超时。
+
+### `GET /api/notes/duplicates` —— 查重（admin）
+
+扫描全库，按「标题归一化相等」或「正文相似度 ≥ 阈值（`difflib`）」聚类，返回疑似重复的笔记簇，便于人工核对删除。
+
+- `?threshold=` 正文相似度阈值，0.5~1.0，默认 `0.85`。
+- `?scope=section`（默认，仅同章节内查重）或 `?scope=all`（跨章节全库查重）。
+- 响应：`{"ok": true, "threshold": 0.85, "scope": "section", "total_notes": 120, "cluster_count": 2, "duplicate_notes": 5, "clusters": [[{"id","code","section","title","note_date","updated_at"}, …], …]}`。
 
 ---
 

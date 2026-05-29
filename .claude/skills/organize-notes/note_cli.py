@@ -103,6 +103,8 @@ def cmd_add(args):
     }
     if args.date:
         note['note_date'] = args.date
+    if getattr(args, 'source_file', None):
+        note['source_file'] = args.source_file
     status, resp = _request('POST', args.url, '/api/notes', args.token, note)
     _check_auth(status, resp)
     if status == 201:
@@ -130,6 +132,10 @@ def cmd_import(args):
 
     if args.no_dedup:
         payload['dedup'] = False
+
+    # 来源文件：命令行 --source-file 作为顶层缺省（JSON 内已显式指定的条目优先）
+    if getattr(args, 'source_file', None) and 'source_file' not in payload:
+        payload['source_file'] = args.source_file
 
     status, resp = _request('POST', args.url, '/api/notes/ingest', args.token, payload)
     _check_auth(status, resp)
@@ -190,11 +196,15 @@ def build_parser():
     a.add_argument('--source', help='来源，默认“个人总结”')
     a.add_argument('--level', help='等级 ★ / ★★ / ★★★，默认 ★')
     a.add_argument('--date', help='日期 YYYY-MM-DD，默认今天')
+    a.add_argument('--source-file', dest='source_file',
+                   help='来源文件名（含格式，如 运行规程.docx）；处理文件时填写，仅显示在卡片背面')
     a.set_defaults(func=cmd_add)
 
     i = sub.add_parser('import', help='从 JSON 文件批量上传（- 表示标准输入）')
     i.add_argument('file', help='JSON 文件路径，或用 - 从标准输入读取')
     i.add_argument('--no-dedup', action='store_true', help='关闭按标题去重（默认开启）')
+    i.add_argument('--source-file', dest='source_file',
+                   help='来源文件名（含格式）作为顶层缺省；整理某个文件出的所有笔记可统一标注来源')
     i.set_defaults(func=cmd_import)
 
     s = sub.add_parser('search', help='搜索笔记')

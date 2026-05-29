@@ -14,6 +14,9 @@ import hashlib
 import platform
 import subprocess
 import mimetypes
+import difflib
+
+import requests
 
 # 确保 PWA 清单以正确 MIME 类型下发（开启了 nosniff，类型错误会被浏览器拒绝）
 mimetypes.add_type('application/manifest+json', '.webmanifest')
@@ -132,6 +135,27 @@ UPLOAD_GRACE_SECONDS = int(os.environ.get('NOTES_UPLOAD_GRACE_SECONDS', '86400')
 app.config['MAX_CONTENT_LENGTH'] = (MAX_UPLOAD_MB + 1) * 1024 * 1024
 # 匹配笔记内容里引用的上传图片文件名：/uploads/<name>
 _UPLOAD_REF_RE = re.compile(r'/uploads/([A-Za-z0-9._-]+)')
+
+# ---- DeepSeek（AI 总结）配置 ----
+# 密钥/模型/地址全部走环境变量，密钥绝不写进代码或日志：
+#   NOTES_DEEPSEEK_API_KEY    访问密钥（未配置则 AI 总结接口返回明确提示）
+#   NOTES_DEEPSEEK_MODEL      模型 ID，默认 deepseek-v4-flash
+#   NOTES_DEEPSEEK_BASE_URL   接口地址，默认 https://api.deepseek.com
+#   NOTES_DEEPSEEK_TIMEOUT    请求超时秒数，默认 60
+DEEPSEEK_API_KEY = os.environ.get('NOTES_DEEPSEEK_API_KEY', '').strip()
+DEEPSEEK_MODEL = os.environ.get('NOTES_DEEPSEEK_MODEL', 'deepseek-v4-flash').strip()
+DEEPSEEK_BASE_URL = os.environ.get('NOTES_DEEPSEEK_BASE_URL', 'https://api.deepseek.com').strip().rstrip('/')
+DEEPSEEK_TIMEOUT = int(os.environ.get('NOTES_DEEPSEEK_TIMEOUT', '60'))
+
+# 内置提示词：把笔记内容总结为电厂集控运行人员视角的 Markdown 要点
+AI_SUMMARY_SYSTEM_PROMPT = (
+    '你是一名经验丰富的火力发电厂集控运行人员。请把下面这条运行工作笔记总结成'
+    '简明、准确、可用于值班速记的要点，面向集控运行同行。要求：\n'
+    '1. 只依据笔记原文，不臆造数据、定值或操作步骤；原文没有的不要补充。\n'
+    '2. 抓住关键参数、定值、联锁条件、操作步骤和注意事项/危险点。\n'
+    '3. 输出 Markdown 格式：可用小标题、要点列表、必要时用表格；保留原文中的数值和单位。\n'
+    '4. 语言精炼，避免空话套话，直接给运行人员能用的干货。'
+)
 
 def _sniff_image_ext(data):
     """按文件头魔数判定图片类型，返回 (规范扩展名, MIME)；非图片返回 (None, None)"""
@@ -373,6 +397,19 @@ def seed_db():
         print('[迁移] 已为 users 表添加 role 列')
     except sqlite3.OperationalError:
         pass  # 列已存在
+
+    # 数据库迁移：为 notes 表添加 来源文件 / AI 总结 列（旧库自动升级）
+    for col, ddl in (
+        ('source_file',   "ALTER TABLE notes ADD COLUMN source_file TEXT NOT NULL DEFAULT ''"),
+        ('ai_summary',    "ALTER TABLE notes ADD COLUMN ai_summary TEXT NOT NULL DEFAULT ''"),
+        ('ai_summary_at', "ALTER TABLE notes ADD COLUMN ai_summary_at TEXT"),
+    ):
+        try:
+            db.execute(ddl)
+            db.commit()
+            print(f'[迁移] 已为 notes 表添加 {col} 列')
+        except sqlite3.OperationalError:
+            pass  # 列已存在
 
     # 确保已有 admin 用户的角色为 admin
     db.execute("UPDATE users SET role='admin' WHERE username='admin' AND role!='admin'")
@@ -772,6 +809,9 @@ def note_to_dict(row):
         'source': row['source'],
         'level': row['level'],
         'note_date': row['note_date'],
+        'source_file': row['source_file'],
+        'ai_summary': row['ai_summary'],
+        'ai_summary_at': row['ai_summary_at'],
         'created_at': row['created_at'],
         'updated_at': row['updated_at'],
     }
@@ -834,7 +874,7 @@ def next_code_num(db, section):
     return (row['m'] or 0) + 1
 
 def insert_note(db, section, title, content='', tags='', source='个人总结',
-                level='★', note_date=None):
+                level='★', note_date=None, source_file=''):
     """生成 section 下一个编号并插入；遇编号唯一约束冲突自动重试（防并发竞态）。
     返回生成的 code。"""
     if note_date is None:
@@ -843,9 +883,9 @@ def insert_note(db, section, title, content='', tags='', source='个人总结',
         code = f'{section}-{next_code_num(db, section):03d}'
         try:
             db.execute(
-                'INSERT INTO notes(code,section,title,content,tags,source,level,note_date) '
-                'VALUES(?,?,?,?,?,?,?,?)',
-                (code, section, title, content, tags, source, level, note_date)
+                'INSERT INTO notes(code,section,title,content,tags,source,level,note_date,source_file) '
+                'VALUES(?,?,?,?,?,?,?,?,?)',
+                (code, section, title, content, tags, source, level, note_date, source_file)
             )
             return code
         except sqlite3.IntegrityError:
@@ -980,7 +1020,8 @@ def api_note_create():
         content=data.get('content', ''),
         tags=data.get('tags', ''),
         source=data.get('source', '个人总结'),
-        level=level, note_date=note_date
+        level=level, note_date=note_date,
+        source_file=(data.get('source_file') or '').strip()
     )
     db.commit()
 
@@ -1023,6 +1064,165 @@ def api_note_update(id):
 
     row = db.execute('SELECT * FROM notes WHERE id=?', (id,)).fetchone()
     return jsonify(note_to_dict(row))
+
+# --- AI 总结（DeepSeek） ---
+def _deepseek_summarize(title, content):
+    """调用 DeepSeek Chat 接口，返回 Markdown 总结文本。
+    失败时抛出带中文说明的 RuntimeError，由调用方转成合适的 HTTP 状态。"""
+    if not DEEPSEEK_API_KEY:
+        raise RuntimeError('未配置 DeepSeek 密钥（环境变量 NOTES_DEEPSEEK_API_KEY），无法使用 AI 总结')
+    user_text = f'笔记标题：{title}\n\n笔记内容：\n{content}'
+    payload = {
+        'model': DEEPSEEK_MODEL,
+        'messages': [
+            {'role': 'system', 'content': AI_SUMMARY_SYSTEM_PROMPT},
+            {'role': 'user', 'content': user_text},
+        ],
+        'stream': False,
+        'temperature': 0.3,
+    }
+    headers = {
+        'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+        'Content-Type': 'application/json',
+    }
+    try:
+        resp = requests.post(f'{DEEPSEEK_BASE_URL}/chat/completions',
+                             json=payload, headers=headers, timeout=DEEPSEEK_TIMEOUT)
+    except requests.Timeout:
+        raise RuntimeError(f'调用 DeepSeek 超时（>{DEEPSEEK_TIMEOUT}s），请稍后重试')
+    except requests.RequestException as e:
+        raise RuntimeError(f'调用 DeepSeek 失败：{e}')
+    if resp.status_code != 200:
+        # 不回显上游可能含敏感信息的完整响应，仅取状态码与简短片段
+        snippet = (resp.text or '')[:200]
+        raise RuntimeError(f'DeepSeek 接口返回 {resp.status_code}：{snippet}')
+    try:
+        data = resp.json()
+        text = data['choices'][0]['message']['content'].strip()
+    except (ValueError, KeyError, IndexError, TypeError):
+        raise RuntimeError('DeepSeek 返回格式异常，无法解析总结内容')
+    if not text:
+        raise RuntimeError('DeepSeek 返回了空总结')
+    return text
+
+@app.route('/api/notes/<int:id>/summarize', methods=['POST'])
+@admin_required
+def api_note_summarize(id):
+    """对单条笔记调用大模型生成 Markdown 总结，保存到 ai_summary 并返回。可重复调用（覆盖）。"""
+    db = get_db()
+    row = db.execute('SELECT * FROM notes WHERE id=?', (id,)).fetchone()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    if not (row['content'] or '').strip():
+        return jsonify({'error': '该笔记内容为空，无可总结的内容'}), 400
+
+    try:
+        summary = _deepseek_summarize(row['title'], row['content'])
+    except RuntimeError as e:
+        msg = str(e)
+        # 缺密钥属配置问题（503），其余按网关错误（502）
+        code = 503 if '未配置' in msg else 502
+        return jsonify({'error': msg}), code
+
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    db.execute('UPDATE notes SET ai_summary=?, ai_summary_at=? WHERE id=?', (summary, now, id))
+    db.commit()
+    return jsonify({'ok': True, 'ai_summary': summary, 'ai_summary_at': now})
+
+# --- 笔记查重 ---
+_DEDUP_PUNCT_RE = re.compile(r'[\s　,，。.;；:：、!！?？()（）\[\]【】"\'`~·\-—_/\\]+')
+
+def _norm_title(t):
+    """标题归一化：去空白与常见标点后比较，识别近似相同的标题"""
+    return _DEDUP_PUNCT_RE.sub('', (t or '').lower())
+
+def _find_duplicate_clusters(rows, threshold, cross_section):
+    """对笔记做重复聚类：同一组内（章节内或全库）满足
+       归一标题相等 或 正文 difflib 相似度≥threshold，即视为重复。
+    返回 [[note_dict, ...], ...]，仅含 size>=2 的簇。"""
+    # 按章节分桶；cross_section=True 时所有笔记放进同一桶
+    buckets = {}
+    for r in rows:
+        key = '*' if cross_section else r['section']
+        buckets.setdefault(key, []).append(r)
+
+    clusters = []
+    for items in buckets.values():
+        n = len(items)
+        parent = list(range(n))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(a, b):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+        norm_titles = [_norm_title(it['title']) for it in items]
+        contents = [(it['content'] or '') for it in items]
+        for i in range(n):
+            for j in range(i + 1, n):
+                dup = False
+                if norm_titles[i] and norm_titles[i] == norm_titles[j]:
+                    dup = True
+                else:
+                    ci, cj = contents[i], contents[j]
+                    # 长度比预筛，差距过大直接跳过昂贵的相似度计算
+                    if ci and cj:
+                        lo, hi = sorted((len(ci), len(cj)))
+                        if hi and lo / hi >= threshold:
+                            if difflib.SequenceMatcher(None, ci, cj).ratio() >= threshold:
+                                dup = True
+                if dup:
+                    union(i, j)
+
+        groups = {}
+        for i in range(n):
+            groups.setdefault(find(i), []).append(items[i])
+        for g_items in groups.values():
+            if len(g_items) >= 2:
+                clusters.append([{
+                    'id': it['id'], 'code': it['code'], 'section': it['section'],
+                    'title': it['title'], 'note_date': it['note_date'],
+                    'updated_at': it['updated_at'],
+                } for it in g_items])
+    # 大簇优先展示
+    clusters.sort(key=len, reverse=True)
+    return clusters
+
+@app.route('/api/notes/duplicates')
+@admin_required
+def api_notes_duplicates():
+    """查重：返回疑似重复的笔记簇。
+    查询参数：
+      threshold  正文相似度阈值，0~1，默认 0.85
+      scope      section（默认，仅同章节内查重）| all（跨章节全库查重）
+    """
+    db = get_db()
+    try:
+        threshold = float(request.args.get('threshold', '0.85'))
+    except ValueError:
+        threshold = 0.85
+    threshold = min(max(threshold, 0.5), 1.0)
+    cross_section = request.args.get('scope', 'section').strip() == 'all'
+
+    rows = db.execute(
+        'SELECT id, code, section, title, content, note_date, updated_at FROM notes'
+    ).fetchall()
+    clusters = _find_duplicate_clusters(rows, threshold, cross_section)
+    return jsonify({
+        'ok': True,
+        'threshold': threshold,
+        'scope': 'all' if cross_section else 'section',
+        'total_notes': len(rows),
+        'cluster_count': len(clusters),
+        'duplicate_notes': sum(len(c) for c in clusters),
+        'clusters': clusters,
+    })
 
 # --- 批量操作 ---
 @app.route('/api/notes/batch', methods=['DELETE'])
@@ -1171,6 +1371,11 @@ def api_note_batch():
         d = entry.get('date', '')
         return d if valid_date(d) else datetime.now().strftime('%Y-%m-%d')
 
+    default_source_file = (data.get('source_file') or '').strip()
+
+    def norm_source_file(entry):
+        return (entry.get('source_file') or default_source_file or '').strip()
+
     # 已有标题集合，用于精确去重（与 /ingest 一致：按「章节+标题」完全相等才算重复；
     # 旧版用子串匹配会把"给水泵"误并入"给水泵备用联启逻辑"并丢内容，已弃用）
     existing_titles = {r['title'] for r in db.execute(
@@ -1190,13 +1395,23 @@ def api_note_batch():
                 # 保留手动插入、而新正文缺失的图片，避免重新整理时丢图
                 content = merge_preserved_images(
                     old['content'] if old else '', entry.get('content', ''))
-                db.execute(
-                    'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
-                    'updated_at=datetime("now","localtime") WHERE section=? AND title=?',
-                    (content, entry.get('tags', ''),
-                     entry.get('source', '个人总结'), norm_level(entry),
-                     norm_date(entry), section, title)
-                )
+                sf = norm_source_file(entry)
+                if sf:
+                    db.execute(
+                        'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
+                        'source_file=?,updated_at=datetime("now","localtime") WHERE section=? AND title=?',
+                        (content, entry.get('tags', ''),
+                         entry.get('source', '个人总结'), norm_level(entry),
+                         norm_date(entry), sf, section, title)
+                    )
+                else:
+                    db.execute(
+                        'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
+                        'updated_at=datetime("now","localtime") WHERE section=? AND title=?',
+                        (content, entry.get('tags', ''),
+                         entry.get('source', '个人总结'), norm_level(entry),
+                         norm_date(entry), section, title)
+                    )
                 merged.append({'title': title, 'merged_to': title})
                 continue
 
@@ -1206,7 +1421,8 @@ def api_note_batch():
                 tags=entry.get('tags', ''),
                 source=entry.get('source', '个人总结'),
                 level=norm_level(entry),
-                note_date=norm_date(entry)
+                note_date=norm_date(entry),
+                source_file=norm_source_file(entry)
             )
             existing_titles.add(title)  # 防止同一批内重复标题被重复插入
             added.append({'code': code, 'title': title})
@@ -1270,6 +1486,12 @@ def api_notes_ingest():
         lv = entry.get('level', '★')
         return lv if valid_level(lv) else '★'
 
+    # 顶层 source_file 作为缺省，条目可覆盖（同一文件整理出的多条笔记共用文件名）
+    default_source_file = (data.get('source_file') or '').strip()
+
+    def pick_source_file(entry):
+        return (entry.get('source_file') or default_source_file or '').strip()
+
     added, merged, skipped = [], [], []
     try:
         for idx, entry in enumerate(notes):
@@ -1293,13 +1515,24 @@ def api_notes_ingest():
                 if dup:
                     # 保留手动插入、而新正文缺失的图片，避免重新整理时丢图
                     content = merge_preserved_images(dup['content'], entry.get('content', ''))
-                    db.execute(
-                        'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
-                        'updated_at=datetime("now","localtime") WHERE code=?',
-                        (content, entry.get('tags', ''),
-                         entry.get('source', '个人总结'), pick_level(entry),
-                         pick_date(entry), dup['code'])
-                    )
+                    sf = pick_source_file(entry)
+                    # 仅在本次提供了来源文件时更新该列，否则保留原值（避免重整理时清空）
+                    if sf:
+                        db.execute(
+                            'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
+                            'source_file=?,updated_at=datetime("now","localtime") WHERE code=?',
+                            (content, entry.get('tags', ''),
+                             entry.get('source', '个人总结'), pick_level(entry),
+                             pick_date(entry), sf, dup['code'])
+                        )
+                    else:
+                        db.execute(
+                            'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
+                            'updated_at=datetime("now","localtime") WHERE code=?',
+                            (content, entry.get('tags', ''),
+                             entry.get('source', '个人总结'), pick_level(entry),
+                             pick_date(entry), dup['code'])
+                        )
                     merged.append({'code': dup['code'], 'title': title})
                     continue
 
@@ -1307,7 +1540,8 @@ def api_notes_ingest():
                 db, section, title,
                 content=entry.get('content', ''), tags=entry.get('tags', ''),
                 source=entry.get('source', '个人总结'),
-                level=pick_level(entry), note_date=pick_date(entry)
+                level=pick_level(entry), note_date=pick_date(entry),
+                source_file=pick_source_file(entry)
             )
             added.append({'code': code, 'title': title})
 
