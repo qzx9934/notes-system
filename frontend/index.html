@@ -361,6 +361,17 @@ tbody tr.selected { background: #EBF5FB; }
 .add-user-form .form-group input:focus, .add-user-form .form-group select:focus { border-color: var(--primary-light); }
 .user-error { color: var(--star3); font-size: 13px; min-height: 18px; margin-top: 8px; }
 
+/* API Token Management */
+.token-hint { font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.6; }
+.token-table .token-label { font-weight: 500; }
+.token-table .token-empty { color: var(--text-secondary); }
+.token-table td code { font-size: 11px; color: var(--text-secondary); }
+.token-new { margin: 12px 0 18px; padding: 12px 14px; border: 1px dashed var(--accent-D); border-radius: 6px; background: #F4FBF6; }
+.token-new .token-label-line { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+.token-new .token-value-row { display: flex; gap: 8px; align-items: center; }
+.token-new code { flex: 1; font-size: 12px; word-break: break-all; background: #fff; padding: 7px 10px; border: 1px solid var(--border); border-radius: 5px; }
+.token-new .token-warn { font-size: 11px; color: var(--star3); margin-top: 6px; }
+
 /* Sort dropdown */
 .sort-select { padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; background: var(--card); cursor: pointer; outline: none; color: var(--text); }
 
@@ -526,6 +537,56 @@ body.roam-immersive .batch-bar { display: none; }
   </div>
 </div>
 
+<!-- ===== API 令牌管理弹窗 ===== -->
+<div class="modal-overlay" id="tokenModalOverlay">
+  <div class="user-mgmt-modal">
+    <div class="modal-header">
+      <h3>🎫 API 令牌管理</h3>
+      <button class="modal-close" onclick="closeTokenModal()">×</button>
+    </div>
+    <div class="modal-body" id="tokenModalBody">
+      <div class="token-hint">
+        令牌用于在命令行 / 脚本 / 大模型流水线中调用接口写入笔记，无需登录浏览器。<br>
+        调用时在请求头携带 <code>X-API-Token: 令牌</code>。详见项目内 <strong>API文档.md</strong>。
+      </div>
+      <table class="user-table token-table">
+        <thead><tr><th>用途备注</th><th>角色</th><th>创建时间</th><th>最近使用</th><th style="width:60px">操作</th></tr></thead>
+        <tbody id="tokenTableBody"></tbody>
+      </table>
+      <!-- 新建令牌后明文仅显示一次 -->
+      <div class="token-new" id="tokenNewBox" style="display:none">
+        <div class="token-label-line">✅ 令牌已创建，请立即复制保存（此明文仅显示这一次）：</div>
+        <div class="token-value-row">
+          <code id="tokenNewValue"></code>
+          <button class="btn btn-primary btn-sm" onclick="copyNewToken()">复制</button>
+        </div>
+        <div class="token-warn">关闭后将无法再次查看完整令牌，如遗失请删除并重新创建。</div>
+      </div>
+      <div class="add-user-form">
+        <h4>+ 创建令牌</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label>用途备注</label>
+            <input type="text" id="newTokenLabel" placeholder="如：大模型整理脚本">
+          </div>
+          <div class="form-group">
+            <label>角色</label>
+            <select id="newTokenRole">
+              <option value="admin">admin（可读写）</option>
+              <option value="viewer">viewer（只读）</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:0 0 auto">
+            <label>&nbsp;</label>
+            <button class="btn btn-primary btn-sm" onclick="doCreateToken()">创建</button>
+          </div>
+        </div>
+        <div class="user-error" id="tokenError"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Sidebar -->
 <button class="hamburger" id="hamburgerBtn" onclick="toggleSidebar()" title="菜单">☰</button>
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
@@ -541,6 +602,7 @@ body.roam-immersive .batch-bar { display: none; }
       <span style="display:flex;align-items:center;gap:4px">
         <span id="currentUser" style="font-size:11px;opacity:.7"></span>
         <span id="userMgmtBtn" style="cursor:pointer;font-size:13px;display:none" onclick="openUserModal()" title="用户管理">👥</span>
+        <span id="tokenMgmtBtn" style="cursor:pointer;font-size:13px;display:none" onclick="openTokenModal()" title="API 令牌管理">🎫</span>
         <span style="cursor:pointer;font-size:13px" onclick="openPwdModal()" title="修改密码">🔑</span>
         <span style="cursor:pointer;font-size:13px" onclick="doLogout()" title="退出登录">🚪</span>
       </span>
@@ -802,6 +864,7 @@ async function checkAuth() {
       document.getElementById('loginOverlay').classList.add('hidden');
       document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : ' (只读)');
       document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
+      document.getElementById('tokenMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
       applyRoleUI();
       init();
       return true;
@@ -843,6 +906,7 @@ async function doLogin(e) {
       document.getElementById('loginOverlay').classList.add('hidden');
       document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : ' (只读)');
       document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
+      document.getElementById('tokenMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
       applyRoleUI();
       init(); // 登录成功 → 初始化主应用
     } else {
@@ -1014,6 +1078,103 @@ async function doDeleteUser(id, username) {
     if (r.ok) {
       showToast(`用户 ${username} 已删除`, 'success');
       await loadUsers();
+    } else {
+      showToast(data.error || '删除失败', 'error');
+    }
+  } catch(e) {
+    showToast('网络错误', 'error');
+  }
+}
+
+// ---- API 令牌管理 ----
+function openTokenModal() {
+  document.getElementById('tokenModalOverlay').classList.add('open');
+  document.getElementById('tokenError').textContent = '';
+  document.getElementById('tokenNewBox').style.display = 'none';
+  document.getElementById('newTokenLabel').value = '';
+  loadTokens();
+}
+
+function closeTokenModal() {
+  document.getElementById('tokenModalOverlay').classList.remove('open');
+}
+
+async function loadTokens() {
+  const tbody = document.getElementById('tokenTableBody');
+  try {
+    const r = await _origFetch('/api/tokens');
+    const tokens = await r.json();
+    if (!tokens.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center" class="token-empty">暂无令牌，请在下方创建</td></tr>';
+      return;
+    }
+    tbody.innerHTML = tokens.map(t => `
+      <tr>
+        <td class="token-label">${esc(t.label) || '<span class="token-empty">（无备注）</span>'}</td>
+        <td><span class="role-badge ${t.role === 'admin' ? 'role-admin' : 'role-viewer'}">${t.role}</span></td>
+        <td style="color:var(--text-secondary)">${t.created_at}</td>
+        <td style="color:var(--text-secondary)">${t.last_used_at || '<span class="token-empty">从未</span>'}</td>
+        <td><button class="btn-del" onclick="doDeleteToken(${t.id}, '${esc(t.label) || '该令牌'}')">删除</button></td>
+      </tr>
+    `).join('');
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center" class="token-empty">加载失败</td></tr>';
+  }
+}
+
+async function doCreateToken() {
+  const label = document.getElementById('newTokenLabel').value.trim();
+  const role = document.getElementById('newTokenRole').value;
+  const errEl = document.getElementById('tokenError');
+  errEl.textContent = '';
+
+  try {
+    const r = await _origFetch('/api/tokens', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ label, role })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      document.getElementById('tokenNewValue').textContent = data.token;
+      document.getElementById('tokenNewBox').style.display = 'block';
+      document.getElementById('newTokenLabel').value = '';
+      showToast('令牌创建成功，请复制保存', 'success');
+      await loadTokens();
+    } else {
+      errEl.textContent = data.error || '创建失败';
+    }
+  } catch(e) {
+    errEl.textContent = '网络错误';
+  }
+}
+
+function copyNewToken() {
+  const val = document.getElementById('tokenNewValue').textContent;
+  const done = () => showToast('已复制到剪贴板', 'success');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(val).then(done).catch(() => fallbackCopy(val, done));
+  } else {
+    fallbackCopy(val, done);
+  }
+}
+
+function fallbackCopy(text, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); cb(); } catch(e) { showToast('复制失败，请手动选择', 'error'); }
+  document.body.removeChild(ta);
+}
+
+async function doDeleteToken(id, label) {
+  if (!confirm(`确认删除令牌「${label}」？删除后使用该令牌的脚本将立即失效！`)) return;
+  try {
+    const r = await _origFetch('/api/tokens/' + id, { method: 'DELETE' });
+    const data = await r.json();
+    if (r.ok) {
+      showToast('令牌已删除', 'success');
+      await loadTokens();
     } else {
       showToast(data.error || '删除失败', 'error');
     }
