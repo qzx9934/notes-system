@@ -363,6 +363,18 @@ tbody tr.selected { background: #EBF5FB; }
 .add-user-form .form-group input:focus, .add-user-form .form-group select:focus { border-color: var(--primary-light); }
 .user-error { color: var(--star3); font-size: 13px; min-height: 18px; margin-top: 8px; }
 
+/* 默认口令安全提醒横幅 */
+.default-pw-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 1200;
+  background: #FDEBD0; color: #7E5109; border-bottom: 1px solid #F5CBA7;
+  padding: 9px 16px; display: flex; align-items: center; gap: 12px;
+  font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+.default-pw-banner .dpw-text { flex: 1; }
+.default-pw-banner .dpw-btn { background: #E67E22; color: #fff; border: none;
+  padding: 5px 14px; border-radius: 5px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.default-pw-banner .dpw-btn:hover { background: #CA6F1E; }
+.default-pw-banner .dpw-close { background: transparent; border: none; color: #7E5109;
+  font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px; }
+
 /* API Token Management */
 .token-hint { font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.6; }
 .token-table .token-label { font-weight: 500; }
@@ -445,6 +457,13 @@ body.roam-immersive .batch-bar { display: none; }
 </style>
 </head>
 <body>
+
+<!-- ===== 默认口令安全提醒横幅 ===== -->
+<div id="defaultPwBanner" class="default-pw-banner" style="display:none">
+  <span class="dpw-text">⚠️ 你正在使用默认管理员口令（admin123），存在安全风险，建议尽快修改。</span>
+  <button class="dpw-btn" onclick="closeDefaultPwBanner(); openPwdModal();">立即修改</button>
+  <button class="dpw-close" onclick="closeDefaultPwBanner()" title="本次会话不再提醒">×</button>
+</div>
 
 <!-- ===== 登录页面 ===== -->
 <div class="login-overlay" id="loginOverlay">
@@ -867,6 +886,7 @@ async function checkAuth() {
       document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : ' (只读)');
       document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
       document.getElementById('tokenMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
+      maybeShowDefaultPwBanner(data.default_password);
       applyRoleUI();
       init();
       return true;
@@ -909,6 +929,7 @@ async function doLogin(e) {
       document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : ' (只读)');
       document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
       document.getElementById('tokenMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
+      maybeShowDefaultPwBanner(data.default_password);
       applyRoleUI();
       init(); // 登录成功 → 初始化主应用
     } else {
@@ -968,6 +989,22 @@ function applyRoleUI() {
 }
 
 // ---- 修改密码 ----
+// ---- 默认口令安全提醒 ----
+function maybeShowDefaultPwBanner(isDefault) {
+  const banner = document.getElementById('defaultPwBanner');
+  // 仅管理员、仍用默认口令、且本次会话未手动关闭时显示
+  if (isDefault && currentRole === 'admin' && !sessionStorage.getItem('dpwDismissed')) {
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+function closeDefaultPwBanner() {
+  document.getElementById('defaultPwBanner').style.display = 'none';
+  sessionStorage.setItem('dpwDismissed', '1');
+}
+
 function openPwdModal() {
   document.getElementById('pwdOld').value = '';
   document.getElementById('pwdNew').value = '';
@@ -1002,6 +1039,7 @@ async function doChangePassword() {
     const data = await r.json();
     if (r.ok) {
       okEl.textContent = '密码修改成功！';
+      document.getElementById('defaultPwBanner').style.display = 'none';  // 已改密，撤下提醒
       setTimeout(closePwdModal, 1500);
     } else {
       errEl.textContent = data.error || '修改失败';
@@ -1999,6 +2037,7 @@ document.addEventListener('keydown', e => {
 // ==================== Start ====================
 checkAuth();
 </script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<!-- 本地内置，确保离线/U盘环境可用；SheetJS 0.18.5 -->
+<script src="vendor/xlsx.full.min.js"></script>
 </body>
 </html>

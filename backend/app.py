@@ -9,6 +9,7 @@ import sqlite3
 import os
 import re
 import sys
+import time
 import hashlib
 import platform
 from datetime import datetime, timedelta
@@ -54,7 +55,7 @@ def block_sensitive_paths():
         if segment.startswith(BANNED_PREFIXES):
             return jsonify({'error': 'forbidden'}), 404
 
-DB_PATH = os.path.join(BACKEND_DIR, 'notes.db')
+DB_PATH = os.environ.get('NOTES_DB_PATH', os.path.join(BACKEND_DIR, 'notes.db'))
 
 # 跨平台浏览器打开
 def open_browser(url):
@@ -257,6 +258,40 @@ seed_db()
 
 # ==================== 认证 ====================
 
+# ---- 登录失败限流（按客户端 IP，进程内内存计数） ----
+LOGIN_MAX_FAILS = 5        # 窗口内允许的失败次数
+LOGIN_WINDOW = 300         # 失败计数统计窗口（秒）
+LOGIN_LOCK_SECONDS = 300   # 达到阈值后的锁定时长（秒）
+_LOGIN_FAILS = {}          # ip -> [fail_count, window_start_ts, locked_until_ts]
+DEFAULT_ADMIN_PW = 'admin123'
+
+def _client_ip():
+    fwd = request.headers.get('X-Forwarded-For', '')
+    if fwd:
+        return fwd.split(',')[0].strip()
+    return request.remote_addr or 'unknown'
+
+def login_lock_remaining(ip):
+    """返回该 IP 剩余锁定秒数；未锁定返回 0"""
+    rec = _LOGIN_FAILS.get(ip)
+    if not rec:
+        return 0
+    remaining = rec[2] - time.time()
+    return int(remaining) if remaining > 0 else 0
+
+def record_login_fail(ip):
+    now = time.time()
+    rec = _LOGIN_FAILS.get(ip)
+    if not rec or now - rec[1] > LOGIN_WINDOW:
+        rec = [0, now, 0]
+    rec[0] += 1
+    if rec[0] >= LOGIN_MAX_FAILS:
+        rec[2] = now + LOGIN_LOCK_SECONDS
+    _LOGIN_FAILS[ip] = rec
+
+def clear_login_fails(ip):
+    _LOGIN_FAILS.pop(ip, None)
+
 def _token_role():
     """从请求头读取 API Token 并返回其角色；无效或缺失返回 None。
 
@@ -321,7 +356,8 @@ def api_check_auth():
         return jsonify({
             'authenticated': True,
             'username': session.get('username', ''),
-            'role': session.get('role', 'viewer')
+            'role': session.get('role', 'viewer'),
+            'default_password': session.get('default_password', False)
         })
     return jsonify({'authenticated': False}), 401
 
@@ -336,16 +372,29 @@ def api_login():
     if not username or not password:
         return jsonify({'error': '用户名和密码不能为空'}), 400
 
+    ip = _client_ip()
+    locked = login_lock_remaining(ip)
+    if locked:
+        return jsonify({'error': f'登录失败次数过多，请 {locked} 秒后再试'}), 429
+
     db = get_db()
     user = db.execute('SELECT * FROM users WHERE username=?', (username,)).fetchone()
     if not user or not check_password_hash(user['password_hash'], password):
+        record_login_fail(ip)
         return jsonify({'error': '用户名或密码错误'}), 401
+
+    clear_login_fails(ip)
+    # 检测是否仍在使用默认管理员口令（用于前端提示横幅）
+    default_pw = (user['role'] == 'admin'
+                  and check_password_hash(user['password_hash'], DEFAULT_ADMIN_PW))
 
     session['user_id'] = user['id']
     session['username'] = user['username']
     session['role'] = user['role']
+    session['default_password'] = default_pw
     session.permanent = True
-    return jsonify({'ok': True, 'username': user['username'], 'role': user['role']})
+    return jsonify({'ok': True, 'username': user['username'], 'role': user['role'],
+                    'default_password': default_pw})
 
 @app.route('/api/logout', methods=['POST'])
 def api_logout():
@@ -375,6 +424,7 @@ def api_change_password():
     db.execute('UPDATE users SET password_hash=? WHERE id=?',
                (generate_password_hash(new_password), session['user_id']))
     db.commit()
+    session['default_password'] = False  # 已改密，撤下默认口令提示
     return jsonify({'ok': True})
 
 # ---- 用户管理（仅管理员） ----
@@ -544,6 +594,49 @@ def parse_int(value, default, lo=None, hi=None):
         n = hi
     return n
 
+def next_code_num(db, section):
+    """取某章节当前最大编号序号 + 1（按数字部分计算，不依赖插入顺序）"""
+    row = db.execute(
+        "SELECT MAX(CAST(substr(code, instr(code,'-')+1) AS INTEGER)) AS m "
+        "FROM notes WHERE section=?",
+        (section,)
+    ).fetchone()
+    return (row['m'] or 0) + 1
+
+def insert_note(db, section, title, content='', tags='', source='个人总结',
+                level='★', note_date=None):
+    """生成 section 下一个编号并插入；遇编号唯一约束冲突自动重试（防并发竞态）。
+    返回生成的 code。"""
+    if note_date is None:
+        note_date = datetime.now().strftime('%Y-%m-%d')
+    for _ in range(10):
+        code = f'{section}-{next_code_num(db, section):03d}'
+        try:
+            db.execute(
+                'INSERT INTO notes(code,section,title,content,tags,source,level,note_date) '
+                'VALUES(?,?,?,?,?,?,?,?)',
+                (code, section, title, content, tags, source, level, note_date)
+            )
+            return code
+        except sqlite3.IntegrityError:
+            continue  # 编号被并发占用，重新计算后重试
+    raise sqlite3.IntegrityError(f'无法为章节 {section} 生成唯一编号')
+
+def move_note_to_section(db, note_id, target_section, extra=None):
+    """把笔记移动到目标章节并按新章节重新生成编号；遇冲突自动重试。返回新 code。
+    extra: 需一并更新的字段，如 {'level': '★★', 'source': 'x'}。"""
+    extra = extra or {}
+    for _ in range(10):
+        code = f'{target_section}-{next_code_num(db, target_section):03d}'
+        cols = ['section=?', 'code=?'] + [f'{k}=?' for k in extra] + ['updated_at=datetime("now","localtime")']
+        vals = [target_section, code] + list(extra.values()) + [note_id]
+        try:
+            db.execute(f'UPDATE notes SET {", ".join(cols)} WHERE id=?', vals)
+            return code
+        except sqlite3.IntegrityError:
+            continue
+    raise sqlite3.IntegrityError(f'无法为章节 {target_section} 生成唯一编号')
+
 # --- 笔记 CRUD ---
 @app.route('/api/notes')
 @login_required
@@ -643,24 +736,12 @@ def api_note_create():
     if not valid_date(note_date):
         return jsonify({'error': 'note_date 格式应为 YYYY-MM-DD'}), 400
 
-    # 自动生成编号
-    max_code = db.execute(
-        'SELECT code FROM notes WHERE section=? ORDER BY id DESC LIMIT 1', (section,)
-    ).fetchone()
-    if max_code:
-        last_num = int(max_code['code'].split('-')[1])
-        new_num = last_num + 1
-    else:
-        new_num = 1
-    code = f'{section}-{new_num:03d}'
-
-    content = data.get('content', '')
-    tags    = data.get('tags', '')
-    source  = data.get('source', '个人总结')
-
-    db.execute(
-        'INSERT INTO notes(code,section,title,content,tags,source,level,note_date) VALUES(?,?,?,?,?,?,?,?)',
-        (code, section, title, content, tags, source, level, note_date)
+    code = insert_note(
+        db, section, title,
+        content=data.get('content', ''),
+        tags=data.get('tags', ''),
+        source=data.get('source', '个人总结'),
+        level=level, note_date=note_date
     )
     db.commit()
 
@@ -729,26 +810,49 @@ def api_notes_batch_update():
 
     db = get_db()
 
-    # 只允许批量更新这些字段
-    allowed = {'level', 'section', 'source'}
-    set_parts = []
-    params = []
+    # 只允许批量更新这些字段；section 变更会触发编号重新生成
+    target_section = None
+    extra = {}  # 随更新一并设置的字段（level/source）
     for k, v in updates.items():
-        if k not in allowed:
-            continue
-        if k == 'level' and not valid_level(v):
-            return jsonify({'error': 'level 只能为 ★ / ★★ / ★★★'}), 400
-        if k == 'section' and not section_exists(db, v):
-            return jsonify({'error': f'未知的章节编码: {v}'}), 400
-        set_parts.append(f'{k}=?')
-        params.append(v)
+        if k == 'level':
+            if not valid_level(v):
+                return jsonify({'error': 'level 只能为 ★ / ★★ / ★★★'}), 400
+            extra['level'] = v
+        elif k == 'source':
+            extra['source'] = v
+        elif k == 'section':
+            if not section_exists(db, v):
+                return jsonify({'error': f'未知的章节编码: {v}'}), 400
+            target_section = v
 
-    if not set_parts:
+    if not extra and target_section is None:
         return jsonify({'error': '无有效更新字段'}), 400
+
     placeholders = ','.join(['?'] * len(ids))
-    sql = f'UPDATE notes SET {", ".join(set_parts)}, updated_at=datetime("now","localtime") WHERE id IN ({placeholders})'
-    params.extend(ids)
-    cursor = db.execute(sql, params)
+
+    if target_section is not None:
+        # 移动章节：逐条按新章节重新生成编号（编号前缀与所在章节保持一致）
+        rows = db.execute(
+            f'SELECT id, section FROM notes WHERE id IN ({placeholders})', ids
+        ).fetchall()
+        updated = 0
+        for r in rows:
+            if r['section'] == target_section:
+                # 已在目标章节，编号无需变动，仅更新附加字段
+                if extra:
+                    cols = [f'{k}=?' for k in extra] + ['updated_at=datetime("now","localtime")']
+                    db.execute(f'UPDATE notes SET {", ".join(cols)} WHERE id=?',
+                               list(extra.values()) + [r['id']])
+            else:
+                move_note_to_section(db, r['id'], target_section, extra)
+            updated += 1
+        db.commit()
+        return jsonify({'ok': True, 'updated': updated})
+
+    # 仅批量更新 level/source
+    cols = [f'{k}=?' for k in extra] + ['updated_at=datetime("now","localtime")']
+    sql = f'UPDATE notes SET {", ".join(cols)} WHERE id IN ({placeholders})'
+    cursor = db.execute(sql, list(extra.values()) + ids)
     db.commit()
     return jsonify({'ok': True, 'updated': cursor.rowcount})
 
@@ -811,15 +915,6 @@ def api_note_batch():
         d = entry.get('date', '')
         return d if valid_date(d) else datetime.now().strftime('%Y-%m-%d')
 
-    # 获取当前最大序号
-    max_code_row = db.execute(
-        'SELECT code FROM notes WHERE section=? ORDER BY id DESC LIMIT 1', (section,)
-    ).fetchone()
-    if max_code_row:
-        next_num = int(max_code_row['code'].split('-')[1]) + 1
-    else:
-        next_num = 1
-
     # 获取已有标题用于重复检测
     existing_titles = [r['title'] for r in db.execute('SELECT title FROM notes WHERE section=?', (section,)).fetchall()]
 
@@ -842,18 +937,15 @@ def api_note_batch():
         if is_dup:
             continue
 
-        code = f'{section}-{next_num:03d}'
-        db.execute(
-            'INSERT INTO notes(code,section,title,content,tags,source,level,note_date) VALUES(?,?,?,?,?,?,?,?)',
-            (code, section, title,
-             entry.get('content', ''),
-             entry.get('tags', ''),
-             entry.get('source', '个人总结'),
-             norm_level(entry),
-             norm_date(entry))
+        code = insert_note(
+            db, section, title,
+            content=entry.get('content', ''),
+            tags=entry.get('tags', ''),
+            source=entry.get('source', '个人总结'),
+            level=norm_level(entry),
+            note_date=norm_date(entry)
         )
         added.append({'code': code, 'title': title})
-        next_num += 1
 
     db.commit()
     return jsonify({'added': len(added), 'merged': len(merged), 'skipped': len(skipped),
@@ -901,18 +993,6 @@ def api_notes_ingest():
     db = get_db()
     valid_sections = {r['code'] for r in db.execute('SELECT code FROM sections').fetchall()}
 
-    # 缓存每个章节的下一个序号，避免重复查询
-    next_num_cache = {}
-    def next_code(sec):
-        if sec not in next_num_cache:
-            row = db.execute(
-                'SELECT code FROM notes WHERE section=? ORDER BY id DESC LIMIT 1', (sec,)
-            ).fetchone()
-            next_num_cache[sec] = (int(row['code'].split('-')[1]) + 1) if row else 1
-        num = next_num_cache[sec]
-        next_num_cache[sec] = num + 1
-        return f'{sec}-{num:03d}'
-
     def pick_date(entry):
         d = entry.get('date') or entry.get('note_date') or ''
         return d if valid_date(d) else datetime.now().strftime('%Y-%m-%d')
@@ -951,12 +1031,11 @@ def api_notes_ingest():
                 merged.append({'code': dup['code'], 'title': title})
                 continue
 
-        code = next_code(section)
-        db.execute(
-            'INSERT INTO notes(code,section,title,content,tags,source,level,note_date) '
-            'VALUES(?,?,?,?,?,?,?,?)',
-            (code, section, title, entry.get('content', ''), entry.get('tags', ''),
-             entry.get('source', '个人总结'), pick_level(entry), pick_date(entry))
+        code = insert_note(
+            db, section, title,
+            content=entry.get('content', ''), tags=entry.get('tags', ''),
+            source=entry.get('source', '个人总结'),
+            level=pick_level(entry), note_date=pick_date(entry)
         )
         added.append({'code': code, 'title': title})
 

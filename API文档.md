@@ -41,6 +41,9 @@ Authorization: Bearer <你的令牌>
 
 `POST /api/login` 后服务端下发会话 Cookie，后续请求自动携带。适合网页交互，不适合脚本。
 
+- 登录响应及 `GET /api/check-auth` 会返回 `default_password` 布尔字段，提示是否仍在使用默认管理员口令。
+- **登录失败限流**：同一 IP 连续失败达阈值（默认 5 次 / 5 分钟）后会被临时锁定，期间登录返回 `429`。
+
 ### 权限说明
 
 - `admin` 角色：可读可写（增删改）。
@@ -163,6 +166,7 @@ Authorization: Bearer <你的令牌>
 ### `PUT /api/notes/<id>` —— 更新单条（admin，仅传需要改的字段）
 ### `DELETE /api/notes/<id>` —— 删除单条（admin）
 ### `PUT /api/notes/batch` —— 批量改字段（admin，`{ids, updates}`，仅允许 `level`/`section`/`source`）
+> 当 `updates` 含 `section`（移动章节）时，被移动笔记的编号 `code` 会按新章节自动重新生成，保持编号前缀与所在章节一致。
 ### `DELETE /api/notes/batch` —— 批量删除（admin，`{ids}`）
 
 ### `GET /api/sections` —— 章节列表（含领域名）
@@ -299,3 +303,4 @@ python note_cli.py stats                     # 统计
 | `403` | 已认证但无管理员权限 |
 | `404` | 资源不存在 |
 | `409` | 冲突（如用户名已存在） |
+| `429` | 登录失败次数过多，被临时限流 |
