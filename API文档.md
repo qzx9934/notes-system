@@ -46,7 +46,9 @@ Authorization: Bearer <你的令牌>
 
 ### 权限说明
 
-- `admin` 角色：可读可写（增删改）。
+- `admin` 角色：可读可写（增删改），直接生效；可审批共建者的变更申请。
+- `contributor`（共建者）角色：可提交 新增/编辑/删除 单条笔记，但**不直接生效**——
+  写接口返回 `202` 且生成一条「变更申请」，需管理员在 `/api/proposals` 审批通过后才真正执行。
 - `viewer` 角色：仅可读。
 - 未认证访问写接口返回 `401`；认证但权限不足返回 `403`。
 
@@ -216,6 +218,29 @@ Authorization: Bearer <你的令牌>
 - `?threshold=` 正文相似度阈值，0.5~1.0，默认 `0.85`。
 - `?scope=section`（默认，仅同章节内查重）或 `?scope=all`（跨章节全库查重）。
 - 响应：`{"ok": true, "threshold": 0.85, "scope": "section", "total_notes": 120, "cluster_count": 2, "duplicate_notes": 5, "clusters": [[{"id","code","section","title","note_date","updated_at"}, …], …]}`。
+
+### `POST /api/notes/summarize-batch` —— 一键批量总结（admin）
+
+对一批勾选的笔记批量生成 AI 总结。body：`{"ids": [..], "force": false}`。默认跳过已有总结的，`force=true` 则全部重做；单次上限 50 条。响应：`{"ok": true, "done": N, "skipped": N, "failed": N, "failed_list": [..], "skipped_list": [..]}`。
+
+### `POST /api/ai/fill` —— AI 填充结构化字段（admin / contributor）
+
+根据正文 `content` 调用大模型推断并返回建议的 `title / tags / section / level / source`（**不落库**，由前端填入编辑框）。与 AI 总结共用 DeepSeek 密钥/模型。非法 `section`/`level`/`source` 会被置空。body：`{"content": "正文…"}`。
+
+### `GET/PUT /api/config/ai-prompt` —— AI 总结提示词（admin）
+
+- `GET`：`{"prompt": "自定义或空", "default": "内置默认", "effective": "实际生效", "is_custom": bool}`。
+- `PUT`：body `{"prompt": "…"}` 设置自定义提示词；传**空字符串**则恢复内置默认。
+
+### `GET /api/login-log` —— 登录历史（admin）
+
+`?user_id=` 按用户过滤、`?page=&per=` 分页。响应含 `items:[{id,user_id,username,ip,login_at}]` 与分页字段。`GET /api/users` 返回里也带每个用户的 `last_login_at`（最后上线时间）。
+
+### 变更申请（共建者审批流）
+
+- `GET /api/proposals?status=pending` —— 列出申请。admin 看全部，contributor 仅看自己提交的；含目标笔记当前快照 `current` 供对比，与解析后的 `payload`。
+- `POST /api/proposals/<id>/approve`（admin）—— 批准并**真正执行**该变更；若目标笔记已被删除等导致无法执行，会自动驳回并返回 `409`。
+- `POST /api/proposals/<id>/reject`（admin）—— 驳回，body 可带 `{"review_note": "原因"}`。
 
 ---
 

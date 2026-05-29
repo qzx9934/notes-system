@@ -575,7 +575,7 @@ def test_summarize_empty_content_returns_400(admin):
 def test_summarize_success_saves_to_note(admin, monkeypatch):
     monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'test-key')
     monkeypatch.setattr(_app, '_deepseek_summarize',
-                        lambda title, content: '## 要点\n- 总结好的内容')
+                        lambda title, content, prompt=None: '## 要点\n- 总结好的内容')
     nid = admin.post('/api/notes', json={
         'section': 'A01', 'title': '可总结', 'content': '原始笔记内容'}).get_json()['id']
     r = admin.post(f'/api/notes/{nid}/summarize')
@@ -587,10 +587,216 @@ def test_summarize_success_saves_to_note(admin, monkeypatch):
 
 
 def test_summarize_upstream_error_returns_502(admin, monkeypatch):
-    def boom(title, content):
+    def boom(title, content, prompt=None):
         raise RuntimeError('DeepSeek 接口返回 500：err')
     monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'test-key')
     monkeypatch.setattr(_app, '_deepseek_summarize', boom)
     nid = admin.post('/api/notes', json={
         'section': 'A01', 'title': '上游错误', 'content': '内容'}).get_json()['id']
     assert admin.post(f'/api/notes/{nid}/summarize').status_code == 502
+
+
+# ---------------- 登录日志 + 最后上线 ----------------
+
+def _new_client():
+    return _app.app.test_client()
+
+
+def _make_user(admin, username, role, password='secret123'):
+    admin.post('/api/users', json={'username': username, 'password': password, 'role': role})
+
+
+def test_login_records_history_and_last_login(admin):
+    # admin 已登录一次；用户列表应带 last_login_at
+    users = admin.get('/api/users').get_json()
+    me = [u for u in users if u['username'] == 'admin'][0]
+    assert me['last_login_at']
+    log = admin.get('/api/login-log').get_json()
+    assert log['total'] >= 1
+    assert any(it['username'] == 'admin' for it in log['items'])
+
+
+def test_login_log_requires_admin(client):
+    assert client.get('/api/login-log').status_code == 401
+
+
+def test_login_log_filter_by_user(admin):
+    _make_user(admin, 'viewer1', 'viewer')
+    c = _new_client()
+    c.post('/api/login', json={'username': 'viewer1', 'password': 'secret123'})
+    users = admin.get('/api/users').get_json()
+    vid = [u for u in users if u['username'] == 'viewer1'][0]['id']
+    log = admin.get(f'/api/login-log?user_id={vid}').get_json()
+    assert log['total'] >= 1 and all(it['user_id'] == vid for it in log['items'])
+
+
+# ---------------- 共建者审批流 ----------------
+
+def test_create_contributor_role_allowed(admin):
+    r = admin.post('/api/users', json={'username': 'co1', 'password': 'secret123', 'role': 'contributor'})
+    assert r.status_code == 201 and r.get_json()['role'] == 'contributor'
+
+
+def _contributor_client(admin, name='co'):
+    _make_user(admin, name, 'contributor')
+    c = _new_client()
+    c.post('/api/login', json={'username': name, 'password': 'secret123'})
+    return c
+
+
+def test_contributor_create_becomes_proposal(admin):
+    co = _contributor_client(admin, 'co_create')
+    r = co.post('/api/notes', json={'section': 'A01', 'title': '共建者新增', 'content': '内容'})
+    assert r.status_code == 202 and r.get_json()['pending'] is True
+    # 笔记尚未真正出现
+    assert admin.get('/api/notes?q=共建者新增').get_json()['total'] == 0
+    # 管理员能看到待审申请
+    props = admin.get('/api/proposals?status=pending').get_json()
+    assert any(p['kind'] == 'create' for p in props['items'])
+
+
+def test_contributor_proposal_approve_applies(admin):
+    co = _contributor_client(admin, 'co_appr')
+    co.post('/api/notes', json={'section': 'A01', 'title': '待批准新增', 'content': '正文'})
+    pid = [p for p in admin.get('/api/proposals?status=pending').get_json()['items']
+           if p['payload'].get('title') == '待批准新增'][0]['id']
+    assert admin.post(f'/api/proposals/{pid}/approve').status_code == 200
+    assert admin.get('/api/notes?q=待批准新增').get_json()['total'] == 1
+
+
+def test_contributor_proposal_reject_discards(admin):
+    co = _contributor_client(admin, 'co_rej')
+    co.post('/api/notes', json={'section': 'A01', 'title': '将被驳回', 'content': '正文'})
+    pid = [p for p in admin.get('/api/proposals?status=pending').get_json()['items']
+           if p['payload'].get('title') == '将被驳回'][0]['id']
+    assert admin.post(f'/api/proposals/{pid}/reject', json={'review_note': '不合适'}).status_code == 200
+    assert admin.get('/api/notes?q=将被驳回').get_json()['total'] == 0
+
+
+def test_contributor_update_proposal_then_approve(admin):
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '原标题', 'content': '原文'}).get_json()['id']
+    co = _contributor_client(admin, 'co_upd')
+    r = co.put(f'/api/notes/{nid}', json={'title': '改后标题'})
+    assert r.status_code == 202
+    # 未生效
+    assert admin.get(f'/api/notes/{nid}').get_json()['title'] == '原标题'
+    pid = admin.get('/api/proposals?status=pending').get_json()['items'][0]['id']
+    admin.post(f'/api/proposals/{pid}/approve')
+    assert admin.get(f'/api/notes/{nid}').get_json()['title'] == '改后标题'
+
+
+def test_contributor_delete_proposal(admin):
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '待删除卡', 'content': 'x'}).get_json()['id']
+    co = _contributor_client(admin, 'co_del')
+    assert co.delete(f'/api/notes/{nid}').status_code == 202
+    assert admin.get(f'/api/notes/{nid}').status_code == 200  # 仍在
+    pid = admin.get('/api/proposals?status=pending').get_json()['items'][0]['id']
+    admin.post(f'/api/proposals/{pid}/approve')
+    assert admin.get(f'/api/notes/{nid}').status_code == 404
+
+
+def test_contributor_sees_only_own_proposals(admin):
+    co = _contributor_client(admin, 'co_own')
+    co.post('/api/notes', json={'section': 'A01', 'title': '我的提交', 'content': 'x'})
+    mine = co.get('/api/proposals').get_json()
+    assert all(p['proposer_name'] == 'co_own' for p in mine['items'])
+    assert any(p['payload'].get('title') == '我的提交' for p in mine['items'])
+
+
+def test_approve_update_on_deleted_note_auto_rejects(admin):
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '将消失', 'content': 'x'}).get_json()['id']
+    co = _contributor_client(admin, 'co_gone')
+    co.put(f'/api/notes/{nid}', json={'content': '改'})
+    pid = admin.get('/api/proposals?status=pending').get_json()['items'][0]['id']
+    admin.delete(f'/api/notes/{nid}')  # 管理员先删了目标
+    r = admin.post(f'/api/proposals/{pid}/approve')
+    assert r.status_code == 409 and r.get_json().get('auto_rejected') is True
+
+
+# ---------------- AI 提示词配置 ----------------
+
+def test_get_ai_prompt_default(admin):
+    d = admin.get('/api/config/ai-prompt').get_json()
+    assert d['is_custom'] is False
+    assert d['effective'] == _app.AI_SUMMARY_SYSTEM_PROMPT
+
+
+def test_set_and_revert_ai_prompt(admin):
+    admin.put('/api/config/ai-prompt', json={'prompt': '自定义提示词内容'})
+    d = admin.get('/api/config/ai-prompt').get_json()
+    assert d['is_custom'] is True and d['effective'] == '自定义提示词内容'
+    # 清空恢复默认
+    admin.put('/api/config/ai-prompt', json={'prompt': ''})
+    d2 = admin.get('/api/config/ai-prompt').get_json()
+    assert d2['is_custom'] is False and d2['effective'] == _app.AI_SUMMARY_SYSTEM_PROMPT
+
+
+def test_summarize_uses_custom_prompt(admin, monkeypatch):
+    captured = {}
+    def fake_chat(system, user, temperature=0.3):
+        captured['system'] = system
+        return '## 总结'
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    monkeypatch.setattr(_app, '_deepseek_chat', fake_chat)
+    admin.put('/api/config/ai-prompt', json={'prompt': '电厂专用提示词X'})
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': 't', 'content': '正文'}).get_json()['id']
+    admin.post(f'/api/notes/{nid}/summarize')
+    assert captured['system'] == '电厂专用提示词X'
+    admin.put('/api/config/ai-prompt', json={'prompt': ''})  # 还原
+
+
+# ---------------- 一键（批量）总结 ----------------
+
+def test_summarize_batch(admin, monkeypatch):
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    monkeypatch.setattr(_app, '_deepseek_summarize', lambda t, c, p=None: '## 批量总结')
+    a = admin.post('/api/notes', json={'section': 'A01', 'title': '批1', 'content': '甲'}).get_json()['id']
+    b = admin.post('/api/notes', json={'section': 'A01', 'title': '批2', 'content': '乙'}).get_json()['id']
+    empty = admin.post('/api/notes', json={'section': 'A01', 'title': '批空'}).get_json()['id']
+    r = admin.post('/api/notes/summarize-batch', json={'ids': [a, b, empty]})
+    body = r.get_json()
+    assert body['done'] == 2 and body['skipped'] == 1
+    # 默认跳过已有总结
+    r2 = admin.post('/api/notes/summarize-batch', json={'ids': [a]})
+    assert r2.get_json()['skipped'] == 1 and r2.get_json()['done'] == 0
+    # force 重做
+    r3 = admin.post('/api/notes/summarize-batch', json={'ids': [a], 'force': True})
+    assert r3.get_json()['done'] == 1
+
+
+def test_summarize_batch_requires_admin(client):
+    assert client.post('/api/notes/summarize-batch', json={'ids': [1]}).status_code == 401
+
+
+# ---------------- AI 填充 ----------------
+
+def test_ai_fill_parses_fields(admin, monkeypatch):
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    monkeypatch.setattr(_app, '_deepseek_chat',
+                        lambda system, user, temperature=0.3:
+                        '```json\n{"title":"MFT动作条件","tags":"MFT,保护","section":"A01","level":"★★★","source":"规程"}\n```')
+    r = admin.post('/api/ai/fill', json={'content': '锅炉MFT动作条件十六项…'})
+    f = r.get_json()['fields']
+    assert f['title'] == 'MFT动作条件' and f['section'] == 'A01'
+    assert f['level'] == '★★★' and f['source'] == '规程' and 'MFT' in f['tags']
+
+
+def test_ai_fill_drops_invalid_section(admin, monkeypatch):
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    monkeypatch.setattr(_app, '_deepseek_chat',
+                        lambda system, user, temperature=0.3:
+                        '{"title":"x","tags":"a","section":"ZZZ","level":"★","source":"乱来"}')
+    f = admin.post('/api/ai/fill', json={'content': '一些内容'}).get_json()['fields']
+    assert f['section'] == '' and f['source'] == ''
+
+
+def test_ai_fill_empty_content_400(admin):
+    assert admin.post('/api/ai/fill', json={'content': ''}).status_code == 400
+
+
+def test_ai_fill_contributor_allowed(admin, monkeypatch):
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    monkeypatch.setattr(_app, '_deepseek_chat',
+                        lambda system, user, temperature=0.3: '{"title":"t","tags":"a","section":"A01","level":"★","source":"规程"}')
+    co = _contributor_client(admin, 'co_fill')
+    assert co.post('/api/ai/fill', json={'content': 'x'}).status_code == 200

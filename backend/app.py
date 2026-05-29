@@ -15,6 +15,7 @@ import platform
 import subprocess
 import mimetypes
 import difflib
+import json
 
 import requests
 
@@ -325,6 +326,31 @@ def init_db():
             created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
             last_used_at    TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS login_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER,
+            username    TEXT    NOT NULL,
+            ip          TEXT    NOT NULL DEFAULT '',
+            login_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_login_user ON login_log(user_id);
+        CREATE INDEX IF NOT EXISTS idx_login_at   ON login_log(login_at);
+
+        CREATE TABLE IF NOT EXISTS proposals (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind          TEXT    NOT NULL,             -- create / update / delete
+            note_id       INTEGER,                      -- update/delete 的目标；create 为空
+            payload       TEXT    NOT NULL DEFAULT '{}',-- 提议写入的字段(JSON)
+            proposer_id   INTEGER,
+            proposer_name TEXT    NOT NULL DEFAULT '',
+            status        TEXT    NOT NULL DEFAULT 'pending', -- pending/approved/rejected
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            reviewed_by   TEXT,
+            reviewed_at   TEXT,
+            review_note   TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_prop_status ON proposals(status);
     ''')
     db.commit()
     db.close()
@@ -398,11 +424,12 @@ def seed_db():
     except sqlite3.OperationalError:
         pass  # 列已存在
 
-    # 数据库迁移：为 notes 表添加 来源文件 / AI 总结 列（旧库自动升级）
+    # 数据库迁移：为 notes 表添加 来源文件 / AI 总结 列，为 users 添加最后上线时间（旧库自动升级）
     for col, ddl in (
         ('source_file',   "ALTER TABLE notes ADD COLUMN source_file TEXT NOT NULL DEFAULT ''"),
         ('ai_summary',    "ALTER TABLE notes ADD COLUMN ai_summary TEXT NOT NULL DEFAULT ''"),
         ('ai_summary_at', "ALTER TABLE notes ADD COLUMN ai_summary_at TEXT"),
+        ('last_login_at', "ALTER TABLE users ADD COLUMN last_login_at TEXT"),
     ):
         try:
             db.execute(ddl)
@@ -610,6 +637,52 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def effective_actor():
+    """返回当前调用者 (role, user_id, username)；优先浏览器会话，其次 API 令牌。
+    未认证返回 (None, None, None)。"""
+    if 'user_id' in session:
+        return session.get('role', 'viewer'), session.get('user_id'), session.get('username', '')
+    role = _token_role()
+    if role is not None:
+        return role, None, '(API令牌)'
+    return None, None, None
+
+def writer_required(f):
+    """写权限装饰器：admin 或 contributor（共建者）均可进入；
+    具体是「直接生效」还是「转为待审申请」由各接口内按角色判断。"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        role, _, _ = effective_actor()
+        if role is None:
+            return jsonify({'error': 'unauthorized'}), 401
+        if role not in ('admin', 'contributor'):
+            return jsonify({'error': 'forbidden', 'message': '无写入权限'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+def get_config(db, key, default=''):
+    row = db.execute('SELECT value FROM config WHERE key=?', (key,)).fetchone()
+    return row['value'] if row else default
+
+def set_config(db, key, value):
+    db.execute(
+        'INSERT INTO config(key,value) VALUES(?,?) '
+        'ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+        (key, value)
+    )
+
+def queue_proposal(kind, note_id, payload):
+    """共建者的写操作转存为一条待审批申请，返回 202。"""
+    _, uid, uname = effective_actor()
+    db = get_db()
+    cur = db.execute(
+        'INSERT INTO proposals(kind,note_id,payload,proposer_id,proposer_name) VALUES(?,?,?,?,?)',
+        (kind, note_id, json.dumps(payload, ensure_ascii=False), uid, uname)
+    )
+    db.commit()
+    return jsonify({'ok': True, 'pending': True, 'proposal_id': cur.lastrowid,
+                    'message': '已提交，等待管理员确认后生效'}), 202
+
 @app.route('/api/check-auth')
 def api_check_auth():
     """检查当前登录状态"""
@@ -654,6 +727,16 @@ def api_login():
     session['role'] = user['role']
     session['default_password'] = default_pw
     session.permanent = True
+
+    # 记录登录历史 + 更新最后上线时间（失败不影响登录本身）
+    try:
+        db.execute('UPDATE users SET last_login_at=datetime("now","localtime") WHERE id=?', (user['id'],))
+        db.execute('INSERT INTO login_log(user_id, username, ip) VALUES(?,?,?)',
+                   (user['id'], user['username'], ip))
+        db.commit()
+    except sqlite3.Error:
+        app.logger.exception('记录登录日志失败')
+
     return jsonify({'ok': True, 'username': user['username'], 'role': user['role'],
                     'default_password': default_pw})
 
@@ -694,8 +777,32 @@ def api_change_password():
 def api_users_list():
     """列出所有用户（管理员专用）"""
     db = get_db()
-    rows = db.execute('SELECT id, username, role, created_at FROM users ORDER BY id').fetchall()
+    rows = db.execute('SELECT id, username, role, created_at, last_login_at FROM users ORDER BY id').fetchall()
     return jsonify([dict(r) for r in rows])
+
+@app.route('/api/login-log')
+@admin_required
+def api_login_log():
+    """登录历史（管理员专用）。可选 ?user_id= 过滤；分页 ?page= &per=。"""
+    db = get_db()
+    page = parse_int(request.args.get('page'), 1, lo=1)
+    per = parse_int(request.args.get('per'), 50, lo=1, hi=200)
+    offset = (page - 1) * per
+    uid = request.args.get('user_id', '').strip()
+
+    where, params = '1=1', []
+    if uid:
+        where, params = 'user_id=?', [uid]
+    total = db.execute(f'SELECT COUNT(*) FROM login_log WHERE {where}', params).fetchone()[0]
+    rows = db.execute(
+        f'SELECT id, user_id, username, ip, login_at FROM login_log WHERE {where} '
+        f'ORDER BY login_at DESC, id DESC LIMIT ? OFFSET ?',
+        params + [per, offset]
+    ).fetchall()
+    return jsonify({
+        'items': [dict(r) for r in rows], 'total': total,
+        'page': page, 'per': per, 'pages': (total + per - 1) // per if total else 0
+    })
 
 @app.route('/api/users', methods=['POST'])
 @admin_required
@@ -712,8 +819,8 @@ def api_user_create():
         return jsonify({'error': '用户名和密码不能为空'}), 400
     if len(password) < 6:
         return jsonify({'error': '密码至少6位'}), 400
-    if role not in ('admin', 'viewer'):
-        return jsonify({'error': '角色只能为 admin 或 viewer'}), 400
+    if role not in ('admin', 'viewer', 'contributor'):
+        return jsonify({'error': '角色只能为 admin / contributor / viewer'}), 400
 
     db = get_db()
     existing = db.execute('SELECT id FROM users WHERE username=?', (username,)).fetchone()
@@ -769,8 +876,8 @@ def api_token_create():
     data = request.get_json() or {}
     label = data.get('label', '').strip()
     role = data.get('role', 'admin').strip()
-    if role not in ('admin', 'viewer'):
-        return jsonify({'error': '角色只能为 admin 或 viewer'}), 400
+    if role not in ('admin', 'viewer', 'contributor'):
+        return jsonify({'error': '角色只能为 admin / contributor / viewer'}), 400
 
     import secrets
     raw = 'ntk_' + secrets.token_hex(24)
@@ -993,7 +1100,7 @@ def api_note_get(id):
     return jsonify(dict(row))
 
 @app.route('/api/notes', methods=['POST'])
-@admin_required
+@writer_required
 def api_note_create():
     data = request.get_json()
     if not data:
@@ -1015,13 +1122,23 @@ def api_note_create():
     if not valid_date(note_date):
         return jsonify({'error': 'note_date 格式应为 YYYY-MM-DD'}), 400
 
+    fields = {
+        'section': section, 'title': title,
+        'content': data.get('content', ''), 'tags': data.get('tags', ''),
+        'source': data.get('source', '个人总结'), 'level': level,
+        'note_date': note_date, 'source_file': (data.get('source_file') or '').strip(),
+    }
+
+    # 共建者：转为待审申请，不直接落库
+    role, _, _ = effective_actor()
+    if role == 'contributor':
+        return queue_proposal('create', None, fields)
+
     code = insert_note(
         db, section, title,
-        content=data.get('content', ''),
-        tags=data.get('tags', ''),
-        source=data.get('source', '个人总结'),
-        level=level, note_date=note_date,
-        source_file=(data.get('source_file') or '').strip()
+        content=fields['content'], tags=fields['tags'],
+        source=fields['source'], level=level, note_date=note_date,
+        source_file=fields['source_file']
     )
     db.commit()
 
@@ -1029,7 +1146,7 @@ def api_note_create():
     return jsonify(note_to_dict(row)), 201
 
 @app.route('/api/notes/<int:id>', methods=['PUT'])
-@admin_required
+@writer_required
 def api_note_update(id):
     data = request.get_json()
     if not data:
@@ -1052,6 +1169,15 @@ def api_note_update(id):
     if not valid_date(note_date):
         return jsonify({'error': 'note_date 格式应为 YYYY-MM-DD'}), 400
 
+    # 共建者：仅记录其实际提交的字段，转为待审申请
+    role, _, _ = effective_actor()
+    if role == 'contributor':
+        allowed = ('title', 'content', 'tags', 'source', 'level', 'note_date')
+        proposed = {k: data[k] for k in allowed if k in data}
+        if not proposed:
+            return jsonify({'error': '没有要修改的字段'}), 400
+        return queue_proposal('update', id, proposed)
+
     db.execute(
         'UPDATE notes SET title=?,content=?,tags=?,source=?,level=?,note_date=?,updated_at=datetime("now","localtime") WHERE id=?',
         (title, content, tags, source, level, note_date, id)
@@ -1065,26 +1191,21 @@ def api_note_update(id):
     row = db.execute('SELECT * FROM notes WHERE id=?', (id,)).fetchone()
     return jsonify(note_to_dict(row))
 
-# --- AI 总结（DeepSeek） ---
-def _deepseek_summarize(title, content):
-    """调用 DeepSeek Chat 接口，返回 Markdown 总结文本。
-    失败时抛出带中文说明的 RuntimeError，由调用方转成合适的 HTTP 状态。"""
+# --- AI（DeepSeek） ---
+def _deepseek_chat(system_prompt, user_text, temperature=0.3):
+    """通用 DeepSeek Chat 调用，返回回复文本。失败抛出带中文说明的 RuntimeError。"""
     if not DEEPSEEK_API_KEY:
-        raise RuntimeError('未配置 DeepSeek 密钥（环境变量 NOTES_DEEPSEEK_API_KEY），无法使用 AI 总结')
-    user_text = f'笔记标题：{title}\n\n笔记内容：\n{content}'
+        raise RuntimeError('未配置 DeepSeek 密钥（环境变量 NOTES_DEEPSEEK_API_KEY），无法使用 AI 功能')
     payload = {
         'model': DEEPSEEK_MODEL,
         'messages': [
-            {'role': 'system', 'content': AI_SUMMARY_SYSTEM_PROMPT},
+            {'role': 'system', 'content': system_prompt},
             {'role': 'user', 'content': user_text},
         ],
         'stream': False,
-        'temperature': 0.3,
+        'temperature': temperature,
     }
-    headers = {
-        'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
-        'Content-Type': 'application/json',
-    }
+    headers = {'Authorization': f'Bearer {DEEPSEEK_API_KEY}', 'Content-Type': 'application/json'}
     try:
         resp = requests.post(f'{DEEPSEEK_BASE_URL}/chat/completions',
                              json=payload, headers=headers, timeout=DEEPSEEK_TIMEOUT)
@@ -1093,17 +1214,27 @@ def _deepseek_summarize(title, content):
     except requests.RequestException as e:
         raise RuntimeError(f'调用 DeepSeek 失败：{e}')
     if resp.status_code != 200:
-        # 不回显上游可能含敏感信息的完整响应，仅取状态码与简短片段
-        snippet = (resp.text or '')[:200]
+        snippet = (resp.text or '')[:200]  # 不回显完整响应
         raise RuntimeError(f'DeepSeek 接口返回 {resp.status_code}：{snippet}')
     try:
-        data = resp.json()
-        text = data['choices'][0]['message']['content'].strip()
+        text = resp.json()['choices'][0]['message']['content'].strip()
     except (ValueError, KeyError, IndexError, TypeError):
-        raise RuntimeError('DeepSeek 返回格式异常，无法解析总结内容')
+        raise RuntimeError('DeepSeek 返回格式异常，无法解析')
     if not text:
-        raise RuntimeError('DeepSeek 返回了空总结')
+        raise RuntimeError('DeepSeek 返回为空')
     return text
+
+def effective_summary_prompt(db):
+    """有效的总结提示词：管理员若在配置里自定义则用之，否则用内置默认。"""
+    return get_config(db, 'ai_summary_prompt', '').strip() or AI_SUMMARY_SYSTEM_PROMPT
+
+def _deepseek_summarize(title, content, prompt=None):
+    """调用 DeepSeek 生成 Markdown 总结。prompt 为空时用内置默认提示词。"""
+    user_text = f'笔记标题：{title}\n\n笔记内容：\n{content}'
+    return _deepseek_chat(prompt or AI_SUMMARY_SYSTEM_PROMPT, user_text)
+
+def _summarize_status_code(msg):
+    return 503 if '未配置' in msg else 502
 
 @app.route('/api/notes/<int:id>/summarize', methods=['POST'])
 @admin_required
@@ -1117,17 +1248,138 @@ def api_note_summarize(id):
         return jsonify({'error': '该笔记内容为空，无可总结的内容'}), 400
 
     try:
-        summary = _deepseek_summarize(row['title'], row['content'])
+        summary = _deepseek_summarize(row['title'], row['content'], effective_summary_prompt(db))
     except RuntimeError as e:
         msg = str(e)
-        # 缺密钥属配置问题（503），其余按网关错误（502）
-        code = 503 if '未配置' in msg else 502
-        return jsonify({'error': msg}), code
+        return jsonify({'error': msg}), _summarize_status_code(msg)
 
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     db.execute('UPDATE notes SET ai_summary=?, ai_summary_at=? WHERE id=?', (summary, now, id))
     db.commit()
     return jsonify({'ok': True, 'ai_summary': summary, 'ai_summary_at': now})
+
+@app.route('/api/notes/summarize-batch', methods=['POST'])
+@admin_required
+def api_notes_summarize_batch():
+    """一键总结：对一批勾选的笔记生成总结。
+    body: {ids: [...], force: false}
+    默认跳过已有总结的；force=true 则全部重做。单次上限 50 条。"""
+    data = request.get_json() or {}
+    ids = data.get('ids') or []
+    force = bool(data.get('force', False))
+    if not isinstance(ids, list) or not ids:
+        return jsonify({'error': '需要非空的 ids 数组'}), 400
+    if len(ids) > 50:
+        return jsonify({'error': '一次最多总结 50 条，请分批'}), 400
+    if not DEEPSEEK_API_KEY:
+        return jsonify({'error': '未配置 DeepSeek 密钥，无法使用 AI 总结'}), 503
+
+    db = get_db()
+    prompt = effective_summary_prompt(db)
+    done, skipped, failed = [], [], []
+    for nid in ids:
+        row = db.execute('SELECT * FROM notes WHERE id=?', (nid,)).fetchone()
+        if not row:
+            failed.append({'id': nid, 'reason': '笔记不存在'}); continue
+        if not (row['content'] or '').strip():
+            skipped.append({'id': nid, 'reason': '内容为空'}); continue
+        if row['ai_summary'] and not force:
+            skipped.append({'id': nid, 'reason': '已有总结'}); continue
+        try:
+            summary = _deepseek_summarize(row['title'], row['content'], prompt)
+        except RuntimeError as e:
+            failed.append({'id': nid, 'reason': str(e)[:60]}); continue
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        db.execute('UPDATE notes SET ai_summary=?, ai_summary_at=? WHERE id=?', (summary, now, nid))
+        db.commit()
+        done.append(nid)
+    return jsonify({'ok': True, 'done': len(done), 'skipped': len(skipped),
+                    'failed': len(failed), 'failed_list': failed, 'skipped_list': skipped})
+
+# --- AI 提示词配置（管理员可随时修改） ---
+@app.route('/api/config/ai-prompt')
+@admin_required
+def api_get_ai_prompt():
+    db = get_db()
+    custom = get_config(db, 'ai_summary_prompt', '')
+    return jsonify({'prompt': custom, 'default': AI_SUMMARY_SYSTEM_PROMPT,
+                    'effective': custom.strip() or AI_SUMMARY_SYSTEM_PROMPT,
+                    'is_custom': bool(custom.strip())})
+
+@app.route('/api/config/ai-prompt', methods=['PUT'])
+@admin_required
+def api_set_ai_prompt():
+    data = request.get_json() or {}
+    prompt = (data.get('prompt') or '').strip()
+    db = get_db()
+    if prompt:
+        set_config(db, 'ai_summary_prompt', prompt)
+    else:
+        # 清空 = 恢复内置默认
+        db.execute("DELETE FROM config WHERE key='ai_summary_prompt'")
+    db.commit()
+    return jsonify({'ok': True, 'is_custom': bool(prompt),
+                    'effective': prompt or AI_SUMMARY_SYSTEM_PROMPT})
+
+# --- AI 填充：根据正文推断 标题/标签/章节/等级/来源 ---
+AI_FILL_SYSTEM_PROMPT = (
+    '你是火力发电厂集控运行专业的资料整理助手。我会给你一条运行笔记的正文，'
+    '请你据此推断结构化字段，并【只】返回一个 JSON 对象，不要包含任何解释或代码块标记。\n'
+    'JSON 字段：\n'
+    '  title    要点标题，简洁准确，≤20字，能独立看懂\n'
+    '  tags     2~4个关键词，用英文逗号分隔的字符串\n'
+    '  section  章节编码，必须从下面给定列表中选最贴切的一个\n'
+    '  level    重要等级，只能是 "★" / "★★" / "★★★"；涉及保护、跳闸、安全取 ★★★\n'
+    '  source   来源，从 规程/培训/操作票/事故预案/事故通报/经验反馈/技术文件/个人总结/规章制度 中选\n'
+    '只依据正文内容推断，不要臆造正文里没有的信息。'
+)
+
+@app.route('/api/ai/fill', methods=['POST'])
+@writer_required
+def api_ai_fill():
+    """根据正文内容，调用大模型推断 标题/标签/章节/等级/来源，返回建议值（不落库）。"""
+    data = request.get_json() or {}
+    content = (data.get('content') or '').strip()
+    if not content:
+        return jsonify({'error': '请先填写内容正文'}), 400
+
+    db = get_db()
+    sections = db.execute('SELECT code, name FROM sections ORDER BY sort_order').fetchall()
+    valid_codes = {s['code'] for s in sections}
+    section_list = '；'.join(f"{s['code']}={s['name']}" for s in sections)
+    user_text = f'可选章节列表：\n{section_list}\n\n笔记正文：\n{content}'
+
+    try:
+        raw = _deepseek_chat(AI_FILL_SYSTEM_PROMPT, user_text, temperature=0.2)
+    except RuntimeError as e:
+        msg = str(e)
+        return jsonify({'error': msg}), _summarize_status_code(msg)
+
+    # 容错解析：模型可能裹了 ```json 代码块
+    txt = raw.strip()
+    if txt.startswith('```'):
+        txt = re.sub(r'^```[a-zA-Z]*\s*|\s*```$', '', txt).strip()
+    m = re.search(r'\{.*\}', txt, re.S)
+    try:
+        parsed = json.loads(m.group(0) if m else txt)
+    except (ValueError, AttributeError):
+        return jsonify({'error': 'AI 返回无法解析，请重试'}), 502
+
+    # 逐字段校验，非法则置空交由前端忽略
+    title = (parsed.get('title') or '').strip()[:60]
+    tags = parsed.get('tags') or ''
+    if isinstance(tags, list):
+        tags = ','.join(str(t).strip() for t in tags if str(t).strip())
+    tags = str(tags).strip()
+    section = (parsed.get('section') or '').strip()
+    if section not in valid_codes:
+        section = ''
+    level = parsed.get('level') if parsed.get('level') in VALID_LEVELS else ''
+    src_opts = {'规程', '培训', '操作票', '事故预案', '事故通报', '经验反馈', '技术文件', '个人总结', '规章制度'}
+    source = parsed.get('source') if parsed.get('source') in src_opts else ''
+    return jsonify({'ok': True, 'fields': {
+        'title': title, 'tags': tags, 'section': section, 'level': level, 'source': source
+    }})
 
 # --- 笔记查重 ---
 _DEDUP_PUNCT_RE = re.compile(r'[\s　,，。.;；:：、!！?？()（）\[\]【】"\'`~·\-—_/\\]+')
@@ -1313,12 +1565,144 @@ def api_notes_batch_update():
 
 # --- 单条笔记 CRUD ---
 @app.route('/api/notes/<int:id>', methods=['DELETE'])
-@admin_required
+@writer_required
 def api_note_delete(id):
     db = get_db()
+    existing = db.execute('SELECT id, title FROM notes WHERE id=?', (id,)).fetchone()
+    if not existing:
+        return jsonify({'error': 'not found'}), 404
+
+    # 共建者：删除也需管理员确认
+    role, _, _ = effective_actor()
+    if role == 'contributor':
+        return queue_proposal('delete', id, {'title': existing['title']})
+
     db.execute('DELETE FROM notes WHERE id=?', (id,))
     db.commit()
     _sweep_quietly()  # 顺手回收因删除而无人引用的图片
+    return jsonify({'ok': True})
+
+# --- 变更申请（共建者提交 → 管理员审批） ---
+def _proposal_to_dict(db, row):
+    d = dict(row)
+    try:
+        d['payload'] = json.loads(row['payload'] or '{}')
+    except ValueError:
+        d['payload'] = {}
+    # 附带目标笔记当前快照，便于管理员对比
+    if row['note_id']:
+        cur = db.execute('SELECT code, title, content, tags, source, level, note_date FROM notes WHERE id=?',
+                         (row['note_id'],)).fetchone()
+        d['current'] = dict(cur) if cur else None
+    else:
+        d['current'] = None
+    return d
+
+@app.route('/api/proposals')
+@login_required
+def api_proposals_list():
+    """变更申请列表。管理员看全部（可按 ?status= 过滤）；共建者仅看自己提交的。"""
+    db = get_db()
+    role, uid, _ = effective_actor()
+    status = request.args.get('status', '').strip()
+    where, params = ['1=1'], []
+    if role != 'admin':
+        where.append('proposer_id=?'); params.append(uid)
+    if status:
+        where.append('status=?'); params.append(status)
+    wc = ' AND '.join(where)
+    rows = db.execute(
+        f'SELECT * FROM proposals WHERE {wc} ORDER BY '
+        f"CASE status WHEN 'pending' THEN 0 ELSE 1 END, id DESC LIMIT 500", params
+    ).fetchall()
+    pending = db.execute("SELECT COUNT(*) FROM proposals WHERE status='pending'"
+                         + ('' if role == 'admin' else ' AND proposer_id=?'),
+                         ([] if role == 'admin' else [uid])).fetchone()[0]
+    return jsonify({'items': [_proposal_to_dict(db, r) for r in rows], 'pending': pending})
+
+def _apply_proposal(db, prop):
+    """执行一条申请的实际变更。返回 (ok, message)。"""
+    kind = prop['kind']
+    payload = json.loads(prop['payload'] or '{}')
+    if kind == 'create':
+        section = payload.get('section', '')
+        title = (payload.get('title') or '').strip()
+        if not section_exists(db, section) or not title:
+            return False, '章节或标题无效'
+        level = payload.get('level', '★'); nd = payload.get('note_date') or datetime.now().strftime('%Y-%m-%d')
+        insert_note(db, section, title, content=payload.get('content', ''),
+                    tags=payload.get('tags', ''), source=payload.get('source', '个人总结'),
+                    level=level if valid_level(level) else '★',
+                    note_date=nd if valid_date(nd) else datetime.now().strftime('%Y-%m-%d'),
+                    source_file=(payload.get('source_file') or '').strip())
+        return True, '已新增'
+    if kind == 'update':
+        existing = db.execute('SELECT * FROM notes WHERE id=?', (prop['note_id'],)).fetchone()
+        if not existing:
+            return False, '目标笔记已不存在'
+        title = payload.get('title', existing['title'])
+        content = payload.get('content', existing['content'])
+        tags = payload.get('tags', existing['tags'])
+        source = payload.get('source', existing['source'])
+        level = payload.get('level', existing['level'])
+        nd = payload.get('note_date', existing['note_date'])
+        if not valid_level(level) or not valid_date(nd):
+            return False, '提议的等级或日期非法'
+        db.execute('UPDATE notes SET title=?,content=?,tags=?,source=?,level=?,note_date=?,'
+                   'updated_at=datetime("now","localtime") WHERE id=?',
+                   (title, content, tags, source, level, nd, prop['note_id']))
+        return True, '已更新'
+    if kind == 'delete':
+        existing = db.execute('SELECT id FROM notes WHERE id=?', (prop['note_id'],)).fetchone()
+        if not existing:
+            return False, '目标笔记已不存在'
+        db.execute('DELETE FROM notes WHERE id=?', (prop['note_id'],))
+        return True, '已删除'
+    return False, '未知的申请类型'
+
+@app.route('/api/proposals/<int:id>/approve', methods=['POST'])
+@admin_required
+def api_proposal_approve(id):
+    db = get_db()
+    prop = db.execute('SELECT * FROM proposals WHERE id=?', (id,)).fetchone()
+    if not prop:
+        return jsonify({'error': 'not found'}), 404
+    if prop['status'] != 'pending':
+        return jsonify({'error': '该申请已处理'}), 409
+    reviewer = session.get('username', 'admin')
+    try:
+        ok, msg = _apply_proposal(db, prop)
+    except sqlite3.Error:
+        db.rollback()
+        app.logger.exception('审批执行失败')
+        return jsonify({'error': '执行失败，请稍后重试'}), 500
+    if not ok:
+        # 目标已失效等：直接驳回并说明，避免申请永远卡住
+        db.execute("UPDATE proposals SET status='rejected', reviewed_by=?, "
+                   "reviewed_at=datetime('now','localtime'), review_note=? WHERE id=?",
+                   (reviewer, msg, id))
+        db.commit()
+        return jsonify({'error': msg, 'auto_rejected': True}), 409
+    db.execute("UPDATE proposals SET status='approved', reviewed_by=?, "
+               "reviewed_at=datetime('now','localtime') WHERE id=?", (reviewer, id))
+    db.commit()
+    _sweep_quietly()
+    return jsonify({'ok': True, 'message': msg})
+
+@app.route('/api/proposals/<int:id>/reject', methods=['POST'])
+@admin_required
+def api_proposal_reject(id):
+    db = get_db()
+    prop = db.execute('SELECT status FROM proposals WHERE id=?', (id,)).fetchone()
+    if not prop:
+        return jsonify({'error': 'not found'}), 404
+    if prop['status'] != 'pending':
+        return jsonify({'error': '该申请已处理'}), 409
+    note = ((request.get_json() or {}).get('review_note') or '').strip()
+    db.execute("UPDATE proposals SET status='rejected', reviewed_by=?, "
+               "reviewed_at=datetime('now','localtime'), review_note=? WHERE id=?",
+               (session.get('username', 'admin'), note, id))
+    db.commit()
     return jsonify({'ok': True})
 
 # --- 统计 ---
