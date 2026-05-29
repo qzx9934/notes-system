@@ -167,6 +167,51 @@ def test_batch_move_section_regenerates_code(admin):
     assert moved['code'].startswith('E04-')  # 编号已按新章节重新生成
 
 
+# ---------------- 全文搜索（FTS5 trigram） ----------------
+
+def test_fts_is_enabled_in_tests():
+    import app as app_module
+    assert app_module.FTS_ENABLED is True
+
+
+def _search(client, q):
+    return client.get('/api/notes', query_string={'q': q}).get_json()
+
+
+def test_fts_chinese_substring_search(admin):
+    admin.post('/api/notes', json={
+        'section': 'A05', 'title': '唯一标记ZZQ', 'content': '汽轮机超速保护跳闸值唯一标记ZZQ'
+    })
+    # 中文子串（≥3 字符）应能命中正文
+    items = _search(admin, '超速保护')['items']
+    assert any('唯一标记ZZQ' in it['title'] for it in items)
+
+
+def test_fts_stays_in_sync_on_update_and_delete(admin):
+    created = admin.post('/api/notes', json={
+        'section': 'A06', 'title': 'FTS同步检验XQW', 'content': '初始关键词蓝色海洋'
+    }).get_json()
+    nid = created['id']
+
+    assert any(it['id'] == nid for it in _search(admin, '蓝色海洋')['items'])
+
+    # 更新正文 -> 旧词查不到、新词查得到
+    admin.put('/api/notes/%d' % nid, json={'content': '替换关键词红色沙漠'})
+    assert not any(it['id'] == nid for it in _search(admin, '蓝色海洋')['items'])
+    assert any(it['id'] == nid for it in _search(admin, '红色沙漠')['items'])
+
+    # 删除 -> 查不到
+    admin.delete('/api/notes/%d' % nid)
+    assert not any(it['id'] == nid for it in _search(admin, '红色沙漠')['items'])
+
+
+def test_short_query_falls_back_to_like(admin):
+    admin.post('/api/notes', json={'section': 'A07', 'title': '短查询QY测试'})
+    # 2 字符查询走 LIKE 回退，仍应命中标题
+    items = _search(admin, 'QY')['items']
+    assert any('短查询QY测试' in it['title'] for it in items)
+
+
 # ---------------- 修改密码（隔离用户，避免影响默认 admin） ----------------
 
 def test_change_password_flow(admin, client):
