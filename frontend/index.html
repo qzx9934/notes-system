@@ -286,22 +286,35 @@ tbody tr.selected { background: #EBF5FB; }
 .empty .icon { font-size: 48px; margin-bottom: 12px; }
 
 /* ===== 手机/平板适配 ===== */
-/* 汉堡菜单按钮 — 仅小屏可见 */
-.hamburger { display: none; position: fixed; top: 10px; left: 10px; z-index: 1300; background: var(--primary); color: #fff; border: none; border-radius: 6px; width: 38px; height: 38px; font-size: 20px; cursor: pointer; align-items: center; justify-content: center; box-shadow: var(--shadow); }
-.hamburger:active { transform: scale(.95); }
-/* 未登录（登录遮罩可见）时，隐藏汉堡按钮，避免悬浮在登录页左上角造成遮挡 */
-.login-overlay:not(.hidden) ~ .hamburger { display: none !important; }
+/* 移动端顶栏(App Bar)：仅小屏显示，含汉堡按钮 + 标题。固定在顶部并占据高度，
+   内容自然下移、永不被遮挡（取代以往悬浮的汉堡按钮）。桌面端隐藏。 */
+.mobile-topbar { display: none; }
+.hamburger { display: flex; background: transparent; color: #fff; border: none; border-radius: 6px; width: 40px; height: 40px; font-size: 22px; cursor: pointer; align-items: center; justify-content: center; flex-shrink: 0; }
+.hamburger:active { transform: scale(.92); }
+/* 未登录（登录遮罩可见）时隐藏顶栏，避免遮挡登录卡片 */
+.login-overlay:not(.hidden) ~ .mobile-topbar { display: none !important; }
 /* 侧边栏遮罩 */
 .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.4); z-index: 99; }
 
 @media (max-width: 768px) {
-  .hamburger { display: flex; }
-  /* 为左上角汉堡按钮留出空间，避免被默认口令横幅遮挡 */
-  .default-pw-banner { padding-left: 56px; flex-wrap: wrap; }
-  .sidebar { transform: translateX(-100%); transition: transform .3s; width: 260px; }
+  /* 顶部 App Bar：固定全宽，适配刘海屏安全区 */
+  .mobile-topbar {
+    display: flex; align-items: center; gap: 6px;
+    position: fixed; top: 0; left: 0; right: 0; z-index: 150;
+    height: calc(48px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) 8px 0;
+    background: var(--primary); color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  }
+  .mobile-topbar-title { font-size: 16px; font-weight: 600; letter-spacing: .5px; }
+  /* 默认口令横幅移到 App Bar 下方，不再与菜单按钮抢位置 */
+  .default-pw-banner { top: calc(48px + env(safe-area-inset-top, 0px)); flex-wrap: wrap; }
+  /* 抽屉式侧边栏需盖在 App Bar(1300) 之上 */
+  .sidebar { transform: translateX(-100%); transition: transform .3s; width: 260px; z-index: 1400; }
   .sidebar.open { transform: translateX(0); }
+  .sidebar-overlay { z-index: 1350; }
   .sidebar-overlay.show { display: block; }
-  .main { margin-left: 0; padding: 12px; }
+  /* 让出顶栏高度，内容从 App Bar 下方开始 */
+  .main { margin-left: 0; padding: 12px; padding-top: calc(48px + env(safe-area-inset-top, 0px) + 12px); }
   /* ===== 笔记列表：移动端改为卡片式（不再横向滚动）===== */
   .table-wrap { overflow: visible; }
   table { min-width: 0; width: 100%; }
@@ -328,7 +341,7 @@ tbody tr.selected { background: #EBF5FB; }
   td.col-level::before  { content: "等级："; color: var(--text-secondary); font-weight: normal; }
   td.col-date::before   { content: "日期："; color: var(--text-secondary); }
   /* 顶栏堆叠 */
-  .topbar { flex-direction: column; gap: 6px; padding-left: 44px; }
+  .topbar { flex-direction: column; gap: 6px; }
   .topbar .btn { width: 100%; }
   .search-wrap { min-width: 0; }
   .filter-group { flex-wrap: wrap; gap: 4px; }
@@ -476,7 +489,7 @@ body.roam-immersive {
   background: #1a1a2e;
 }
 body.roam-immersive .sidebar { display: none; }
-body.roam-immersive .hamburger,
+body.roam-immersive .mobile-topbar,
 body.roam-immersive .sidebar-overlay { display: none; }
 body.roam-immersive .main {
   margin-left: 0; padding: 0;
@@ -691,7 +704,10 @@ body.roam-immersive .batch-bar { display: none; }
 </div>
 
 <!-- Sidebar -->
-<button class="hamburger" id="hamburgerBtn" onclick="toggleSidebar()" title="菜单">☰</button>
+<header class="mobile-topbar" id="mobileTopbar">
+  <button class="hamburger" id="hamburgerBtn" onclick="toggleSidebar()" title="菜单" aria-label="打开菜单">☰</button>
+  <span class="mobile-topbar-title">运行工作笔记</span>
+</header>
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
