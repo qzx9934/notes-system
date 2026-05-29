@@ -290,21 +290,36 @@ tbody tr.selected { background: #EBF5FB; }
 @media (max-width: 768px) {
   .hamburger { display: flex; }
   /* 为左上角汉堡按钮留出空间，避免被默认口令横幅遮挡 */
-  .default-pw-banner { padding-left: 56px; }
+  .default-pw-banner { padding-left: 56px; flex-wrap: wrap; }
   .sidebar { transform: translateX(-100%); transition: transform .3s; width: 260px; }
   .sidebar.open { transform: translateX(0); }
   .sidebar-overlay.show { display: block; }
   .main { margin-left: 0; padding: 12px; }
-  /* 表格横向滚动 */
-  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  table { font-size: 12px; min-width: 600px; }
-  thead th, tbody td { padding: 7px 8px; }
-  .col-content { display: none; }
-  .col-tags { display: none; }
-  .col-source { display: none; }
-  .col-check { width: 28px; }
-  .col-code { width: 80px; }
-  .col-title { min-width: 100px; }
+  /* ===== 笔记列表：移动端改为卡片式（不再横向滚动）===== */
+  .table-wrap { overflow: visible; }
+  table { min-width: 0; width: 100%; }
+  thead { display: none; }                         /* 隐藏表头 */
+  tbody tr {                                        /* 每行变一张卡片 */
+    display: block; position: relative;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; margin-bottom: 10px; padding: 12px 14px;
+  }
+  tbody tr.selected { background: var(--card); border-color: var(--primary-light); box-shadow: 0 0 0 1px var(--primary-light); }
+  tbody td { display: block; border: none; padding: 2px 0; white-space: normal; }
+  /* 卡片里把表格中被省略的列重新显示出来 */
+  .col-content, .col-tags, .col-source { display: block; }
+  td.col-check { position: absolute; top: 10px; right: 10px; width: auto; padding: 0; }
+  td.col-title { font-size: 15px; font-weight: 600; padding-right: 28px; margin-bottom: 2px; }
+  td.col-code { font-size: 11px; color: var(--text-secondary); font-family: Consolas, monospace; margin-bottom: 6px; }
+  td.col-content { font-size: 13px; color: var(--text); margin: 2px 0; }
+  td.col-content .expand-hint { font-size: 11px; }
+  td.col-tags { margin: 4px 0; }
+  /* 来源/等级/日期：带中文标签的小字 meta（同一行排列）*/
+  td.col-source, td.col-level, td.col-date { display: inline-block; width: auto; text-align: left; font-size: 12px; margin: 4px 12px 0 0; }
+  td.col-source, td.col-date { color: var(--text-secondary); }
+  td.col-source::before { content: "来源："; color: var(--text-secondary); }
+  td.col-level::before  { content: "等级："; color: var(--text-secondary); font-weight: normal; }
+  td.col-date::before   { content: "日期："; color: var(--text-secondary); }
   /* 顶栏堆叠 */
   .topbar { flex-direction: column; gap: 6px; padding-left: 44px; }
   .topbar .btn { width: 100%; }
@@ -338,7 +353,13 @@ tbody tr.selected { background: #EBF5FB; }
   .modal { width: 100vw; max-width: 100vw; max-height: 90vh; border-radius: 0; }
   .modal-body { padding: 14px; }
   .form-row { flex-direction: column; gap: 8px; }
-  .form-group input, .form-group select, .form-group textarea { font-size: 14px; padding: 8px 10px; }
+  .form-group input, .form-group select, .form-group textarea { padding: 8px 10px; }
+  /* 防止 iOS 聚焦输入框时自动放大页面：文本输入字号 ≥16px */
+  .search-wrap input,
+  .form-group input, .form-group textarea,
+  .login-form .form-group input,
+  .pwd-modal .form-group input,
+  .add-user-form .form-group input { font-size: 16px; }
   .modal-footer { padding: 10px 14px; }
   .modal-footer .btn { flex: 1; }
   /* 表头区域 */
