@@ -523,7 +523,7 @@ body.roam-immersive .batch-bar { display: none; }
 .roam-card-level:active { transform: scale(.95); }
 .roam-card-code { font-family: 'Consolas', monospace; font-size: 13px; color: var(--primary-light); font-weight: 600; }
 .roam-card-title { font-size: 24px; font-weight: 700; color: var(--text); margin: 16px 0; line-height: 1.4; }
-.roam-card-content { font-size: 15px; line-height: 1.9; color: var(--text); white-space: pre-wrap; flex: 1; min-height: 0; overflow-y: auto; margin-bottom: 24px; }
+.roam-card-content { font-size: 15px; line-height: 1.9; color: var(--text); flex: 1; min-height: 0; overflow-y: auto; margin-bottom: 24px; }
 .roam-card-meta { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; padding-top: 16px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-secondary); }
 .roam-card-meta .meta-item { display: flex; align-items: center; gap: 4px; }
 .roam-card-tags { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -2561,7 +2561,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '2.6';
+const APP_VERSION = '2.7';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
