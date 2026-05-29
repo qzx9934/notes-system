@@ -551,6 +551,46 @@ body.roam-immersive .batch-bar { display: none; }
   .roam-btn { padding: 8px 16px; font-size: 13px; }
 }
 
+/* ---- 详情页可点编辑 + 卡片背面 + AI 总结 ---- */
+.preview-meta .editable { cursor: pointer; border-radius: 6px; padding: 2px 6px; margin: -2px -2px; transition: background .15s; }
+.preview-meta .editable:hover { background: rgba(0,0,0,.06); outline: 1px dashed var(--border); }
+.preview-meta .editable .meta-label::after { content: ' ✎'; opacity: .35; font-size: 10px; }
+.inline-edit { font-size: 13px; padding: 2px 5px; border: 1px solid var(--primary-light); border-radius: 4px; outline: none; background: var(--card); color: var(--text); }
+.inline-edit.tags-edit { min-width: 220px; }
+
+/* 来源文件 + 总结时间小标注 */
+.back-srcfile { font-size: 12px; color: var(--text-secondary); background: rgba(0,0,0,.04); border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; word-break: break-all; }
+.back-srcfile b { color: var(--text); font-weight: 600; }
+.summary-meta { font-size: 12px; color: var(--text-secondary); margin: 4px 0 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.summary-stale { color: #C0392B; }
+.summary-empty { color: var(--text-secondary); text-align: center; padding: 24px 0; }
+.summary-spin { color: var(--primary-light); }
+
+/* 漫游卡片 3D 翻转 */
+.roam-flip { position: relative; width: 100%; flex: 1; min-height: 0; transform-style: preserve-3d; transition: transform .55s cubic-bezier(.4,.2,.2,1); }
+.roam-flip.flipped { transform: rotateY(180deg); }
+.roam-face { display: flex; flex-direction: column; height: 100%; min-height: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.roam-face.roam-back { position: absolute; inset: 0; transform: rotateY(180deg); overflow-y: auto; }
+.roam-flip-btn { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--text-secondary); transition: all .15s; }
+.roam-flip-btn:hover { background: rgba(0,0,0,.06); color: var(--text); }
+.roam-back-title { font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; }
+.roam-back-summary { flex: 1; min-height: 0; overflow-y: auto; font-size: 15px; line-height: 1.8; }
+.ai-btn { background: var(--primary-light); color: #fff; border: none; border-radius: var(--radius); padding: 6px 14px; font-size: 13px; cursor: pointer; }
+.ai-btn:hover { background: var(--primary); }
+.ai-btn:disabled { opacity: .5; cursor: default; }
+
+/* 查重结果 */
+.dup-result { margin-top: 4px; max-height: 340px; overflow-y: auto; }
+.dup-summary { font-size: 13px; margin: 8px 0; color: var(--text-secondary); }
+.dup-none { font-size: 13px; color: var(--accent-D, #27AE60); padding: 8px 0; }
+.dup-cluster { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; background: #fafbfc; }
+.dup-cluster-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+.dup-item { display: flex; gap: 10px; align-items: center; padding: 5px 8px; border-radius: 6px; cursor: pointer; transition: background .12s; }
+.dup-item:hover { background: #EBF5FB; }
+.dup-code { font-family: 'Consolas', monospace; font-size: 12px; color: var(--primary-light); flex-shrink: 0; }
+.dup-title { flex: 1; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dup-date { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+
 /* ============================================================
    Liquid Glass 主题（叠加层 · 试验，置于样式末尾以覆盖前面规则）
    纯视觉：半透明 + backdrop-filter 毛玻璃 + 高光描边 + 折射极光背景
@@ -950,6 +990,33 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
           <div class="form-group"><label>&nbsp;</label><span id="cleanupResult" class="muted"></span></div>
         </div>
       </div>
+      <div class="add-user-form">
+        <h4>🔁 笔记查重</h4>
+        <div class="token-hint">扫描全库，按「标题归一化相等」或「正文相似度」找出疑似重复的笔记，便于人工核对删除。点击结果中的笔记可直接打开查看。</div>
+        <div class="form-row">
+          <div class="form-group flex-none">
+            <label>范围</label>
+            <select id="dupScope">
+              <option value="section">仅同章节内</option>
+              <option value="all">跨章节全库</option>
+            </select>
+          </div>
+          <div class="form-group flex-none">
+            <label>正文相似度阈值</label>
+            <select id="dupThreshold">
+              <option value="0.95">0.95（很严格）</option>
+              <option value="0.85" selected>0.85（推荐）</option>
+              <option value="0.75">0.75（宽松）</option>
+              <option value="0.65">0.65（很宽松）</option>
+            </select>
+          </div>
+          <div class="form-group flex-none">
+            <label>&nbsp;</label>
+            <button type="button" class="btn btn-primary btn-sm" onclick="doFindDuplicates()">开始查重</button>
+          </div>
+        </div>
+        <div id="dupResult" class="dup-result"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -1025,8 +1092,8 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <div class="flex-row-md">
         <h2 id="tableTitle">全部笔记</h2>
         <select class="sort-select" id="sortSelect" onchange="doSearch()">
+          <option value="updated" selected>按更新时间</option>
           <option value="code">按编号排序</option>
-          <option value="updated">按更新时间</option>
           <option value="created">按创建时间</option>
         </select>
       </div>
@@ -1080,17 +1147,38 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <p>当前筛选条件下暂无笔记</p>
     </div>
     <div id="roamCardInner" style="display:none">
-      <div class="roam-card-header">
-        <span class="roam-card-code" id="roamCode"></span>
-        <span id="roamLevel" class="roam-card-level" onclick="cycleRoamLevel()" title="点击切换重要程度"></span>
-      </div>
-      <div class="roam-card-title clickable" id="roamTitle" onclick="openRoamPreview()"></div>
-      <div class="roam-card-content" id="roamContent"></div>
-      <div class="roam-card-meta">
-        <div class="roam-card-tags" id="roamTags"></div>
-        <span class="meta-item">📅 <span id="roamNoteDate"></span></span>
-        <span class="meta-item">🔄 <span id="roamUpdatedAt"></span></span>
-        <span class="meta-item">📂 <span id="roamSource"></span></span>
+      <div class="roam-flip" id="roamFlip">
+        <!-- 正面 -->
+        <div class="roam-face roam-front">
+          <div class="roam-card-header">
+            <span class="roam-card-code" id="roamCode"></span>
+            <span style="display:flex;align-items:center;gap:8px">
+              <span id="roamLevel" class="roam-card-level" onclick="cycleRoamLevel()" title="点击切换重要程度"></span>
+              <button class="roam-flip-btn" onclick="flipRoam()" title="查看背面（来源文件 / AI 总结）">🔄 翻面</button>
+            </span>
+          </div>
+          <div class="roam-card-title clickable" id="roamTitle" onclick="openRoamPreview()"></div>
+          <div class="roam-card-content" id="roamContent"></div>
+          <div class="roam-card-meta">
+            <div class="roam-card-tags" id="roamTags"></div>
+            <span class="meta-item">📅 <span id="roamNoteDate"></span></span>
+            <span class="meta-item">🔄 <span id="roamUpdatedAt"></span></span>
+            <span class="meta-item">📂 <span id="roamSource"></span></span>
+          </div>
+        </div>
+        <!-- 背面 -->
+        <div class="roam-face roam-back">
+          <div class="roam-card-header">
+            <span class="roam-back-title">📑 背面</span>
+            <button class="roam-flip-btn" onclick="flipRoam()" title="返回正面">↩ 正面</button>
+          </div>
+          <div class="back-srcfile" id="roamBackSrcFile" style="display:none"></div>
+          <div class="roam-back-summary md-body" id="roamBackSummary"></div>
+          <div class="summary-meta">
+            <span id="roamSummaryMeta"></span>
+            <button class="ai-btn admin-only" id="roamSummarizeBtn" onclick="summarizeRoam()">🤖 AI 总结</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1112,8 +1200,19 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <button class="preview-close" onclick="closePreview()">×</button>
     </div>
     <div class="preview-meta" id="previewMeta"></div>
+    <!-- 正面：笔记内容 -->
     <div class="preview-body" id="previewBody"></div>
+    <!-- 背面：来源文件 + AI 总结 -->
+    <div class="preview-body" id="previewBack" style="display:none">
+      <div class="back-srcfile" id="previewBackSrcFile" style="display:none"></div>
+      <div class="md-body" id="previewBackSummary"></div>
+      <div class="summary-meta">
+        <span id="previewSummaryMeta"></span>
+        <button class="ai-btn admin-only" id="previewSummarizeBtn" onclick="summarizeFromPreview()">🤖 AI 总结</button>
+      </div>
+    </div>
     <div class="preview-footer">
+      <button class="btn btn-outline" id="previewFlipBtn" onclick="flipPreview()">🔄 翻面</button>
       <button class="btn btn-outline" onclick="copyFromPreview()">📋 复制内容</button>
       <button class="btn btn-outline admin-only" onclick="editFromPreview()">✎ 编辑</button>
       <button class="btn btn-danger admin-only" onclick="deleteFromPreview()">✕ 删除</button>
@@ -1198,12 +1297,15 @@ let sections = [];
 let domains = [];
 let currentSection = '';
 let currentPage = 1;
-let currentSort = 'code';
+let currentSort = 'updated';  // 总览默认按更新时间，方便先看到最新笔记
 let roamNotes = [];
 let roamIndex = 0;
 let isRoamMode = false;
+let roamFlipped = false;       // 漫游卡片是否翻到背面
 let selectedIds = new Set();
 let previewNoteId = null;
+let previewNote = null;        // 当前预览抽屉的完整笔记对象（供内联编辑/背面用）
+let previewFlipped = false;    // 预览抽屉是否翻到背面
 let allLoadedItems = []; // current page items for checkbox reference
 let sectionCounts = {};  // 章节编码 -> 条目数（用于侧栏徽章）
 let totalCount = 0;      // 笔记总数（"全部笔记"徽章）
@@ -1339,7 +1441,8 @@ function applyRoleUI() {
   // 预览弹窗底部按钮：复制对所有人可见，编辑/删除仅 admin
   const previewFooter = document.querySelector('.preview-footer');
   if (previewFooter) previewFooter.style.display = '';
-  document.querySelectorAll('.preview-footer .admin-only').forEach(el => {
+  // 所有 .admin-only 元素（含详情/漫游背面的 AI 总结按钮）按角色显隐
+  document.querySelectorAll('.admin-only').forEach(el => {
     el.style.display = isAdmin ? '' : 'none';
   });
 }
@@ -1515,6 +1618,44 @@ async function doCleanupUploads(dryRun) {
     out.textContent = '';
     showToast(err.message || '清理失败', 'error');
   }
+}
+
+async function doFindDuplicates() {
+  const out = document.getElementById('dupResult');
+  const scope = document.getElementById('dupScope').value;
+  const threshold = document.getElementById('dupThreshold').value;
+  out.innerHTML = '<span class="muted">查重中…</span>';
+  try {
+    const r = await _origFetch('/api/notes/duplicates?scope=' + scope + '&threshold=' + threshold);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '查重失败');
+    if (!d.clusters.length) {
+      out.innerHTML = '<div class="dup-none">✅ 未发现疑似重复（共扫描 ' + d.total_notes + ' 条）</div>';
+      return;
+    }
+    let html = '<div class="dup-summary">发现 <b>' + d.cluster_count + '</b> 组、共 <b>' +
+      d.duplicate_notes + '</b> 条疑似重复（扫描 ' + d.total_notes + ' 条）：</div>';
+    d.clusters.forEach((cluster, i) => {
+      html += '<div class="dup-cluster"><div class="dup-cluster-title">第 ' + (i + 1) + ' 组（' + cluster.length + ' 条）</div>';
+      cluster.forEach(n => {
+        html += '<div class="dup-item" onclick="openPreviewFromDup(' + n.id + ')">' +
+          '<span class="dup-code">' + esc(n.code) + '</span>' +
+          '<span class="dup-title">' + esc(n.title) + '</span>' +
+          '<span class="dup-date">' + esc((n.updated_at || '').slice(0, 10)) + '</span></div>';
+      });
+      html += '</div>';
+    });
+    out.innerHTML = html;
+  } catch (err) {
+    out.innerHTML = '';
+    showToast(err.message || '查重失败', 'error');
+  }
+}
+
+// 从查重结果点开某条笔记：关闭管理弹窗再打开预览，避免遮挡
+function openPreviewFromDup(id) {
+  closeTokenModal();
+  openPreview(id);
 }
 
 async function loadTokens() {
@@ -1964,9 +2105,9 @@ function resetFilters() {
   document.getElementById('filterDomain').value = '';
   currentSection = '';
   currentPage = 1;
-  currentSort = 'code';
+  currentSort = 'updated';
   const sortEl = document.getElementById('sortSelect');
-  if (sortEl) sortEl.value = 'code';
+  if (sortEl) sortEl.value = 'updated';
   selectedIds.clear();
   updateBatchBar();
   document.getElementById('tableTitle').textContent = '全部笔记';
@@ -2100,18 +2241,14 @@ async function openPreview(id) {
   try {
     const r = await fetch('/api/notes/' + id);
     const n = await r.json();
+    previewNote = n;
     document.getElementById('previewCode').textContent = n.code + ' · ' + (n.section_name || n.section);
     document.getElementById('previewTitle').textContent = n.title;
     document.getElementById('previewBody').innerHTML = mdSafe(n.content);
     document.getElementById('previewBody').classList.add('md-body');
-
-    const sectionName = sections.find(s => s.code === n.section)?.name || '';
-    document.getElementById('previewMeta').innerHTML = `
-      <span class="meta-item"><span class="meta-label">等级</span> <span class="${levelClass(n.level)}">${esc(n.level)}</span></span>
-      <span class="meta-item"><span class="meta-label">来源</span> ${esc(n.source)}</span>
-      <span class="meta-item"><span class="meta-label">日期</span> ${esc(n.note_date)}</span>
-      ${(n.tags || '').split(',').filter(Boolean).map(t => `<span class="tag">${esc(t.trim())}</span>`).join('')}
-    `;
+    renderPreviewMeta(n);
+    renderPreviewBack(n);
+    setPreviewFace(false);  // 每次打开都先显示正面
 
     document.getElementById('previewOverlay').classList.add('open');
     document.getElementById('previewDrawer').classList.add('open');
@@ -2120,10 +2257,185 @@ async function openPreview(id) {
   }
 }
 
+// 渲染详情页元数据；管理员可点击 等级/来源/日期/标签 直接修改
+function renderPreviewMeta(n) {
+  const admin = currentRole === 'admin';
+  const ec = admin ? ' editable' : '';
+  const tags = (n.tags || '').split(',').map(t => t.trim()).filter(Boolean);
+  const tagsHtml = tags.length
+    ? tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')
+    : '<span class="muted">无标签</span>';
+  document.getElementById('previewMeta').innerHTML = `
+    <span class="meta-item${ec}" id="pmLevel" ${admin ? 'onclick="editPreviewLevel()"' : ''}><span class="meta-label">等级</span> <span class="${levelClass(n.level)}">${esc(n.level)}</span></span>
+    <span class="meta-item${ec}" id="pmSource" ${admin ? 'onclick="editPreviewSource(event)"' : ''}><span class="meta-label">来源</span> <span>${esc(n.source)}</span></span>
+    <span class="meta-item${ec}" id="pmDate" ${admin ? 'onclick="editPreviewDate(event)"' : ''}><span class="meta-label">日期</span> <span>${esc(n.note_date)}</span></span>
+    <span class="meta-item${ec}" id="pmTags" ${admin ? 'onclick="editPreviewTags()"' : ''}><span class="meta-label">标签</span> ${tagsHtml}</span>
+  `;
+}
+
+// 把补丁字段 PUT 到后端，成功后刷新本地数据 + 列表 + 统计
+async function patchPreviewNote(patch) {
+  if (!previewNote) return;
+  try {
+    const r = await fetch('/api/notes/' + previewNote.id, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch)
+    });
+    if (!r.ok) { showToast('保存失败', 'error'); renderPreviewMeta(previewNote); return; }
+    previewNote = await r.json();
+    renderPreviewMeta(previewNote);
+    renderPreviewBack(previewNote);
+    doSearch(); loadStats();
+    showToast('已更新', 'success');
+  } catch(e) { showToast('保存失败', 'error'); renderPreviewMeta(previewNote); }
+}
+
+function editPreviewLevel() {
+  const order = ['★', '★★', '★★★'];
+  const next = order[(order.indexOf(previewNote.level || '★') + 1) % 3];
+  patchPreviewNote({ level: next });
+}
+
+function editPreviewSource(event) {
+  if (event) event.stopPropagation();
+  const span = document.getElementById('pmSource');
+  const opts = ['规程', '培训', '操作票', '事故预案', '事故通报', '经验反馈', '技术文件', '个人总结', '规章制度'];
+  const cur = previewNote.source || '';
+  if (cur && !opts.includes(cur)) opts.unshift(cur);
+  const sel = document.createElement('select');
+  sel.className = 'inline-edit';
+  opts.forEach(o => { const op = document.createElement('option'); op.value = o; op.textContent = o; if (o === cur) op.selected = true; sel.appendChild(op); });
+  span.onclick = null;
+  span.innerHTML = '<span class="meta-label">来源</span> ';
+  span.appendChild(sel); sel.focus();
+  let done = false;
+  sel.onchange = () => { done = true; patchPreviewNote({ source: sel.value }); };
+  sel.onblur = () => { if (!done) renderPreviewMeta(previewNote); };
+}
+
+function editPreviewDate(event) {
+  if (event) event.stopPropagation();
+  const span = document.getElementById('pmDate');
+  const inp = document.createElement('input');
+  inp.type = 'date'; inp.className = 'inline-edit'; inp.value = previewNote.note_date || '';
+  span.onclick = null;
+  span.innerHTML = '<span class="meta-label">日期</span> ';
+  span.appendChild(inp); inp.focus();
+  let done = false;
+  inp.onchange = () => { if (inp.value) { done = true; patchPreviewNote({ note_date: inp.value }); } };
+  inp.onblur = () => { if (!done) renderPreviewMeta(previewNote); };
+}
+
+function editPreviewTags() {
+  const span = document.getElementById('pmTags');
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.className = 'inline-edit tags-edit';
+  inp.value = previewNote.tags || ''; inp.placeholder = '逗号分隔，如：MFT,炉膛保护';
+  span.onclick = null;
+  span.innerHTML = '<span class="meta-label">标签</span> ';
+  span.appendChild(inp); inp.focus();
+  let done = false;
+  const commit = () => { if (done) return; done = true; patchPreviewNote({ tags: inp.value.trim() }); };
+  inp.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+    else if (e.key === 'Escape') { done = true; renderPreviewMeta(previewNote); }
+  };
+  inp.onblur = commit;
+}
+
+// 详情抽屉正/背面切换
+function setPreviewFace(toBack) {
+  previewFlipped = !!toBack;
+  document.getElementById('previewBody').style.display = toBack ? 'none' : '';
+  document.getElementById('previewBack').style.display = toBack ? '' : 'none';
+  document.getElementById('previewFlipBtn').textContent = toBack ? '↩ 正面' : '🔄 翻面';
+}
+function flipPreview() { setPreviewFace(!previewFlipped); }
+
+// 渲染详情背面：来源文件 + AI 总结
+function renderPreviewBack(n) {
+  renderBackContent(n, 'previewBackSrcFile', 'previewBackSummary', 'previewSummaryMeta', 'previewSummarizeBtn');
+}
+
 function closePreview() {
   document.getElementById('previewOverlay').classList.remove('open');
   document.getElementById('previewDrawer').classList.remove('open');
   previewNoteId = null;
+  previewNote = null;
+}
+
+// ==================== 卡片背面：来源文件 + AI 总结 ====================
+// 详情抽屉与漫游卡片共用的背面渲染逻辑
+function renderBackContent(n, srcFileId, summaryId, metaId, btnId) {
+  const sf = document.getElementById(srcFileId);
+  if (n.source_file) { sf.style.display = ''; sf.innerHTML = '📄 来源文件：<b>' + esc(n.source_file) + '</b>'; }
+  else { sf.style.display = 'none'; sf.innerHTML = ''; }
+
+  const sumEl = document.getElementById(summaryId);
+  const metaEl = document.getElementById(metaId);
+  if (n.ai_summary) {
+    sumEl.innerHTML = mdSafe(n.ai_summary);
+    const stale = n.ai_summary_at && n.updated_at && n.updated_at > n.ai_summary_at;
+    metaEl.innerHTML = '🕒 总结于 ' + esc(n.ai_summary_at || '') +
+      (stale ? ' <span class="summary-stale">⚠ 笔记此后已更新，总结可能过时</span>' : '');
+  } else {
+    sumEl.innerHTML = '<div class="summary-empty">尚无 AI 总结' +
+      (currentRole === 'admin' ? '，点击下方按钮生成' : '') + '</div>';
+    metaEl.innerHTML = '';
+  }
+  const btn = document.getElementById(btnId);
+  if (btn) btn.textContent = n.ai_summary ? '🔄 重新总结' : '🤖 AI 总结';
+}
+
+// 调用后端 AI 总结接口（管理员）；onDone(updatedNote) 回调用于刷新对应界面
+async function summarizeNote(id, btnId, onDone) {
+  if (currentRole !== 'admin') return;
+  const btn = document.getElementById(btnId);
+  const old = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 总结中…'; }
+  try {
+    const r = await fetch('/api/notes/' + id + '/summarize', { method: 'POST' });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      showToast(data.error || 'AI 总结失败', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = old; }
+      return;
+    }
+    showToast('已生成 AI 总结', 'success');
+    if (btn) btn.disabled = false;
+    if (onDone) onDone(data);  // {ai_summary, ai_summary_at}
+  } catch(e) {
+    showToast('AI 总结请求失败', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = old; }
+  }
+}
+
+function summarizeFromPreview() {
+  if (!previewNote) return;
+  summarizeNote(previewNote.id, 'previewSummarizeBtn', (data) => {
+    previewNote.ai_summary = data.ai_summary;
+    previewNote.ai_summary_at = data.ai_summary_at;
+    renderPreviewBack(previewNote);
+  });
+}
+
+function summarizeRoam() {
+  const n = roamNotes[roamIndex];
+  if (!n) return;
+  summarizeNote(n.id, 'roamSummarizeBtn', (data) => {
+    n.ai_summary = data.ai_summary;
+    n.ai_summary_at = data.ai_summary_at;
+    renderRoamBack(n);
+  });
+}
+
+// 漫游卡片正/背面翻转
+function flipRoam() {
+  roamFlipped = !roamFlipped;
+  document.getElementById('roamFlip').classList.toggle('flipped', roamFlipped);
+}
+function renderRoamBack(n) {
+  renderBackContent(n, 'roamBackSrcFile', 'roamBackSummary', 'roamSummaryMeta', 'roamSummarizeBtn');
 }
 
 function copyToClipboard(text) {
@@ -2395,6 +2707,11 @@ function renderRoamCard() {
   document.getElementById('roamUpdatedAt').textContent = (n.updated_at || '').slice(0, 10) || '—';
   document.getElementById('roamSource').textContent = n.source || '—';
 
+  // 背面内容 + 每张卡复位到正面
+  renderRoamBack(n);
+  roamFlipped = false;
+  document.getElementById('roamFlip').classList.remove('flipped');
+
   document.getElementById('roamPos').textContent = (roamIndex + 1) + ' / ' + roamNotes.length;
   document.getElementById('roamPrev').disabled = roamIndex <= 0;
   document.getElementById('roamNext').disabled = roamIndex >= roamNotes.length - 1;
@@ -2566,7 +2883,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '2.8';
+const APP_VERSION = '2.9';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
