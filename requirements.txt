@@ -1,3 +1,6 @@
-flask>=3.1.1
-flask-cors>=6.0.0
-openpyxl>=3.1
+# 运行时依赖（版本范围锁定，避免被破坏性大版本影响）
+flask>=3.1,<4.0
+flask-cors>=6.0,<7.0
+openpyxl>=3.1,<4.0
+# 生产部署用 WSGI 服务器（gunicorn wsgi:app）；便携启动脚本不依赖它
+gunicorn>=21.2,<24.0
