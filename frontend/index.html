@@ -486,7 +486,7 @@ tbody tr.selected { background: #EBF5FB; }
 
 /* Roam Card View — Immersive */
 body.roam-immersive {
-  background: #1a1a2e;
+  background: #f3f7fe;
 }
 body.roam-immersive .sidebar { display: none; }
 body.roam-immersive .mobile-topbar,
@@ -549,9 +549,232 @@ body.roam-immersive .batch-bar { display: none; }
   .roam-controls { gap: 8px; }
   .roam-btn { padding: 8px 16px; font-size: 13px; }
 }
+
+/* ============================================================
+   Liquid Glass 主题（叠加层 · 试验，置于样式末尾以覆盖前面规则）
+   纯视觉：半透明 + backdrop-filter 毛玻璃 + 高光描边 + 折射极光背景
+   不喜欢可整段删除，不影响功能与布局。
+   ============================================================ */
+:root {
+  /* Apple 清新风：更亮、更通透；内容面板偏实保证可读 */
+  --glass-bg: rgba(255,255,255,.55);          /* 装饰面板：偏透，主要看折射 */
+  --glass-bg-solid: rgba(255,255,255,.75);    /* 内容面板：偏实，重可读 */
+  --glass-brd: rgba(255,255,255,.62);
+  /* 回退：纯毛玻璃（Safari / 不支持 url() 折射时用） */
+  --glass-blur: blur(7px) saturate(170%);
+  /* 折射：feDisplacementMap 让玻璃后的背景液态弯折（Chromium 支持 backdrop-filter:url()） */
+  --glass-refract: url(#lg-distortion) blur(4px) saturate(170%);
+  /* 镜面高光描边 + 边缘微色散（上蓝下紫）——棱镜感（取自 liquid-glass-react 的 inset 配方） */
+  --glass-hi:
+    0 0 0 .5px rgba(255,255,255,.6) inset,
+    0 1px 4px rgba(255,255,255,.42) inset,
+    0 7px 16px -12px rgba(90,180,255,.32) inset,
+    0 -7px 16px -12px rgba(150,110,255,.26) inset;
+  --glass-sh: 0 10px 36px rgba(60,110,180,.16), 0 2px 8px rgba(60,110,180,.10);
+  --glass-sh-lg: 0 18px 56px rgba(60,110,180,.24);
+  /* 更清新的强调色（Apple 系蓝）+ 提升次要文字对比度 */
+  --primary-light: #2E8BF0;
+  --text-secondary: #5b6770;
+}
+
+/* 折射背景：柔和极光色块，毛玻璃才有"折射"质感 */
+body { background: #f3f7fe; }
+body::before {
+  content: ''; position: fixed; inset: -12%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(46% 44% at 12% 12%, rgba(132,192,255,.26), transparent 64%),  /* 淡天蓝 */
+    radial-gradient(38% 36% at 90% 10%, rgba(190,180,255,.20), transparent 64%),  /* 淡紫 */
+    radial-gradient(48% 46% at 88% 90%, rgba(150,230,218,.20), transparent 66%),  /* 淡青 */
+    radial-gradient(44% 42% at 10% 92%, rgba(255,206,222,.15), transparent 64%);  /* 极淡粉 */
+  filter: saturate(1.0);
+}
+
+/* 浅色玻璃面板 */
+.table-wrap, .stat-card, .batch-bar, .modal, .pwd-modal,
+.user-mgmt-modal, .preview-drawer, .roam-card, .login-card {
+  background: var(--glass-bg) !important;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-brd);
+  box-shadow: var(--glass-sh), var(--glass-hi) !important;
+}
+/* 折射增强：仅作用于较静态的面板；大块滚动的表格区只保留纯模糊以免滚动卡顿。
+   Safari 等不支持 backdrop-filter:url() 会丢弃此条，自动回退到上面的纯模糊。 */
+.stat-card, .batch-bar, .modal, .pwd-modal, .user-mgmt-modal,
+.preview-drawer, .roam-card, .login-card { backdrop-filter: var(--glass-refract); }
+/* 内容密集的面板偏实，保证文字清晰 */
+.table-wrap, .modal, .pwd-modal, .user-mgmt-modal, .preview-drawer {
+  background: var(--glass-bg-solid) !important;
+}
+.table-wrap, .stat-card, .login-card { border-radius: 16px; }
+
+/* 预览抽屉「等级/来源/日期」一栏：去掉突兀的白底，做成玻璃药丸 chip */
+.preview-meta { background: transparent !important; border-bottom: 1px solid var(--glass-brd) !important; }
+.preview-meta .meta-item {
+  background: rgba(255,255,255,.42); border: 1px solid var(--glass-brd);
+  padding: 3px 11px; border-radius: 999px;
+}
+.preview-meta .meta-label { color: var(--text-secondary); }
+.batch-bar { background: rgba(235,245,251,.55) !important; }
+/* 桌面端把弹窗/抽屉等也加大圆角；移动端保持原有满屏(0 圆角)不被覆盖 */
+@media (min-width: 769px) {
+  .modal, .pwd-modal, .user-mgmt-modal, .preview-drawer, .roam-card, .batch-bar { border-radius: 16px; }
+}
+
+/* 统计卡：仅悬浮微抬（去掉顶部彩色条） */
+.stat-card { position: relative; overflow: hidden; transition: transform .18s, box-shadow .18s; }
+.stat-card:hover { transform: translateY(-2px); box-shadow: var(--glass-sh-lg), var(--glass-hi) !important; }
+.stat-card .num { font-variant-numeric: tabular-nums; }
+
+/* 深色玻璃：侧边栏 + 移动端顶栏 */
+.sidebar {
+  background: linear-gradient(160deg, rgba(44,108,170,.72), rgba(30,72,122,.66)) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+  border-right: 1px solid rgba(255,255,255,.20);
+  box-shadow: 0 8px 30px rgba(20,50,90,.18);
+}
+.mobile-topbar {
+  background: linear-gradient(160deg, rgba(44,108,170,.66), rgba(30,72,122,.58)) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+  border-bottom: 1px solid rgba(255,255,255,.20);
+}
+/* 侧栏导航 active：左侧高光条 + 展开动画 */
+.nav-item.active { box-shadow: inset 3px 0 0 #fff; }
+.nav-domain, .nav-item { transition: background .15s; }
+
+/* 按钮：主按钮玻璃光泽 + 悬浮微抬；次按钮做成玻璃 */
+.btn { border-radius: 12px; }
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary-light), var(--primary)) !important;
+  box-shadow: 0 6px 18px rgba(46,117,182,.32), inset 0 1px 0 rgba(255,255,255,.35);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(46,117,182,.42), inset 0 1px 0 rgba(255,255,255,.4); }
+.btn-warning {
+  background: linear-gradient(135deg, #f0a13c, var(--accent-C)) !important;
+  box-shadow: 0 6px 18px rgba(230,126,34,.28), inset 0 1px 0 rgba(255,255,255,.3);
+}
+.btn-warning:hover { transform: translateY(-1px); }
+.btn-outline {
+  background: var(--glass-bg) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(180%);
+  backdrop-filter: blur(8px) saturate(180%);
+  backdrop-filter: var(--glass-refract);
+  border: 1px solid var(--glass-brd) !important;
+  box-shadow: var(--glass-hi);
+}
+.btn-outline:hover { transform: translateY(-1px); background: rgba(255,255,255,.72) !important; }
+
+/* 输入 / 下拉 / 分页 / 搜索：轻玻璃 + 统一圆角与聚焦光环 */
+.search-wrap input, .filter-group select, .filter-group button,
+.batch-bar select, .pagination button {
+  background: rgba(255,255,255,.55) !important;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid var(--glass-brd) !important; border-radius: 10px !important;
+}
+.search-wrap input:focus, .filter-group select:focus {
+  border-color: var(--primary-light) !important;
+  box-shadow: 0 0 0 3px rgba(46,117,182,.18) !important;
+}
+.pagination button:not(:disabled):hover { background: rgba(255,255,255,.8) !important; }
+
+/* 表格在玻璃面板内：表头/行半透明，去掉硬白底 */
+thead th { background: rgba(255,255,255,.45) !important; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border-bottom: 1px solid var(--glass-brd) !important; }
+tbody td { border-bottom: 1px solid rgba(255,255,255,.45); }
+tbody tr { background: transparent; }
+tbody tr:hover { background: rgba(255,255,255,.45) !important; }
+tbody tr.selected { background: rgba(46,117,182,.16) !important; }
+/* 截断渐隐改用遮罩淡出文字本身，避免玻璃上的白斑 */
+.col-content .truncated::after { display: none; }
+.col-content .truncated {
+  -webkit-mask-image: linear-gradient(180deg, #000 62%, transparent);
+  mask-image: linear-gradient(180deg, #000 62%, transparent);
+}
+
+/* 标签玻璃化 */
+.tag { background: rgba(46,117,182,.14) !important; border: 1px solid rgba(46,117,182,.20); color: var(--primary); }
+
+/* 弹窗遮罩加一层背景虚化，强化层次 */
+.modal-overlay, .preview-overlay, .pwd-modal-overlay {
+  background: rgba(18,28,46,.34) !important;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+}
+
+/* 关闭按钮等小图标的命中区域 */
+.modal-close { border-radius: 8px; }
+
+/* ===== 侧栏底部栏：用户名 + 用户/令牌/改密/退出，调大、增强可读 ===== */
+.sidebar-footer { padding: 12px 14px 16px; border-top: 1px solid rgba(255,255,255,.20); font-size: 13px; opacity: 1; }
+.footer-bar { flex-direction: column; align-items: stretch; gap: 10px; }
+.current-user {
+  display: flex; align-items: center; gap: 7px; flex-basis: 100%;
+  font-size: 14px; font-weight: 600; color: #fff; letter-spacing: .2px;
+}
+.current-user::before { content: "👤"; font-size: 15px; }
+.footer-actions { gap: 8px; flex-wrap: wrap; }
+.icon-btn {
+  width: 40px; height: 40px; padding: 0; font-size: 18px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; background: rgba(255,255,255,.12); border-radius: 11px;
+  transition: background .15s, transform .1s;
+}
+.icon-btn:hover { opacity: 1; background: rgba(255,255,255,.24); }
+.icon-btn:active { transform: scale(.94); }
+.icon-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* ===== 列表 / 概览可读性（桌面端放大；移动端卡片保持原紧凑布局） ===== */
+@media (min-width: 769px) {
+  .stat-card { padding: 16px 20px; }
+  .stat-card .num { font-size: 30px; }
+  .stat-card .label { font-size: 13px; }
+  .table-header h2 { font-size: 16px; }
+  table { font-size: 14px; }
+  thead th { font-size: 13px; padding: 12px 14px; letter-spacing: .2px; }
+  tbody td { padding: 13px 14px; }
+  .col-title { font-size: 15px; }
+  .col-content { font-size: 14px; line-height: 1.65; color: #41505a; }
+  .col-content .truncated { max-height: 56px; }
+  .tag { font-size: 12px; padding: 3px 10px; }
+}
+
+/* 用户管理 / 令牌管理 弹窗内表格：表头去掉白底，做成液态玻璃 */
+.user-table th {
+  background: rgba(255,255,255,.32) !important;
+  -webkit-backdrop-filter: blur(6px) saturate(160%); backdrop-filter: blur(6px) saturate(160%);
+  border-bottom: 1px solid var(--glass-brd) !important;
+}
+.user-table td { border-bottom: 1px solid rgba(255,255,255,.5) !important; }
+
+/* 漫游卡：内容较多，用偏实玻璃保证可读（背景已改清新浅色） */
+.roam-card { background: var(--glass-bg-solid) !important; }
+
+/* 低性能/不支持 backdrop-filter 时，回退为较实的底色，保证可读 */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .table-wrap, .stat-card, .batch-bar, .modal, .pwd-modal,
+  .user-mgmt-modal, .preview-drawer, .roam-card, .login-card { background: rgba(255,255,255,.92) !important; }
+  .sidebar { background: var(--primary) !important; }
+}
 </style>
 </head>
 <body>
+<!-- Liquid Glass 折射滤镜（feDisplacementMap 让玻璃后的背景产生液态折射） -->
+<svg class="lg-svg" aria-hidden="true" width="0" height="0" focusable="false"
+     style="position:absolute;width:0;height:0;overflow:hidden">
+  <filter id="lg-distortion" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.006 0.010" numOctaves="2" seed="42" result="noise"/>
+    <feGaussianBlur in="noise" stdDeviation="2.2" result="map"/>
+    <!-- 色差(chromatic aberration)：R/G/B 用不同位移量分别折射，再以 screen 合成 → 边缘彩色镶边 -->
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="38" xChannelSelector="R" yChannelSelector="G" result="dR"/>
+    <feColorMatrix in="dR" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cR"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="30" xChannelSelector="R" yChannelSelector="G" result="dG"/>
+    <feColorMatrix in="dG" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cG"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="22" xChannelSelector="R" yChannelSelector="G" result="dB"/>
+    <feColorMatrix in="dB" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="cB"/>
+    <feBlend in="cR" in2="cG" mode="screen" result="cRG"/>
+    <feBlend in="cRG" in2="cB" mode="screen"/>
+  </filter>
+</svg>
 
 <!-- ===== 默认口令安全提醒横幅 ===== -->
 <div id="defaultPwBanner" class="default-pw-banner" style="display:none">
