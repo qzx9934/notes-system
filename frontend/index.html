@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>运行人员工作笔记管理系统 v2.2</title>
+<title>运行人员工作笔记管理系统</title>
 <!-- 本地内置，确保离线/U盘环境可用；版本锁定 marked 12.0.2 / DOMPurify 3.1.6 -->
 <script src="vendor/marked.min.js"></script>
 <script src="vendor/purify.min.js"></script>
@@ -18,9 +18,47 @@
   --star3: #E74C3C; --star2: #F39C12; --star1: #7F8C8D;
   --text: #2c3e50; --text-secondary: #7f8c8d; --border: #e1e4e8;
   --radius: 8px; --shadow: 0 1px 3px rgba(0,0,0,.08);
+  /* 字号标度 */
+  --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 14px; --fs-lg: 16px;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--text); display: flex; min-height: 100vh; }
+
+/* ===== 通用工具类（替代零散内联 style） ===== */
+.muted { color: var(--text-secondary); }
+.fs-xs { font-size: var(--fs-xs); }
+.fs-sm { font-size: var(--fs-sm); }
+.fs-md { font-size: var(--fs-md); }
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
+.flex-row-sm { display: flex; align-items: center; gap: 8px; }
+.flex-row-md { display: flex; align-items: center; gap: 12px; }
+.clickable { cursor: pointer; }
+.col-actions { width: 60px; }
+.c-star3 { color: var(--star3); }
+.c-star2 { color: var(--star2); }
+.c-star1 { color: var(--star1); }
+.flex-none { flex: 0 0 auto; }
+.cell-center { text-align: center; }
+.current-user { font-size: var(--fs-xs); opacity: .7; }
+.table-scroll { overflow: auto; flex: 1; }
+.empty-sub { font-size: var(--fs-sm); margin-top: 4px; }
+.roam-emoji { font-size: 48px; margin-bottom: 12px; }
+.roam-hint { font-size: var(--fs-md); color: var(--text-secondary); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 16px; }
+.page-active { background: var(--primary-light); color: #fff; font-weight: 600; }
+.nav-domain.active-all { background: rgba(255,255,255,.1); }
+.footer-actions { display: flex; align-items: center; gap: 4px; }
+.dot-all { background: #7F8C8D; }
+
+/* ===== 列表加载骨架屏 ===== */
+.skel-cell { padding: 12px 10px; }
+.skel-bar { height: 12px; border-radius: 6px;
+  background: linear-gradient(90deg, #eceff1 25%, #f5f7f8 37%, #eceff1 63%);
+  background-size: 400% 100%; animation: skel-shimmer 1.2s ease-in-out infinite; }
+@keyframes skel-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+/* 表格行键盘可达 */
+table tbody tr[tabindex]:focus-visible { outline: 2px solid var(--primary-light); outline-offset: -2px; }
 
 /* Sidebar */
 .sidebar {
@@ -532,7 +570,7 @@ body.roam-immersive .batch-bar { display: none; }
     </div>
     <div class="modal-body" id="userModalBody">
       <table class="user-table">
-        <thead><tr><th>用户名</th><th>角色</th><th>创建时间</th><th style="width:60px">操作</th></tr></thead>
+        <thead><tr><th>用户名</th><th>角色</th><th>创建时间</th><th class="col-actions">操作</th></tr></thead>
         <tbody id="userTableBody"></tbody>
       </table>
       <div class="add-user-form">
@@ -553,7 +591,7 @@ body.roam-immersive .batch-bar { display: none; }
               <option value="admin">admin（管理）</option>
             </select>
           </div>
-          <div class="form-group" style="flex:0 0 auto">
+          <div class="form-group flex-none">
             <label>&nbsp;</label>
             <button class="btn btn-primary btn-sm" onclick="doCreateUser()">添加</button>
           </div>
@@ -577,7 +615,7 @@ body.roam-immersive .batch-bar { display: none; }
         调用时在请求头携带 <code>X-API-Token: 令牌</code>。详见项目内 <strong>API文档.md</strong>。
       </div>
       <table class="user-table token-table">
-        <thead><tr><th>用途备注</th><th>角色</th><th>创建时间</th><th>最近使用</th><th style="width:60px">操作</th></tr></thead>
+        <thead><tr><th>用途备注</th><th>角色</th><th>创建时间</th><th>最近使用</th><th class="col-actions">操作</th></tr></thead>
         <tbody id="tokenTableBody"></tbody>
       </table>
       <!-- 新建令牌后明文仅显示一次 -->
@@ -603,7 +641,7 @@ body.roam-immersive .batch-bar { display: none; }
               <option value="viewer">viewer（只读）</option>
             </select>
           </div>
-          <div class="form-group" style="flex:0 0 auto">
+          <div class="form-group flex-none">
             <label>&nbsp;</label>
             <button class="btn btn-primary btn-sm" onclick="doCreateToken()">创建</button>
           </div>
@@ -620,14 +658,14 @@ body.roam-immersive .batch-bar { display: none; }
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <h1>运行人员<br>工作笔记管理系统</h1>
-    <div class="sub">v2.2</div>
+    <div class="sub" data-app-version></div>
   </div>
   <nav class="sidebar-nav" id="sidebarNav"></nav>
   <div class="sidebar-footer">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <span style="opacity:.6">Flask+SQLite · v2.2</span>
-      <span style="display:flex;align-items:center;gap:4px">
-        <span id="currentUser" style="font-size:11px;opacity:.7"></span>
+    <div class="flex-between">
+      <span>Flask+SQLite · <span data-app-version></span></span>
+      <span class="footer-actions">
+        <span id="currentUser" class="current-user"></span>
         <button type="button" class="icon-btn" id="userMgmtBtn" style="display:none" onclick="openUserModal()" title="用户管理" aria-label="用户管理">👥</button>
         <button type="button" class="icon-btn" id="tokenMgmtBtn" style="display:none" onclick="openTokenModal()" title="API 令牌管理" aria-label="API 令牌管理">🎫</button>
         <button type="button" class="icon-btn" onclick="openPwdModal()" title="修改密码" aria-label="修改密码">🔑</button>
@@ -659,7 +697,7 @@ body.roam-immersive .batch-bar { display: none; }
 
   <!-- Batch bar -->
   <div class="batch-bar" id="batchBar">
-    <input type="checkbox" id="checkAll" onchange="toggleAllCheck()" style="cursor:pointer">
+    <input type="checkbox" id="checkAll" onchange="toggleAllCheck()" class="clickable">
     <span class="sel-info" id="selInfo">已选 0 条</span>
     <div class="actions">
       <select id="batchLevel" title="批量修改等级">
@@ -680,7 +718,7 @@ body.roam-immersive .batch-bar { display: none; }
 
   <div class="table-wrap" id="tableContainer">
     <div class="table-header">
-      <div style="display:flex;align-items:center;gap:12px">
+      <div class="flex-row-md">
         <h2 id="tableTitle">全部笔记</h2>
         <select class="sort-select" id="sortSelect" onchange="doSearch()">
           <option value="code">按编号排序</option>
@@ -688,9 +726,9 @@ body.roam-immersive .batch-bar { display: none; }
           <option value="created">按创建时间</option>
         </select>
       </div>
-      <span style="font-size:12px;color:var(--text-secondary)" id="resultCount"></span>
+      <span class="muted fs-sm" id="resultCount"></span>
     </div>
-    <div style="overflow-x:auto; flex:1; overflow-y:auto;">
+    <div class="table-scroll">
       <table>
         <thead>
           <tr>
@@ -711,7 +749,7 @@ body.roam-immersive .batch-bar { display: none; }
     <div class="empty" id="emptyState" style="display:none">
       <div class="icon">📝</div>
       <p>暂无笔记记录</p>
-      <p style="font-size:12px;margin-top:4px">点击"新增笔记"添加第一条知识条目</p>
+      <p class="empty-sub">点击"新增笔记"添加第一条知识条目</p>
     </div>
   </div>
   <!-- 备案信息 -->
@@ -725,15 +763,15 @@ body.roam-immersive .batch-bar { display: none; }
 <!-- Roam Card View -->
 <div class="roam-container" id="roamContainer">
   <div class="roam-topbar">
-    <span style="font-size:14px;color:var(--text-secondary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:16px" id="roamFilterHint"></span>
-    <div style="display:flex;gap:8px">
+    <span class="roam-hint" id="roamFilterHint"></span>
+    <div class="flex-row-sm">
       <button class="btn btn-outline" onclick="reshuffleRoam()">🔄 换一批</button>
       <button class="btn btn-outline" onclick="exitRoam()">📋 返回列表</button>
     </div>
   </div>
   <div class="roam-card" id="roamCard">
     <div class="roam-empty" id="roamEmpty" style="display:none">
-      <div style="font-size:48px;margin-bottom:12px">🎴</div>
+      <div class="roam-emoji">🎴</div>
       <p>当前筛选条件下暂无笔记</p>
     </div>
     <div id="roamCardInner" style="display:none">
@@ -741,7 +779,7 @@ body.roam-immersive .batch-bar { display: none; }
         <span class="roam-card-code" id="roamCode"></span>
         <span id="roamLevel" class="roam-card-level" onclick="cycleRoamLevel()" title="点击切换重要程度"></span>
       </div>
-      <div class="roam-card-title" id="roamTitle" style="cursor:pointer" onclick="openRoamPreview()"></div>
+      <div class="roam-card-title clickable" id="roamTitle" onclick="openRoamPreview()"></div>
       <div class="roam-card-content" id="roamContent"></div>
       <div class="roam-card-meta">
         <div class="roam-card-tags" id="roamTags"></div>
@@ -1075,14 +1113,14 @@ async function loadUsers() {
     const tbody = document.getElementById('userTableBody');
     tbody.innerHTML = users.map(u => `
       <tr>
-        <td>${esc(u.username)}${u.username === document.getElementById('currentUser').textContent.replace(' (只读)','') ? ' <span style="font-size:10px;color:var(--text-secondary)">(当前)</span>' : ''}</td>
+        <td>${esc(u.username)}${u.username === document.getElementById('currentUser').textContent.replace(' (只读)','') ? ' <span class="muted fs-xs">(当前)</span>' : ''}</td>
         <td><span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-viewer'}">${u.role}</span></td>
-        <td style="color:var(--text-secondary)">${u.created_at}</td>
-        <td>${u.role !== 'admin' ? `<button class="btn-del" onclick="doDeleteUser(${u.id}, '${esc(u.username)}')">删除</button>` : '<span style="font-size:11px;color:var(--text-secondary)">-</span>'}</td>
+        <td class="muted">${u.created_at}</td>
+        <td>${u.role !== 'admin' ? `<button class="btn-del" onclick="doDeleteUser(${u.id}, '${esc(u.username)}')">删除</button>` : '<span class="muted fs-xs">-</span>'}</td>
       </tr>
     `).join('');
   } catch(e) {
-    document.getElementById('userTableBody').innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-secondary)">加载失败</td></tr>';
+    document.getElementById('userTableBody').innerHTML = '<tr><td colspan="4" class="cell-center muted">加载失败</td></tr>';
   }
 }
 
@@ -1151,20 +1189,20 @@ async function loadTokens() {
     const r = await _origFetch('/api/tokens');
     const tokens = await r.json();
     if (!tokens.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center" class="token-empty">暂无令牌，请在下方创建</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="cell-center token-empty">暂无令牌，请在下方创建</td></tr>';
       return;
     }
     tbody.innerHTML = tokens.map(t => `
       <tr>
         <td class="token-label">${esc(t.label) || '<span class="token-empty">（无备注）</span>'}</td>
         <td><span class="role-badge ${t.role === 'admin' ? 'role-admin' : 'role-viewer'}">${t.role}</span></td>
-        <td style="color:var(--text-secondary)">${t.created_at}</td>
-        <td style="color:var(--text-secondary)">${t.last_used_at || '<span class="token-empty">从未</span>'}</td>
+        <td class="muted">${t.created_at}</td>
+        <td class="muted">${t.last_used_at || '<span class="token-empty">从未</span>'}</td>
         <td><button class="btn-del" onclick="doDeleteToken(${t.id}, '${esc(t.label) || '该令牌'}')">删除</button></td>
       </tr>
     `).join('');
   } catch(e) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center" class="token-empty">加载失败</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="cell-center token-empty">加载失败</td></tr>';
   }
 }
 
@@ -1256,9 +1294,9 @@ async function loadStats() {
   s.by_level.forEach(l => byLevel[l.level] = l.cnt);
   document.getElementById('statsBar').innerHTML = `
     <div class="stat-card"><div class="num">${s.total}</div><div class="label">总条目</div></div>
-    <div class="stat-card"><div class="num" style="color:var(--star3)">${byLevel['★★★'] || 0}</div><div class="label">★★★ 核心</div></div>
-    <div class="stat-card"><div class="num" style="color:var(--star2)">${byLevel['★★'] || 0}</div><div class="label">★★ 重要</div></div>
-    <div class="stat-card"><div class="num" style="color:var(--star1)">${byLevel['★'] || 0}</div><div class="label">★ 参考</div></div>
+    <div class="stat-card"><div class="num c-star3">${byLevel['★★★'] || 0}</div><div class="label">★★★ 核心</div></div>
+    <div class="stat-card"><div class="num c-star2">${byLevel['★★'] || 0}</div><div class="label">★★ 重要</div></div>
+    <div class="stat-card"><div class="num c-star1">${byLevel['★'] || 0}</div><div class="label">★ 参考</div></div>
     <div class="stat-card"><div class="num">${s.by_section.filter(x=>x.cnt>0).length}</div><div class="label">涉及章节</div></div>
   `;
 }
@@ -1278,8 +1316,8 @@ function renderSidebar() {
   let html = '';
   // "全部笔记" at the same level as the 5 domains
   html += `<div class="nav-section">
-    <div class="nav-domain" onclick="selectSection('')" style="${currentSection === '' ? 'background:rgba(255,255,255,.1)' : ''}">
-      <span class="dot" style="background:#7F8C8D"></span>
+    <div class="nav-domain ${currentSection === '' ? 'active-all' : ''}" onclick="selectSection('')">
+      <span class="dot dot-all"></span>
       📋 全部笔记
     </div>
   </div>`;
@@ -1368,6 +1406,7 @@ async function doSearch() {
   if (sort && sort !== 'code') params.set('sort', sort);
   currentSort = sort;
 
+  renderSkeleton();  // 请求期间显示骨架屏占位
   const r = await fetch('/api/notes?' + params);
   const data = await r.json();
   if (mySeq !== _searchSeq) return;  // 已有更新的搜索发出，丢弃本次过期结果
@@ -1387,6 +1426,14 @@ async function doSearch() {
 
 const CONTENT_PREVIEW_LEN = 60;
 
+// 列表加载骨架屏（8 列与正式表头对齐）
+function renderSkeleton(rows = 8) {
+  const cell = '<td class="skel-cell"><div class="skel-bar"></div></td>';
+  document.getElementById('notesTable').innerHTML =
+    Array.from({ length: rows }, () => `<tr aria-hidden="true">${cell.repeat(8)}</tr>`).join('');
+  document.getElementById('emptyState').style.display = 'none';
+}
+
 function renderTable(items) {
   const tbody = document.getElementById('notesTable');
   if (items.length === 0) { tbody.innerHTML = ''; return; }
@@ -1398,7 +1445,7 @@ function renderTable(items) {
     const needTruncate = contentRaw.length > CONTENT_PREVIEW_LEN;
     const preview = needTruncate ? esc(contentRaw.substring(0, CONTENT_PREVIEW_LEN)) + '…' : contentEsc;
 
-    return `<tr class="${selClass}" onclick="openPreview(${n.id})">
+    return `<tr class="${selClass}" tabindex="0" onclick="openPreview(${n.id})" onkeydown="rowKey(event, ${n.id})">
       <td class="col-check" onclick="event.stopPropagation()"><input type="checkbox" data-id="${n.id}" ${checked} onchange="toggleCheck(${n.id}, this.checked)"></td>
       <td class="col-code">${esc(n.code)}</td>
       <td class="col-title">${esc(n.title)}</td>
@@ -1414,6 +1461,10 @@ function renderTable(items) {
   }).join('');
 }
 
+// 表格行键盘操作：回车打开详情（空格也可，且阻止页面滚动）
+function rowKey(e, id) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPreview(id); }
+}
 function levelClass(level) { return level === '★★★' ? 'star3' : level === '★★' ? 'star2' : 'star1'; }
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 // 安全渲染 Markdown：先解析再用 DOMPurify 消毒，防止存储型 XSS
@@ -1480,7 +1531,7 @@ function renderPagination(data) {
   if (data.pages <= 1) { pg.innerHTML = ''; return; }
   let html = `<button ${data.page <= 1 ? 'disabled' : ''} onclick="goPage(${data.page - 1})">上一页</button>`;
   for (let i = 1; i <= data.pages; i++) {
-    if (i === data.page) html += `<button style="background:var(--primary-light);color:#fff;font-weight:600">${i}</button>`;
+    if (i === data.page) html += `<button class="page-active">${i}</button>`;
     else html += `<button onclick="goPage(${i})">${i}</button>`;
   }
   html += `<button ${data.page >= data.pages ? 'disabled' : ''} onclick="goPage(${data.page + 1})">下一页</button>`;
@@ -2053,6 +2104,11 @@ document.addEventListener('keydown', e => {
 });
 
 // ==================== Start ====================
+// 版本号单一来源：填充页面各处 + 文档标题
+const APP_VERSION = '2.2';
+document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
+document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
+
 checkAuth();
 </script>
 <!-- 本地内置，确保离线/U盘环境可用；SheetJS 0.18.5 -->
