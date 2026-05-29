@@ -159,7 +159,7 @@ DOMAINS_DATA = [
 SECTIONS_DATA = [
     ('A01', '锅炉及辅助系统', 'A', '锅炉本体、燃烧器、制粉系统、风烟系统、吹灰系统、锅炉辅机等', 1),
     ('A02', '汽轮机及辅助系统', 'A', '汽轮机本体、凝汽器、除氧器、高低加、给水泵、循环水系统等', 2),
-    ('A03', '电气系统', 'A', '发电机、变压器、厂用电系统、6kV/380V配电、直流系统、UPS等', 3),
+    ('A03', '电气系统', 'A', '发电机、变压器、厂用电系统、10kV/380V配电、直流系统、UPS等', 3),
     ('A04', '热控自动化系统', 'A', 'DCS/DEH控制系统、FSSS炉膛安全、TSI监视、调节阀门、仪表等', 4),
     ('A05', '辅机系统', 'A', '各类泵、风机、压缩机、冷却水系统、压缩空气系统、暖通空调等', 5),
     ('A06', '脱硫脱硝环保系统', 'A', '石灰石-石膏湿法脱硫、SCR脱硝、除尘器、废水处理、CEMS监测等', 6),
@@ -226,6 +226,11 @@ def seed_db():
                    ('admin', generate_password_hash('admin123'), 'admin'))
         db.commit()
         print('[认证] 已创建默认管理员账号: admin / admin123 (角色: admin)')
+
+    # 数据修正：统一 A03 涵盖范围 6kV -> 10kV（仅当仍为旧值时更新，避免覆盖用户自定义）
+    db.execute("UPDATE sections SET scope=REPLACE(scope,'6kV/380V','10kV/380V') "
+               "WHERE code='A03' AND scope LIKE '%6kV/380V%'")
+    db.commit()
 
     if seeded:
         # 已初始化过，只确保领域和章节数据完整（用 OR IGNORE）
