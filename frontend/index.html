@@ -757,28 +757,11 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
   .sidebar { background: var(--primary) !important; }
 }
 
-/* ===== 性能 / 无障碍降级 ===== */
-/* 移动端：去掉昂贵的位移折射(url(#lg-distortion))，仅保留纯模糊，减轻手机 GPU 负担 */
-@media (max-width: 768px) {
-  .stat-card, .batch-bar, .modal, .pwd-modal, .user-mgmt-modal,
-  .preview-drawer, .roam-card, .login-card, .btn-outline {
-    -webkit-backdrop-filter: var(--glass-blur) !important;
-    backdrop-filter: var(--glass-blur) !important;
-  }
-}
-/* 用户偏好"减少透明度"：改为接近不透明纯色，彻底去掉毛玻璃与极光背景 */
-@media (prefers-reduced-transparency: reduce) {
-  .table-wrap, .stat-card, .batch-bar, .modal, .pwd-modal,
-  .user-mgmt-modal, .preview-drawer, .roam-card, .login-card {
-    background: rgba(255,255,255,.97) !important;
-    -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
-  }
-  .sidebar, .mobile-topbar {
-    background: var(--primary) !important;
-    -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
-  }
-  body::before { display: none; }
-}
+/* ===== 无障碍降级 =====
+   注：此前的「移动端去折射」「减少透明度→纯不透明」两段降级，会在桌面端误伤——
+   浏览器高倍缩放/窄窗口使视口 CSS 宽度跌破 768px，或系统关闭「透明效果」时，
+   会把液态玻璃折射整段关掉。为保证各端一致的玻璃观感，已移除这两段；
+   仅保留不影响外观的「减少动效」，以及上方对完全不支持 backdrop-filter 浏览器的 @supports 兜底。 */
 /* 用户偏好"减少动效"：禁用过渡/动画与悬浮位移，避免眩晕、省电 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -2578,7 +2561,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '2.5';
+const APP_VERSION = '2.6';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
