@@ -97,6 +97,15 @@ table tbody tr[tabindex]:focus-visible { outline: 2px solid var(--primary-light)
 .site-footer a { color: #999; text-decoration: none; }
 .site-footer a:hover { color: #666; }
 .site-footer .beian-icon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 2px; }
+/* 漫游(沉浸)模式下的备案信息：固定到底部居中，单行显示完整 */
+body.roam-immersive .site-footer {
+  position: fixed; left: 0; right: 0; bottom: 0; margin: 0;
+  padding: 8px 12px; white-space: nowrap; font-size: var(--fs-xs);
+  color: rgba(255,255,255,.5); z-index: 20;
+}
+body.roam-immersive .site-footer a { color: rgba(255,255,255,.5); }
+/* 侧边栏页脚：图标按钮靠右 */
+.footer-bar { display: flex; justify-content: flex-end; align-items: center; }
 .footer-sep { margin: 0 8px; }
 .topbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
 .search-wrap { flex: 1; min-width: 200px; position: relative; }
@@ -662,8 +671,7 @@ body.roam-immersive .batch-bar { display: none; }
   </div>
   <nav class="sidebar-nav" id="sidebarNav"></nav>
   <div class="sidebar-footer">
-    <div class="flex-between">
-      <span>Flask+SQLite · <span data-app-version></span></span>
+    <div class="footer-bar">
       <span class="footer-actions">
         <span id="currentUser" class="current-user"></span>
         <button type="button" class="icon-btn" id="userMgmtBtn" style="display:none" onclick="openUserModal()" title="用户管理" aria-label="用户管理">👥</button>
