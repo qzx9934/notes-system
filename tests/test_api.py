@@ -167,6 +167,46 @@ def test_batch_move_section_regenerates_code(admin):
     assert moved['code'].startswith('E04-')  # 编号已按新章节重新生成
 
 
+# ---------------- 安全加固（响应头 / Cookie / CORS） ----------------
+
+def test_security_headers_present(client):
+    r = client.get('/api/check-auth')
+    assert r.headers.get('X-Content-Type-Options') == 'nosniff'
+    assert r.headers.get('X-Frame-Options') == 'DENY'
+    assert 'Referrer-Policy' in r.headers
+
+
+def test_no_hsts_when_not_https(client):
+    # 测试环境未设 NOTES_HTTPS，不应下发 HSTS
+    r = client.get('/api/check-auth')
+    assert 'Strict-Transport-Security' not in r.headers
+
+
+def test_session_cookie_is_hardened(client):
+    r = client.post('/api/login', json={'username': 'admin', 'password': 'admin123'})
+    set_cookie = ' '.join(r.headers.getlist('Set-Cookie'))
+    assert 'HttpOnly' in set_cookie
+    assert 'SameSite=Lax' in set_cookie
+    # 测试环境非 HTTPS，不应带 Secure（否则本地 HTTP 无法登录）
+    assert 'Secure' not in set_cookie
+
+
+def test_cors_not_open_by_default(client):
+    r = client.get('/api/check-auth', headers={'Origin': 'https://evil.example'})
+    assert r.headers.get('Access-Control-Allow-Origin') is None
+
+
+def test_env_bool_helper():
+    import app as app_module
+    import os
+    os.environ['X_TMP_FLAG'] = 'yes'
+    assert app_module._env_bool('X_TMP_FLAG') is True
+    os.environ['X_TMP_FLAG'] = '0'
+    assert app_module._env_bool('X_TMP_FLAG') is False
+    del os.environ['X_TMP_FLAG']
+    assert app_module._env_bool('X_TMP_FLAG', False) is False
+
+
 # ---------------- 全文搜索（FTS5 trigram） ----------------
 
 def test_fts_is_enabled_in_tests():
