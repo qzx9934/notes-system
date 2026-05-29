@@ -639,6 +639,13 @@ body.roam-immersive .batch-bar { display: none; }
 .prop-st.ok { background: #EAFAF1; color: #27AE60; }
 .prop-st.rej { background: #FDEDEC; color: #E74C3C; }
 
+/* 收藏星标 */
+.fav-star { cursor: pointer; color: #ccc; font-size: 15px; margin-right: 5px; user-select: none; transition: color .15s, transform .1s; background: none; border: none; padding: 0; line-height: 1; }
+.fav-star:hover { transform: scale(1.2); }
+.fav-star.on { color: #F1C40F; }
+.fav-star-lg { font-size: 22px; margin-right: 8px; flex-shrink: 0; }
+#favFilterBtn.active { background: #FEF9E7; border-color: #F1C40F; color: #B7950B; }
+
 /* ============================================================
    Liquid Glass 主题（叠加层 · 试验，置于样式末尾以覆盖前面规则）
    纯视觉：半透明 + backdrop-filter 毛玻璃 + 高光描边 + 折射极光背景
@@ -1133,6 +1140,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <select id="filterLevel" onchange="doSearch()"><option value="">全部等级</option><option value="★★★">★★★ 核心</option><option value="★★">★★ 重要</option><option value="★">★ 参考</option></select>
       <select id="filterSource" onchange="doSearch()"><option value="">全部来源</option><option>规程</option><option>培训</option><option>操作票</option><option>事故预案</option><option>事故通报</option><option>经验反馈</option><option>技术文件</option><option>个人总结</option><option>规章制度</option></select>
       <select id="filterDomain" onchange="onDomainFilter()"><option value="">全部领域</option><option value="A">A 系统设备</option><option value="B">B 运行操作</option><option value="C">C 安全管理</option><option value="D">D 技术标准</option><option value="E">E 综合管理</option></select>
+      <button class="btn btn-outline" id="favFilterBtn" onclick="toggleFavFilter()" title="只看我收藏的笔记">☆ 我的收藏</button>
       <button class="btn btn-outline" onclick="resetFilters()">重置</button>
     </div>
     <button class="btn btn-primary" onclick="openAddModal()">+ 新增笔记</button>
@@ -1274,6 +1282,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         <div class="code" id="previewCode"></div>
         <div class="title" id="previewTitle"></div>
       </div>
+      <button class="fav-star fav-star-lg" id="previewFavStar" title="收藏/取消收藏" onclick="togglePreviewFavorite()">☆</button>
       <button class="preview-close" onclick="closePreview()">×</button>
     </div>
     <div class="preview-meta" id="previewMeta"></div>
@@ -1377,6 +1386,7 @@ let domains = [];
 let currentSection = '';
 let currentPage = 1;
 let currentSort = 'updated';  // 总览默认按更新时间，方便先看到最新笔记
+let favoritesOnly = false;     // 只看我的收藏
 let roamNotes = [];
 let roamIndex = 0;
 let isRoamMode = false;
@@ -2138,6 +2148,7 @@ async function doSearch() {
   if (source) params.set('source', source);
   if (domain) params.set('domain', domain);
   if (currentSection) params.set('section', currentSection);
+  if (favoritesOnly) params.set('favorites', '1');
   params.set('page', currentPage);
   params.set('per', 30);
 
@@ -2188,7 +2199,7 @@ function renderTable(items) {
     return `<tr class="${selClass}" tabindex="0" onclick="openPreview(${n.id})" onkeydown="rowKey(event, ${n.id})">
       <td class="col-check" onclick="event.stopPropagation()"><input type="checkbox" data-id="${n.id}" ${checked} onchange="toggleCheck(${n.id}, this.checked)"></td>
       <td class="col-code">${esc(n.code)}</td>
-      <td class="col-title">${esc(n.title)}</td>
+      <td class="col-title"><span class="fav-star ${n.favorited ? 'on' : ''}" title="收藏/取消收藏" onclick="event.stopPropagation();toggleFavorite(${n.id}, this)">${n.favorited ? '★' : '☆'}</span>${esc(n.title)}</td>
       <td class="col-content">
         <div class="${needTruncate ? 'truncated' : ''}">${preview.replace(/\n/g, '<br>')}</div>
         ${needTruncate ? '<div class="expand-hint">点击查看全文 ›</div>' : ''}
@@ -2204,6 +2215,55 @@ function renderTable(items) {
 // 表格行键盘操作：回车打开详情（空格也可，且阻止页面滚动）
 function rowKey(e, id) {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPreview(id); }
+}
+
+// ==================== 收藏 ====================
+function toggleFavFilter() {
+  favoritesOnly = !favoritesOnly;
+  const btn = document.getElementById('favFilterBtn');
+  btn.classList.toggle('active', favoritesOnly);
+  btn.textContent = favoritesOnly ? '★ 我的收藏' : '☆ 我的收藏';
+  currentPage = 1;
+  doSearch();
+}
+
+async function setFavorite(id, on) {
+  const r = await fetch('/api/notes/' + id + '/favorite', { method: on ? 'POST' : 'DELETE' });
+  if (!r.ok) { showToast('操作失败', 'error'); return null; }
+  // 同步内存里的列表项状态
+  const it = allLoadedItems.find(x => x.id === id);
+  if (it) it.favorited = on;
+  return (await r.json()).favorited;
+}
+
+async function toggleFavorite(id, el) {
+  const on = !el.classList.contains('on');
+  const res = await setFavorite(id, on);
+  if (res === null) return;
+  el.classList.toggle('on', res);
+  el.textContent = res ? '★' : '☆';
+  if (previewNote && previewNote.id === id) { previewNote.favorited = res; updatePreviewFavStar(res); }
+  showToast(res ? '已收藏' : '已取消收藏', 'success');
+  // 在「我的收藏」筛选下取消收藏 -> 该行应消失
+  if (favoritesOnly && !res) doSearch();
+}
+
+function updatePreviewFavStar(on) {
+  const el = document.getElementById('previewFavStar');
+  if (!el) return;
+  el.classList.toggle('on', on);
+  el.textContent = on ? '★' : '☆';
+}
+
+async function togglePreviewFavorite() {
+  if (!previewNote) return;
+  const on = !previewNote.favorited;
+  const res = await setFavorite(previewNote.id, on);
+  if (res === null) return;
+  previewNote.favorited = res;
+  updatePreviewFavStar(res);
+  previewDirty = true;  // 关闭抽屉时刷新列表，使行内星标/收藏筛选同步
+  showToast(res ? '已收藏' : '已取消收藏', 'success');
 }
 function levelClass(level) { return level === '★★★' ? 'star3' : level === '★★' ? 'star2' : 'star1'; }
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -2358,6 +2418,9 @@ function resetFilters() {
   document.getElementById('filterLevel').value = '';
   document.getElementById('filterSource').value = '';
   document.getElementById('filterDomain').value = '';
+  favoritesOnly = false;
+  const favBtn = document.getElementById('favFilterBtn');
+  if (favBtn) { favBtn.classList.remove('active'); favBtn.textContent = '☆ 我的收藏'; }
   currentSection = '';
   currentPage = 1;
   currentSort = 'updated';
@@ -2504,6 +2567,7 @@ async function openPreview(id) {
     previewDirty = false;
     renderPreviewMeta(n);
     renderPreviewBack(n);
+    updatePreviewFavStar(!!n.favorited);
     setPreviewFace(false);  // 每次打开都先显示正面
 
     document.getElementById('previewOverlay').classList.add('open');
@@ -3238,7 +3302,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '3.1';
+const APP_VERSION = '3.2';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 

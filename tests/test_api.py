@@ -800,3 +800,48 @@ def test_ai_fill_contributor_allowed(admin, monkeypatch):
                         lambda system, user, temperature=0.3: '{"title":"t","tags":"a","section":"A01","level":"★","source":"规程"}')
     co = _contributor_client(admin, 'co_fill')
     assert co.post('/api/ai/fill', json={'content': 'x'}).status_code == 200
+
+
+# ---------------- 用户收藏 ----------------
+
+def test_favorite_add_list_remove(admin):
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '收藏目标', 'content': 'x'}).get_json()['id']
+    # 初始未收藏
+    assert admin.get(f'/api/notes/{nid}').get_json()['favorited'] is False
+    # 收藏
+    r = admin.post(f'/api/notes/{nid}/favorite')
+    assert r.status_code == 200 and r.get_json()['favorited'] is True
+    assert admin.get(f'/api/notes/{nid}').get_json()['favorited'] is True
+    # 列表 favorites=1 只返回收藏
+    fav = admin.get('/api/notes?favorites=1&per=200').get_json()
+    assert any(it['id'] == nid for it in fav['items'])
+    assert all(it['favorited'] for it in fav['items'])
+    # 取消收藏
+    admin.delete(f'/api/notes/{nid}/favorite')
+    assert admin.get(f'/api/notes/{nid}').get_json()['favorited'] is False
+    fav2 = admin.get('/api/notes?favorites=1&per=200').get_json()
+    assert not any(it['id'] == nid for it in fav2['items'])
+
+
+def test_favorite_is_per_user(admin):
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '私有收藏', 'content': 'x'}).get_json()['id']
+    admin.post(f'/api/notes/{nid}/favorite')
+    _make_user(admin, 'favu', 'viewer')
+    other = _new_client()
+    other.post('/api/login', json={'username': 'favu', 'password': 'secret123'})
+    # 另一个用户看不到 admin 的收藏标记，也筛不出来
+    assert other.get(f'/api/notes/{nid}').get_json()['favorited'] is False
+    assert other.get('/api/notes?favorites=1&per=200').get_json()['total'] == 0
+
+
+def test_favorite_requires_login(client):
+    assert client.post('/api/notes/1/favorite').status_code == 401
+
+
+def test_favorite_cleaned_on_delete(admin):
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '删后清收藏', 'content': 'x'}).get_json()['id']
+    admin.post(f'/api/notes/{nid}/favorite')
+    admin.delete(f'/api/notes/{nid}')
+    # 收藏筛选里不应再残留
+    fav = admin.get('/api/notes?favorites=1&per=200').get_json()
+    assert not any(it['id'] == nid for it in fav['items'])

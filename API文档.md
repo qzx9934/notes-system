@@ -180,6 +180,12 @@ Authorization: Bearer <你的令牌>
 > 当 `updates` 含 `section`（移动章节）时，被移动笔记的编号 `code` 会按新章节自动重新生成，保持编号前缀与所在章节一致。
 ### `DELETE /api/notes/batch` —— 批量删除（admin，`{ids}`）
 
+### 收藏（每个用户独立）
+
+- `POST /api/notes/<id>/favorite` —— 收藏；`DELETE /api/notes/<id>/favorite` —— 取消收藏（任意登录用户，**仅会话用户**，API 令牌不支持）。
+- `GET /api/notes?favorites=1` —— 只返回当前用户收藏的笔记。
+- 笔记的查询/详情响应都带 `favorited` 布尔字段，表示当前用户是否已收藏（令牌调用恒为 `false`）。删除笔记时其收藏记录一并清理。
+
 ### `GET /api/sections` —— 章节列表（含领域名）
 ### `GET /api/domains` —— 领域列表
 ### `GET /api/stats` —— 统计（按等级/来源/章节）

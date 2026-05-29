@@ -351,6 +351,14 @@ def init_db():
             review_note   TEXT    NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_prop_status ON proposals(status);
+
+        CREATE TABLE IF NOT EXISTS favorites (
+            user_id     INTEGER NOT NULL,
+            note_id     INTEGER NOT NULL,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            PRIMARY KEY (user_id, note_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_fav_user ON favorites(user_id);
     ''')
     db.commit()
     db.close()
@@ -1059,6 +1067,15 @@ def api_notes_list():
         where.append('n.section IN (SELECT code FROM sections WHERE domain = ?)')
         params.append(domain)
 
+    uid = session.get('user_id')
+    favorites_only = request.args.get('favorites', '').strip() in ('1', 'true')
+    if favorites_only:
+        if uid:
+            where.append('n.id IN (SELECT note_id FROM favorites WHERE user_id = ?)')
+            params.append(uid)
+        else:
+            where.append('0 = 1')  # 令牌无会话用户，无收藏可言
+
     where_clause = ' AND '.join(where)
 
     # count
@@ -1082,8 +1099,21 @@ def api_notes_list():
         params + [per, offset]
     ).fetchall()
 
+    items = [dict(r) for r in rows]
+    # 标注当前用户是否已收藏（仅会话用户；令牌无收藏）
+    if uid and items:
+        ids = [it['id'] for it in items]
+        ph = ','.join(['?'] * len(ids))
+        fav = {row['note_id'] for row in db.execute(
+            f'SELECT note_id FROM favorites WHERE user_id=? AND note_id IN ({ph})', [uid] + ids)}
+        for it in items:
+            it['favorited'] = it['id'] in fav
+    else:
+        for it in items:
+            it['favorited'] = False
+
     return jsonify({
-        'items': [dict(r) for r in rows],
+        'items': items,
         'total': total,
         'page': page,
         'per': per,
@@ -1097,7 +1127,29 @@ def api_note_get(id):
     row = db.execute('SELECT n.*, s.name as section_name FROM notes n LEFT JOIN sections s ON n.section=s.code WHERE n.id=?', (id,)).fetchone()
     if not row:
         return jsonify({'error': 'not found'}), 404
-    return jsonify(dict(row))
+    out = dict(row)
+    uid = session.get('user_id')
+    out['favorited'] = bool(uid and db.execute(
+        'SELECT 1 FROM favorites WHERE user_id=? AND note_id=?', (uid, id)).fetchone())
+    return jsonify(out)
+
+# --- 收藏（每个用户独立；仅会话用户，令牌不支持） ---
+@app.route('/api/notes/<int:id>/favorite', methods=['POST', 'DELETE'])
+@login_required
+def api_note_favorite(id):
+    uid = session.get('user_id')
+    if not uid:
+        return jsonify({'error': '收藏需以用户身份登录'}), 400
+    db = get_db()
+    if not db.execute('SELECT 1 FROM notes WHERE id=?', (id,)).fetchone():
+        return jsonify({'error': 'not found'}), 404
+    if request.method == 'POST':
+        db.execute('INSERT OR IGNORE INTO favorites(user_id, note_id) VALUES(?,?)', (uid, id))
+        db.commit()
+        return jsonify({'ok': True, 'favorited': True})
+    db.execute('DELETE FROM favorites WHERE user_id=? AND note_id=?', (uid, id))
+    db.commit()
+    return jsonify({'ok': True, 'favorited': False})
 
 @app.route('/api/notes', methods=['POST'])
 @writer_required
@@ -1489,6 +1541,7 @@ def api_notes_batch_delete():
     try:
         placeholders = ','.join(['?'] * len(ids))
         cursor = db.execute(f'DELETE FROM notes WHERE id IN ({placeholders})', ids)
+        db.execute(f'DELETE FROM favorites WHERE note_id IN ({placeholders})', ids)
         db.commit()
     except sqlite3.Error:
         db.rollback()
@@ -1578,6 +1631,7 @@ def api_note_delete(id):
         return queue_proposal('delete', id, {'title': existing['title']})
 
     db.execute('DELETE FROM notes WHERE id=?', (id,))
+    db.execute('DELETE FROM favorites WHERE note_id=?', (id,))
     db.commit()
     _sweep_quietly()  # 顺手回收因删除而无人引用的图片
     return jsonify({'ok': True})
@@ -1657,6 +1711,7 @@ def _apply_proposal(db, prop):
         if not existing:
             return False, '目标笔记已不存在'
         db.execute('DELETE FROM notes WHERE id=?', (prop['note_id'],))
+        db.execute('DELETE FROM favorites WHERE note_id=?', (prop['note_id'],))
         return True, '已删除'
     return False, '未知的申请类型'
 
