@@ -8,6 +8,7 @@ Flask + SQLite RESTful接口
 import sqlite3
 import os
 import sys
+import hashlib
 import platform
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, g, session
@@ -130,6 +131,15 @@ def init_db():
             role            TEXT    NOT NULL DEFAULT 'viewer',
             created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
         );
+
+        CREATE TABLE IF NOT EXISTS api_tokens (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            token           TEXT    NOT NULL UNIQUE,   -- sha256(明文令牌)
+            label           TEXT    NOT NULL DEFAULT '',-- 用途备注
+            role            TEXT    NOT NULL DEFAULT 'admin',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            last_used_at    TEXT
+        );
     ''')
     db.commit()
     db.close()
@@ -246,23 +256,60 @@ seed_db()
 
 # ==================== 认证 ====================
 
+def _token_role():
+    """从请求头读取 API Token 并返回其角色；无效或缺失返回 None。
+
+    支持两种写法：
+      X-API-Token: <token>
+      Authorization: Bearer <token>
+    另外支持环境变量 NOTES_API_TOKEN 作为主令牌（始终为 admin）。
+    """
+    token = request.headers.get('X-API-Token', '').strip()
+    if not token:
+        auth = request.headers.get('Authorization', '')
+        if auth.startswith('Bearer '):
+            token = auth[7:].strip()
+    if not token:
+        return None
+
+    # 环境变量主令牌（便于一次性/便携部署）
+    env_token = os.environ.get('NOTES_API_TOKEN', '')
+    if env_token and token == env_token:
+        return 'admin'
+
+    th = hashlib.sha256(token.encode('utf-8')).hexdigest()
+    db = get_db()
+    row = db.execute('SELECT id, role FROM api_tokens WHERE token=?', (th,)).fetchone()
+    if not row:
+        return None
+    db.execute('UPDATE api_tokens SET last_used_at=datetime("now","localtime") WHERE id=?', (row['id'],))
+    db.commit()
+    return row['role']
+
 def login_required(f):
-    """登录验证装饰器：未登录返回 401 JSON"""
+    """登录验证装饰器：支持会话 Cookie 或 API Token，未授权返回 401 JSON"""
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'user_id' not in session:
-            return jsonify({'error': 'unauthorized'}), 401
-        return f(*args, **kwargs)
+        if 'user_id' in session:
+            return f(*args, **kwargs)
+        if _token_role() is not None:
+            return f(*args, **kwargs)
+        return jsonify({'error': 'unauthorized'}), 401
     return decorated
 
 def admin_required(f):
-    """管理员权限装饰器：非 admin 角色返回 403"""
+    """管理员权限装饰器：支持会话 Cookie 或 API Token，非 admin 角色返回 403"""
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'user_id' not in session:
+        if 'user_id' in session:
+            if session.get('role') != 'admin':
+                return jsonify({'error': 'forbidden', 'message': '仅管理员可执行此操作'}), 403
+            return f(*args, **kwargs)
+        role = _token_role()
+        if role is None:
             return jsonify({'error': 'unauthorized'}), 401
-        if session.get('role') != 'admin':
-            return jsonify({'error': 'forbidden', 'message': '仅管理员可执行此操作'}), 403
+        if role != 'admin':
+            return jsonify({'error': 'forbidden', 'message': '该令牌无管理员权限'}), 403
         return f(*args, **kwargs)
     return decorated
 
@@ -385,6 +432,51 @@ def api_user_delete(id):
     db.execute('DELETE FROM users WHERE id=?', (id,))
     db.commit()
     return jsonify({'ok': True, 'deleted': {'id': user['id'], 'username': user['username']}})
+
+# ---- API 令牌管理（仅管理员） ----
+@app.route('/api/tokens')
+@admin_required
+def api_tokens_list():
+    """列出所有 API 令牌（不含明文，明文仅在创建时返回一次）"""
+    db = get_db()
+    rows = db.execute(
+        'SELECT id, label, role, created_at, last_used_at FROM api_tokens ORDER BY id'
+    ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/tokens', methods=['POST'])
+@admin_required
+def api_token_create():
+    """创建 API 令牌；返回的明文 token 只显示这一次，请妥善保存"""
+    data = request.get_json() or {}
+    label = data.get('label', '').strip()
+    role = data.get('role', 'admin').strip()
+    if role not in ('admin', 'viewer'):
+        return jsonify({'error': '角色只能为 admin 或 viewer'}), 400
+
+    import secrets
+    raw = 'ntk_' + secrets.token_hex(24)
+    th = hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
+    db = get_db()
+    db.execute('INSERT INTO api_tokens(token, label, role) VALUES(?, ?, ?)', (th, label, role))
+    db.commit()
+    row = db.execute('SELECT id, label, role, created_at FROM api_tokens WHERE token=?', (th,)).fetchone()
+    result = dict(row)
+    result['token'] = raw  # 明文仅此一次返回
+    return jsonify(result), 201
+
+@app.route('/api/tokens/<int:id>', methods=['DELETE'])
+@admin_required
+def api_token_delete(id):
+    """吊销（删除）一个 API 令牌"""
+    db = get_db()
+    row = db.execute('SELECT id FROM api_tokens WHERE id=?', (id,)).fetchone()
+    if not row:
+        return jsonify({'error': 'token 不存在'}), 404
+    db.execute('DELETE FROM api_tokens WHERE id=?', (id,))
+    db.commit()
+    return jsonify({'ok': True})
 
 # ==================== API 路由 ====================
 
@@ -703,6 +795,108 @@ def api_note_batch():
     db.commit()
     return jsonify({'added': len(added), 'merged': len(merged), 'skipped': len(skipped),
                     'added_list': added, 'merged_list': merged})
+
+# --- 通用批量录入（推荐：命令行 / 大模型整理后上传） ---
+@app.route('/api/notes/ingest', methods=['POST'])
+@admin_required
+def api_notes_ingest():
+    """通用批量录入接口。
+
+    与 /api/notes/batch 不同：每条笔记可携带自己的 section，
+    因此可在一次请求中向多个章节写入，最适合大模型整理后一次性上传。
+
+    请求体（任选其一）：
+      {"notes": [ {note}, ... ]}
+      {"entries": [ {note}, ... ]}          # 兼容旧字段名
+      {"section": "A01", "notes": [ ... ]}  # 缺省 section，条目未指定时使用
+
+    单条 note 字段：
+      section  章节编码（如 A01）；条目未给时用顶层 section
+      title    要点标题（必填）
+      content  内容详情
+      tags     关键词标签，逗号分隔
+      source   来源（默认“个人总结”）
+      level    等级 ★ / ★★ / ★★★（默认 ★）
+      date     日期 YYYY-MM-DD（默认今天，亦兼容 note_date）
+
+    可选顶层参数：
+      dedup    是否按「章节+标题」去重并更新已有条目，默认 true
+
+    编号（code）由后端按章节自动生成，无需提供。
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'invalid JSON'}), 400
+
+    notes = data.get('notes') or data.get('entries') or []
+    if not isinstance(notes, list) or not notes:
+        return jsonify({'error': '需要非空的 notes 数组'}), 400
+
+    dedup = data.get('dedup', True)
+    default_section = (data.get('section') or '').strip()
+
+    db = get_db()
+    valid_sections = {r['code'] for r in db.execute('SELECT code FROM sections').fetchall()}
+
+    # 缓存每个章节的下一个序号，避免重复查询
+    next_num_cache = {}
+    def next_code(sec):
+        if sec not in next_num_cache:
+            row = db.execute(
+                'SELECT code FROM notes WHERE section=? ORDER BY id DESC LIMIT 1', (sec,)
+            ).fetchone()
+            next_num_cache[sec] = (int(row['code'].split('-')[1]) + 1) if row else 1
+        num = next_num_cache[sec]
+        next_num_cache[sec] = num + 1
+        return f'{sec}-{num:03d}'
+
+    def pick_date(entry):
+        return (entry.get('date') or entry.get('note_date')
+                or datetime.now().strftime('%Y-%m-%d'))
+
+    added, merged, skipped = [], [], []
+    for idx, entry in enumerate(notes):
+        if not isinstance(entry, dict):
+            skipped.append({'index': idx, 'reason': '条目不是对象'})
+            continue
+        title = (entry.get('title') or '').strip()
+        section = (entry.get('section') or default_section or '').strip()
+        if not title:
+            skipped.append({'index': idx, 'reason': 'title 为空'})
+            continue
+        if section not in valid_sections:
+            skipped.append({'index': idx, 'title': title,
+                            'reason': f'未知 section: {section or "(空)"}'})
+            continue
+
+        if dedup:
+            dup = db.execute(
+                'SELECT code FROM notes WHERE section=? AND title=?', (section, title)
+            ).fetchone()
+            if dup:
+                db.execute(
+                    'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
+                    'updated_at=datetime("now","localtime") WHERE code=?',
+                    (entry.get('content', ''), entry.get('tags', ''),
+                     entry.get('source', '个人总结'), entry.get('level', '★'),
+                     pick_date(entry), dup['code'])
+                )
+                merged.append({'code': dup['code'], 'title': title})
+                continue
+
+        code = next_code(section)
+        db.execute(
+            'INSERT INTO notes(code,section,title,content,tags,source,level,note_date) '
+            'VALUES(?,?,?,?,?,?,?,?)',
+            (code, section, title, entry.get('content', ''), entry.get('tags', ''),
+             entry.get('source', '个人总结'), entry.get('level', '★'), pick_date(entry))
+        )
+        added.append({'code': code, 'title': title})
+
+    db.commit()
+    return jsonify({'ok': True,
+                    'added': len(added), 'merged': len(merged), 'skipped': len(skipped),
+                    'added_list': added, 'merged_list': merged, 'skipped_list': skipped})
 
 # --- 从 Excel 导入 ---
 @app.route('/api/import-excel', methods=['POST'])
