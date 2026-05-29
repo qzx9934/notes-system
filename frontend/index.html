@@ -486,7 +486,7 @@ tbody tr.selected { background: #EBF5FB; }
 
 /* Roam Card View — Immersive */
 body.roam-immersive {
-  background: #1a1a2e;
+  background: #f3f7fe;
 }
 body.roam-immersive .sidebar { display: none; }
 body.roam-immersive .mobile-topbar,
@@ -568,8 +568,8 @@ body.roam-immersive .batch-bar { display: none; }
   --glass-hi:
     0 0 0 .5px rgba(255,255,255,.6) inset,
     0 1px 4px rgba(255,255,255,.42) inset,
-    0 7px 16px -12px rgba(90,180,255,.5) inset,
-    0 -7px 16px -12px rgba(150,110,255,.45) inset;
+    0 7px 16px -12px rgba(90,180,255,.32) inset,
+    0 -7px 16px -12px rgba(150,110,255,.26) inset;
   --glass-sh: 0 10px 36px rgba(60,110,180,.16), 0 2px 8px rgba(60,110,180,.10);
   --glass-sh-lg: 0 18px 56px rgba(60,110,180,.24);
   /* 更清新的强调色（Apple 系蓝）+ 提升次要文字对比度 */
@@ -578,15 +578,15 @@ body.roam-immersive .batch-bar { display: none; }
 }
 
 /* 折射背景：柔和极光色块，毛玻璃才有"折射"质感 */
-body { background: #f1f6fe; }
+body { background: #f3f7fe; }
 body::before {
   content: ''; position: fixed; inset: -12%; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(44% 42% at 12% 14%, rgba(120,188,255,.34), transparent 62%),  /* 天蓝 */
-    radial-gradient(36% 34% at 90% 10%, rgba(192,172,255,.26), transparent 62%),  /* 薰衣草 */
-    radial-gradient(48% 46% at 88% 90%, rgba(122,230,214,.26), transparent 64%),  /* 薄荷 */
-    radial-gradient(44% 42% at 12% 92%, rgba(255,194,212,.20), transparent 62%);  /* 浅粉 */
-  filter: saturate(1.04);
+    radial-gradient(46% 44% at 12% 12%, rgba(132,192,255,.26), transparent 64%),  /* 淡天蓝 */
+    radial-gradient(38% 36% at 90% 10%, rgba(190,180,255,.20), transparent 64%),  /* 淡紫 */
+    radial-gradient(48% 46% at 88% 90%, rgba(150,230,218,.20), transparent 66%),  /* 淡青 */
+    radial-gradient(44% 42% at 10% 92%, rgba(255,206,222,.15), transparent 64%);  /* 极淡粉 */
+  filter: saturate(1.0);
 }
 
 /* 浅色玻璃面板 */
@@ -621,13 +621,8 @@ body::before {
   .modal, .pwd-modal, .user-mgmt-modal, .preview-drawer, .roam-card, .batch-bar { border-radius: 16px; }
 }
 
-/* 统计卡：悬浮微抬 + 顶部品牌色高光条 */
+/* 统计卡：仅悬浮微抬（去掉顶部彩色条） */
 .stat-card { position: relative; overflow: hidden; transition: transform .18s, box-shadow .18s; }
-.stat-card::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-  background: linear-gradient(90deg, var(--primary-light), var(--accent-E));
-  opacity: .85;
-}
 .stat-card:hover { transform: translateY(-2px); box-shadow: var(--glass-sh-lg), var(--glass-hi) !important; }
 .stat-card .num { font-variant-numeric: tabular-nums; }
 
@@ -742,6 +737,17 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
   .col-content .truncated { max-height: 56px; }
   .tag { font-size: 12px; padding: 3px 10px; }
 }
+
+/* 用户管理 / 令牌管理 弹窗内表格：表头去掉白底，做成液态玻璃 */
+.user-table th {
+  background: rgba(255,255,255,.32) !important;
+  -webkit-backdrop-filter: blur(6px) saturate(160%); backdrop-filter: blur(6px) saturate(160%);
+  border-bottom: 1px solid var(--glass-brd) !important;
+}
+.user-table td { border-bottom: 1px solid rgba(255,255,255,.5) !important; }
+
+/* 漫游卡：内容较多，用偏实玻璃保证可读（背景已改清新浅色） */
+.roam-card { background: var(--glass-bg-solid) !important; }
 
 /* 低性能/不支持 backdrop-filter 时，回退为较实的底色，保证可读 */
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
