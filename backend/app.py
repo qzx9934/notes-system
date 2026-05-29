@@ -12,6 +12,10 @@ import sys
 import time
 import hashlib
 import platform
+import mimetypes
+
+# 确保 PWA 清单以正确 MIME 类型下发（开启了 nosniff，类型错误会被浏览器拒绝）
+mimetypes.add_type('application/manifest+json', '.webmanifest')
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, g, session
 from flask_cors import CORS

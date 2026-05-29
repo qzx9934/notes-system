@@ -2,8 +2,18 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>运行人员工作笔记管理系统</title>
+<meta name="description" content="电厂运行人员工作笔记系统：知识体系归档、全文检索与漫游复习">
+<!-- PWA：可安装到手机主屏，像 App 一样使用 -->
+<meta name="theme-color" content="#1F4E79">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="工作笔记">
 <!-- 本地内置，确保离线/U盘环境可用；版本锁定 marked 12.0.2 / DOMPurify 3.1.6 -->
 <script src="vendor/marked.min.js"></script>
 <script src="vendor/purify.min.js"></script>
@@ -97,13 +107,8 @@ table tbody tr[tabindex]:focus-visible { outline: 2px solid var(--primary-light)
 .site-footer a { color: #999; text-decoration: none; }
 .site-footer a:hover { color: #666; }
 .site-footer .beian-icon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 2px; }
-/* 漫游(沉浸)模式下的备案信息：固定到底部居中，单行显示完整 */
-body.roam-immersive .site-footer {
-  position: fixed; left: 0; right: 0; bottom: 0; margin: 0;
-  padding: 8px 12px; white-space: nowrap; font-size: var(--fs-xs);
-  color: rgba(255,255,255,.5); z-index: 20;
-}
-body.roam-immersive .site-footer a { color: rgba(255,255,255,.5); }
+/* 漫游(沉浸)模式下不显示备案信息 */
+body.roam-immersive .site-footer { display: none; }
 /* 侧边栏页脚：图标按钮靠右 */
 .footer-bar { display: flex; justify-content: flex-end; align-items: center; }
 .footer-sep { margin: 0 8px; }
@@ -284,6 +289,8 @@ tbody tr.selected { background: #EBF5FB; }
 /* 汉堡菜单按钮 — 仅小屏可见 */
 .hamburger { display: none; position: fixed; top: 10px; left: 10px; z-index: 1300; background: var(--primary); color: #fff; border: none; border-radius: 6px; width: 38px; height: 38px; font-size: 20px; cursor: pointer; align-items: center; justify-content: center; box-shadow: var(--shadow); }
 .hamburger:active { transform: scale(.95); }
+/* 未登录（登录遮罩可见）时，隐藏汉堡按钮，避免悬浮在登录页左上角造成遮挡 */
+.login-overlay:not(.hidden) ~ .hamburger { display: none !important; }
 /* 侧边栏遮罩 */
 .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.4); z-index: 99; }
 
@@ -397,7 +404,8 @@ tbody tr.selected { background: #EBF5FB; }
 .login-error { color: var(--star3); font-size: 13px; margin-bottom: 12px; min-height: 20px; text-align: center; }
 .login-form .btn { width: 100%; padding: 12px; font-size: 15px; }
 .login-form .btn:disabled { opacity: .6; cursor: not-allowed; }
-.login-footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); text-align: center; font-size: 12px; color: #999; }
+.login-footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); text-align: center; font-size: 12px; color: #999; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.login-footer .footer-sep { display: none; }
 .login-footer a { color: #999; text-decoration: none; }
 .login-footer a:hover { color: #666; }
 .login-footer .beian-icon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 2px; }
@@ -2139,6 +2147,13 @@ document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
 checkAuth();
+
+// PWA：注册 Service Worker（仅安全上下文 https/localhost 生效）
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
 </script>
 <!-- 本地内置，确保离线/U盘环境可用；SheetJS 0.18.5 -->
 <script src="vendor/xlsx.full.min.js"></script>
