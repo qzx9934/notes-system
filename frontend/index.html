@@ -2,8 +2,18 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>运行人员工作笔记管理系统</title>
+<meta name="description" content="电厂运行人员工作笔记系统：知识体系归档、全文检索与漫游复习">
+<!-- PWA：可安装到手机主屏，像 App 一样使用 -->
+<meta name="theme-color" content="#1F4E79">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="工作笔记">
 <!-- 本地内置，确保离线/U盘环境可用；版本锁定 marked 12.0.2 / DOMPurify 3.1.6 -->
 <script src="vendor/marked.min.js"></script>
 <script src="vendor/purify.min.js"></script>
@@ -2137,6 +2147,13 @@ document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
 checkAuth();
+
+// PWA：注册 Service Worker（仅安全上下文 https/localhost 生效）
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
 </script>
 <!-- 本地内置，确保离线/U盘环境可用；SheetJS 0.18.5 -->
 <script src="vendor/xlsx.full.min.js"></script>
