@@ -48,6 +48,10 @@ body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; background: va
 .nav-item:hover, .nav-item.active { background: rgba(255,255,255,.15); }
 .nav-item .badge { margin-left: auto; font-size: 10px; background: rgba(255,255,255,.2); padding: 1px 6px; border-radius: 10px; }
 .sidebar-footer { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,.15); font-size: 10px; opacity: .5; }
+/* 页脚图标按钮（可键盘聚焦、读屏可识别） */
+.icon-btn { background: none; border: none; padding: 2px; font-size: 13px; line-height: 1; cursor: pointer; color: inherit; border-radius: 4px; }
+.icon-btn:hover { opacity: .8; }
+.icon-btn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 
 /* Main */
 .main { margin-left: 260px; flex: 1; padding: 20px 24px; display:flex; flex-direction:column; min-height:100vh; }
@@ -231,13 +235,15 @@ tbody tr.selected { background: #EBF5FB; }
 
 /* ===== 手机/平板适配 ===== */
 /* 汉堡菜单按钮 — 仅小屏可见 */
-.hamburger { display: none; position: fixed; top: 10px; left: 10px; z-index: 110; background: var(--primary); color: #fff; border: none; border-radius: 6px; width: 38px; height: 38px; font-size: 20px; cursor: pointer; align-items: center; justify-content: center; box-shadow: var(--shadow); }
+.hamburger { display: none; position: fixed; top: 10px; left: 10px; z-index: 1300; background: var(--primary); color: #fff; border: none; border-radius: 6px; width: 38px; height: 38px; font-size: 20px; cursor: pointer; align-items: center; justify-content: center; box-shadow: var(--shadow); }
 .hamburger:active { transform: scale(.95); }
 /* 侧边栏遮罩 */
 .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.4); z-index: 99; }
 
 @media (max-width: 768px) {
   .hamburger { display: flex; }
+  /* 为左上角汉堡按钮留出空间，避免被默认口令横幅遮挡 */
+  .default-pw-banner { padding-left: 56px; }
   .sidebar { transform: translateX(-100%); transition: transform .3s; width: 260px; }
   .sidebar.open { transform: translateX(0); }
   .sidebar-overlay.show { display: block; }
@@ -622,10 +628,10 @@ body.roam-immersive .batch-bar { display: none; }
       <span style="opacity:.6">Flask+SQLite · v2.2</span>
       <span style="display:flex;align-items:center;gap:4px">
         <span id="currentUser" style="font-size:11px;opacity:.7"></span>
-        <span id="userMgmtBtn" style="cursor:pointer;font-size:13px;display:none" onclick="openUserModal()" title="用户管理">👥</span>
-        <span id="tokenMgmtBtn" style="cursor:pointer;font-size:13px;display:none" onclick="openTokenModal()" title="API 令牌管理">🎫</span>
-        <span style="cursor:pointer;font-size:13px" onclick="openPwdModal()" title="修改密码">🔑</span>
-        <span style="cursor:pointer;font-size:13px" onclick="doLogout()" title="退出登录">🚪</span>
+        <button type="button" class="icon-btn" id="userMgmtBtn" style="display:none" onclick="openUserModal()" title="用户管理" aria-label="用户管理">👥</button>
+        <button type="button" class="icon-btn" id="tokenMgmtBtn" style="display:none" onclick="openTokenModal()" title="API 令牌管理" aria-label="API 令牌管理">🎫</button>
+        <button type="button" class="icon-btn" onclick="openPwdModal()" title="修改密码" aria-label="修改密码">🔑</button>
+        <button type="button" class="icon-btn" onclick="doLogout()" title="退出登录" aria-label="退出登录">🚪</button>
       </span>
     </div>
   </div>
@@ -635,7 +641,7 @@ body.roam-immersive .batch-bar { display: none; }
 <main class="main">
   <div class="topbar">
     <div class="search-wrap">
-      <input type="text" id="searchInput" placeholder="搜索标题、内容、标签…" oninput="doSearch()">
+      <input type="text" id="searchInput" placeholder="搜索标题、内容、标签…" oninput="onSearchInput()">
       <button class="clear" id="clearSearch" onclick="clearSearch()" style="display:none">×</button>
     </div>
     <div class="filter-group">
@@ -1326,7 +1332,18 @@ function onDomainFilter() {
 }
 
 // ==================== Search & List ====================
+// 搜索输入防抖（250ms）：避免每次按键都发请求；输入新关键词回到第 1 页
+let _searchDebTimer = null;
+function onSearchInput() {
+  clearTimeout(_searchDebTimer);
+  _searchDebTimer = setTimeout(() => { currentPage = 1; doSearch(); }, 250);
+}
+
+// 请求序号：丢弃过期（乱序返回）的搜索响应，避免结果闪烁/错乱
+let _searchSeq = 0;
+
 async function doSearch() {
+  const mySeq = ++_searchSeq;
   try {
   // Exit roam mode if active
   if (isRoamMode) exitRoam();
@@ -1353,6 +1370,7 @@ async function doSearch() {
 
   const r = await fetch('/api/notes?' + params);
   const data = await r.json();
+  if (mySeq !== _searchSeq) return;  // 已有更新的搜索发出，丢弃本次过期结果
   allLoadedItems = data.items;
 
   document.getElementById('resultCount').textContent = `共 ${data.total} 条`;
