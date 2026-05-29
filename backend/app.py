@@ -18,7 +18,7 @@ import mimetypes
 # 确保 PWA 清单以正确 MIME 类型下发（开启了 nosniff，类型错误会被浏览器拒绝）
 mimetypes.add_type('application/manifest+json', '.webmanifest')
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, g, session
+from flask import Flask, request, jsonify, g, session, send_from_directory
 from flask_cors import CORS
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -119,6 +119,26 @@ def handle_500(e):
     return jsonify({'error': '服务器内部错误'}), 500
 
 DB_PATH = os.environ.get('NOTES_DB_PATH', os.path.join(BACKEND_DIR, 'notes.db'))
+
+# ---- 图片上传配置 ----
+# NOTES_UPLOAD_DIR：图片存储目录（需与数据库一样持久化，勿随重新部署清空）
+# NOTES_MAX_UPLOAD_MB：单张图片大小上限（MB），默认 5
+UPLOAD_DIR = os.environ.get('NOTES_UPLOAD_DIR', os.path.join(BACKEND_DIR, 'uploads'))
+MAX_UPLOAD_MB = int(os.environ.get('NOTES_MAX_UPLOAD_MB', '5'))
+# 请求体上限：图片上限 + 1MB 余量（含 multipart 边界等开销）
+app.config['MAX_CONTENT_LENGTH'] = (MAX_UPLOAD_MB + 1) * 1024 * 1024
+
+def _sniff_image_ext(data):
+    """按文件头魔数判定图片类型，返回 (规范扩展名, MIME)；非图片返回 (None, None)"""
+    if data[:3] == b'\xff\xd8\xff':
+        return 'jpg', 'image/jpeg'
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
+        return 'png', 'image/png'
+    if data[:4] == b'GIF8':
+        return 'gif', 'image/gif'
+    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return 'webp', 'image/webp'
+    return None, None
 
 # 跨平台浏览器打开（用列表式 subprocess，避免 shell 拼接/注入风险）
 def open_browser(url):
@@ -1221,6 +1241,51 @@ def api_notes_ingest():
 def api_import_excel():
     """从上传的Excel文件导入笔记（手动上传方式，暂不使用）"""
     return jsonify({'error': '请使用前端导入功能'}), 501
+
+# ==================== 图片上传 ====================
+
+@app.route('/api/upload', methods=['POST'])
+@admin_required
+def api_upload():
+    """上传单张图片，返回可直接写进 Markdown 的 URL。
+    仅管理员/可编辑者可用；按文件头魔数校验真实类型，文件名取内容 SHA256+扩展名（天然去重）。
+    """
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify({'error': '未收到文件'}), 400
+
+    data = f.read()
+    if not data:
+        return jsonify({'error': '文件为空'}), 400
+    if len(data) > MAX_UPLOAD_MB * 1024 * 1024:
+        return jsonify({'error': f'图片超过 {MAX_UPLOAD_MB}MB 上限'}), 413
+
+    ext, mime = _sniff_image_ext(data)
+    if not ext:
+        return jsonify({'error': '仅支持 JPG/PNG/GIF/WEBP 图片'}), 415
+
+    digest = hashlib.sha256(data).hexdigest()
+    name = f'{digest}.{ext}'
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    path = os.path.join(UPLOAD_DIR, name)
+    if not os.path.exists(path):  # 内容相同则复用，避免重复落盘
+        with open(path, 'wb') as out:
+            out.write(data)
+
+    return jsonify({'ok': True, 'url': f'/uploads/{name}',
+                    'filename': name, 'size': len(data), 'mime': mime})
+
+@app.route('/uploads/<path:name>')
+def serve_upload(name):
+    """下发已上传的图片（长缓存，文件名即内容哈希，可安全永久缓存）"""
+    resp = send_from_directory(UPLOAD_DIR, name)
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return resp
+
+@app.errorhandler(413)
+def handle_413(e):
+    """请求体超过 MAX_CONTENT_LENGTH（上传图片过大）时返回干净 JSON"""
+    return jsonify({'error': f'上传内容过大，单张图片不得超过 {MAX_UPLOAD_MB}MB'}), 413
 
 # ==================== 启动 ====================
 

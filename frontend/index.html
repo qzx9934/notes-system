@@ -1163,10 +1163,12 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
           <span class="sep"></span>
           <button title="链接" onclick="mdLink()">🔗</button>
           <button title="表格" onclick="mdInsert('| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| | | |\n')">⊞</button>
+          <button title="插入图片（也可直接粘贴截图或拖拽）" onclick="mdPickImage()">🖼</button>
           <span class="sep"></span>
           <button title="预览" id="mdPreviewToggle" onclick="toggleMdPreview()">👁</button>
         </div>
-        <textarea id="editContent" placeholder="完整知识内容，可含数值/步骤/要点…"></textarea>
+        <input type="file" id="mdImageInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">
+        <textarea id="editContent" placeholder="完整知识内容，可含数值/步骤/要点…（可直接粘贴截图或拖入图片）"></textarea>
         <div class="md-preview md-body" id="mdPreview" style="display:none"></div>
       </div>
       <div class="form-row">
@@ -1819,6 +1821,65 @@ function mdLink() {
   const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd) || '链接文字';
   mdInsert('[' + sel + '](url)');
 }
+
+// ---- 图片上传：选文件 / 粘贴截图 / 拖拽，均走同一上传流程 ----
+function mdPickImage() {
+  const inp = document.getElementById('mdImageInput');
+  inp.value = '';
+  inp.click();
+}
+
+async function mdUploadImage(file) {
+  if (!file || !file.type.startsWith('image/')) { showToast('请选择图片文件', 'error'); return; }
+  // 占位符：上传期间先插入提示，成功后整体替换为真正的图片语法
+  const ph = `![上传中…](uploading-${Date.now()})`;
+  mdInsert(ph + '\n');
+  const ta = mdGetTA();
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch('/api/upload', { method: 'POST', body: fd });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || '上传失败');
+    const alt = (file.name || 'image').replace(/\.[^.]+$/, '').replace(/[\[\]]/g, '');
+    ta.value = ta.value.replace(ph, `![${alt}](${data.url})`);
+  } catch (err) {
+    ta.value = ta.value.replace(ph, '');
+    showToast(err.message || '图片上传失败', 'error');
+  }
+  ta.focus();
+}
+
+// 文件选择
+document.addEventListener('DOMContentLoaded', function () {
+  const inp = document.getElementById('mdImageInput');
+  if (inp) inp.addEventListener('change', function () {
+    if (this.files && this.files[0]) mdUploadImage(this.files[0]);
+  });
+  const ta = document.getElementById('editContent');
+  if (ta) {
+    // 粘贴截图
+    ta.addEventListener('paste', function (e) {
+      const items = (e.clipboardData || {}).items || [];
+      for (const it of items) {
+        if (it.type && it.type.startsWith('image/')) {
+          e.preventDefault();
+          mdUploadImage(it.getAsFile());
+          return;
+        }
+      }
+    });
+    // 拖拽图片
+    ta.addEventListener('dragover', function (e) { e.preventDefault(); });
+    ta.addEventListener('drop', function (e) {
+      const files = (e.dataTransfer || {}).files || [];
+      if (files.length && files[0].type.startsWith('image/')) {
+        e.preventDefault();
+        mdUploadImage(files[0]);
+      }
+    });
+  }
+});
 
 function toggleMdPreview() {
   const ta = mdGetTA();
@@ -2482,7 +2543,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '2.3';
+const APP_VERSION = '2.4';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 

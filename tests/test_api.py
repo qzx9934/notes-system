@@ -297,3 +297,59 @@ def test_change_password_flow(admin, client):
     # 旧密码失效、新密码可用
     assert u.post('/api/login', json={'username': 'pwuser', 'password': 'orig123'}).status_code == 401
     assert u.post('/api/login', json={'username': 'pwuser', 'password': 'new12345'}).status_code == 200
+
+
+# ---------------- 图片上传 ----------------
+import base64
+import io
+
+# 1x1 透明 PNG（最小合法 PNG）
+_TINY_PNG = base64.b64decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+)
+
+
+def test_upload_requires_admin(client):
+    r = client.post('/api/upload',
+                    data={'file': (io.BytesIO(_TINY_PNG), 'a.png')},
+                    content_type='multipart/form-data')
+    assert r.status_code == 401
+
+
+def test_upload_png_succeeds_and_serves(admin):
+    r = admin.post('/api/upload',
+                   data={'file': (io.BytesIO(_TINY_PNG), 'shot.png')},
+                   content_type='multipart/form-data')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['url'].startswith('/uploads/') and data['url'].endswith('.png')
+    assert data['mime'] == 'image/png'
+    # 下发回来内容一致、MIME 正确、强缓存
+    got = admin.get(data['url'])
+    assert got.status_code == 200
+    assert got.mimetype == 'image/png'
+    assert got.data == _TINY_PNG
+    assert 'immutable' in got.headers.get('Cache-Control', '')
+
+
+def test_upload_dedup_same_content(admin):
+    a = admin.post('/api/upload', data={'file': (io.BytesIO(_TINY_PNG), 'one.png')},
+                   content_type='multipart/form-data').get_json()
+    b = admin.post('/api/upload', data={'file': (io.BytesIO(_TINY_PNG), 'two.png')},
+                   content_type='multipart/form-data').get_json()
+    # 内容相同 -> 文件名（内容哈希）相同，复用同一文件
+    assert a['url'] == b['url']
+
+
+def test_upload_rejects_non_image(admin):
+    r = admin.post('/api/upload',
+                   data={'file': (io.BytesIO(b'#!/bin/sh\necho hi'), 'evil.png')},
+                   content_type='multipart/form-data')
+    assert r.status_code == 415
+
+
+def test_upload_rejects_empty(admin):
+    r = admin.post('/api/upload',
+                   data={'file': (io.BytesIO(b''), 'empty.png')},
+                   content_type='multipart/form-data')
+    assert r.status_code == 400
