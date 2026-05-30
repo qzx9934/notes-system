@@ -639,6 +639,7 @@ body.roam-immersive .batch-bar { display: none; }
 .prop-body { font-size: 13px; color: var(--text); margin: 6px 0; line-height: 1.6; word-break: break-word; }
 .prop-note { font-size: 12px; color: var(--text-secondary); }
 .prop-actions { display: flex; gap: 8px; margin-top: 6px; }
+.prop-card.prop-done { opacity: .62; }
 .prop-st { font-size: 11px; padding: 1px 8px; border-radius: 10px; font-weight: 500; }
 .prop-st.pending { background: #FEF5E7; color: #E67E22; }
 .prop-st.ok { background: #EAFAF1; color: #27AE60; }
@@ -1149,6 +1150,47 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
   </div>
 </div>
 
+<!-- ===== 反馈建议（提交）弹窗 ===== -->
+<div class="pwd-modal-overlay" id="feedbackModalOverlay">
+  <div class="pwd-modal" role="dialog" aria-modal="true" aria-labelledby="feedbackTitle">
+    <div class="modal-header">
+      <h3 id="feedbackTitle">💬 反馈建议</h3>
+      <button class="modal-close" onclick="closeFeedbackModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="token-hint">欢迎反馈使用中的问题或改进建议，管理员会看到。</div>
+      <textarea id="feedbackText" class="ai-prompt-text" maxlength="2000" placeholder="请描述你的问题或建议…"></textarea>
+      <div class="form-row" style="margin-top:10px">
+        <div class="form-group flex-none"><button type="button" class="btn btn-primary btn-sm" onclick="submitFeedback()">提交</button></div>
+        <div class="form-group"><label>&nbsp;</label><span id="feedbackResult" class="muted"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 反馈箱（管理员查看）弹窗 ===== -->
+<div class="modal-overlay" id="feedbackInboxOverlay">
+  <div class="user-mgmt-modal" role="dialog" aria-modal="true" aria-labelledby="feedbackInboxTitle">
+    <div class="modal-header">
+      <h3 id="feedbackInboxTitle">📨 反馈箱</h3>
+      <button class="modal-close" onclick="closeFeedbackInbox()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row" style="align-items:center">
+        <div class="form-group flex-none">
+          <select id="feedbackFilter" onchange="loadFeedback()">
+            <option value="open">未处理</option>
+            <option value="all">全部</option>
+            <option value="done">已处理</option>
+          </select>
+        </div>
+        <div class="form-group"><label>&nbsp;</label><span id="feedbackCount" class="muted"></span></div>
+      </div>
+      <div id="feedbackList" class="proposal-list"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Sidebar -->
 <header class="mobile-topbar" id="mobileTopbar">
   <button class="hamburger" id="hamburgerBtn" onclick="toggleSidebar()" title="菜单" aria-label="打开菜单">☰</button>
@@ -1166,8 +1208,10 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <span class="footer-actions">
         <span id="currentUser" class="current-user"></span>
         <button type="button" class="icon-btn proposal-entry" id="proposalEntry" style="display:none" onclick="openProposalModal()" title="变更申请审批" aria-label="变更申请">📥<span class="proposal-badge" id="proposalBadge" style="display:none">0</span></button>
+        <button type="button" class="icon-btn proposal-entry" id="feedbackInboxBtn" style="display:none" onclick="openFeedbackInbox()" title="反馈箱（用户建议）" aria-label="反馈箱">📨<span class="proposal-badge" id="feedbackBadge" style="display:none">0</span></button>
         <button type="button" class="icon-btn" id="userMgmtBtn" style="display:none" onclick="openUserModal()" title="用户管理" aria-label="用户管理">👥</button>
         <button type="button" class="icon-btn" id="tokenMgmtBtn" style="display:none" onclick="openTokenModal()" title="API 令牌管理" aria-label="API 令牌管理">🎫</button>
+        <button type="button" class="icon-btn" onclick="openFeedbackModal()" title="反馈建议" aria-label="反馈建议">💬</button>
         <button type="button" class="icon-btn" onclick="openPwdModal()" title="修改密码" aria-label="修改密码">🔑</button>
         <button type="button" class="icon-btn" onclick="doLogout()" title="退出登录" aria-label="退出登录">🚪</button>
       </span>
@@ -1596,6 +1640,10 @@ function applyRoleUI() {
   const pe = document.getElementById('proposalEntry');
   if (pe) pe.style.display = (isAdmin || isContributor()) ? '' : 'none';
   if (isAdmin || isContributor()) refreshProposalBadge();
+  // 反馈箱：仅管理员可见，并刷新未处理角标
+  const fb = document.getElementById('feedbackInboxBtn');
+  if (fb) fb.style.display = isAdmin ? '' : 'none';
+  if (isAdmin) refreshFeedbackBadge();
 }
 
 // ---- 修改密码 ----
@@ -1891,6 +1939,88 @@ async function rejectProposal(id) {
   });
   if (r.ok) showToast('已驳回', 'success'); else showToast('操作失败', 'error');
   loadProposals(); refreshProposalBadge();
+}
+
+// ---- 反馈建议 ----
+function openFeedbackModal() {
+  document.getElementById('feedbackText').value = '';
+  document.getElementById('feedbackResult').textContent = '';
+  document.getElementById('feedbackModalOverlay').classList.add('open');
+}
+function closeFeedbackModal() {
+  document.getElementById('feedbackModalOverlay').classList.remove('open');
+}
+async function submitFeedback() {
+  const content = document.getElementById('feedbackText').value.trim();
+  if (!content) { showToast('请先填写反馈内容', 'error'); return; }
+  const out = document.getElementById('feedbackResult');
+  out.textContent = '提交中…';
+  try {
+    const r = await _origFetch('/api/feedback', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { out.textContent = ''; showToast(d.error || '提交失败', 'error'); return; }
+    showToast('感谢反馈，已收到！', 'success');
+    closeFeedbackModal();
+    if (currentRole === 'admin') refreshFeedbackBadge();
+  } catch (e) { out.textContent = ''; showToast('提交失败', 'error'); }
+}
+
+async function refreshFeedbackBadge() {
+  if (currentRole !== 'admin') return;
+  try {
+    const d = await (await _origFetch('/api/feedback/open-count')).json();
+    const badge = document.getElementById('feedbackBadge');
+    if (d.open > 0) { badge.textContent = d.open; badge.style.display = ''; }
+    else badge.style.display = 'none';
+  } catch (e) {}
+}
+function openFeedbackInbox() {
+  document.getElementById('feedbackInboxOverlay').classList.add('open');
+  document.getElementById('feedbackFilter').value = 'open';
+  loadFeedback();
+}
+function closeFeedbackInbox() {
+  document.getElementById('feedbackInboxOverlay').classList.remove('open');
+}
+async function loadFeedback() {
+  const box = document.getElementById('feedbackList');
+  const status = document.getElementById('feedbackFilter').value;
+  box.innerHTML = '<span class="muted">加载中…</span>';
+  try {
+    const d = await (await _origFetch('/api/feedback?status=' + status + '&per=100')).json();
+    document.getElementById('feedbackCount').textContent =
+      `未处理 ${d.open} 条 · 本页 ${d.items.length} 条`;
+    if (!d.items.length) { box.innerHTML = '<span class="muted">暂无反馈</span>'; return; }
+    box.innerHTML = d.items.map(it => {
+      const done = it.status === 'done';
+      const meta = `${esc(it.username || '匿名')} · ${esc(it.created_at)}`
+        + (done ? ` · 已处理${it.handled_by ? '（' + esc(it.handled_by) + '）' : ''}` : '');
+      const actions = done
+        ? `<button class="btn btn-sm btn-outline" onclick="setFeedbackStatus(${it.id},'open')">标记未处理</button>
+           <button class="btn btn-sm btn-outline" onclick="deleteFeedback(${it.id})">删除</button>`
+        : `<button class="btn btn-sm btn-primary" onclick="setFeedbackStatus(${it.id},'done')">标记已处理</button>
+           <button class="btn btn-sm btn-outline" onclick="deleteFeedback(${it.id})">删除</button>`;
+      return `<div class="prop-card${done ? ' prop-done' : ''}">
+        <div class="prop-head"><span class="muted fs-xs">${meta}</span></div>
+        <div class="prop-body"><pre class="diff-content">${esc(it.content)}</pre></div>
+        <div class="prop-actions">${actions}</div></div>`;
+    }).join('');
+  } catch (e) { box.innerHTML = '<span class="muted">加载失败</span>'; }
+}
+async function setFeedbackStatus(id, status) {
+  const r = await _origFetch('/api/feedback/' + id, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status })
+  });
+  if (r.ok) { loadFeedback(); refreshFeedbackBadge(); }
+  else showToast('操作失败', 'error');
+}
+async function deleteFeedback(id) {
+  if (!confirm('确认删除这条反馈？')) return;
+  const r = await _origFetch('/api/feedback/' + id, { method: 'DELETE' });
+  if (r.ok) { showToast('已删除', 'success'); loadFeedback(); refreshFeedbackBadge(); }
+  else showToast('删除失败', 'error');
 }
 
 // ---- AI 填充（编辑页根据正文推断字段） ----
@@ -3517,7 +3647,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '3.6';
+const APP_VERSION = '3.7';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 

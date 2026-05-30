@@ -997,3 +997,78 @@ def test_proposal_current_includes_content_for_diff(admin):
     p = admin.get('/api/proposals?status=pending').get_json()['items'][0]
     assert p['current']['content'] == '原始正文ABC'      # 原文可对比
     assert p['payload']['content'] == '修改后的正文XYZ'   # 新值
+
+
+# ---------------- 使用反馈 / 建议 ----------------
+
+def test_feedback_submit_and_admin_list(admin):
+    # 普通用户提交反馈
+    _make_user(admin, 'fbuser', 'viewer')
+    u = _new_client(); u.post('/api/login', json={'username': 'fbuser', 'password': 'secret123'})
+    assert u.post('/api/feedback', json={'content': '希望增加导出功能'}).status_code == 200
+    # 普通用户不能查看反馈列表
+    assert u.get('/api/feedback').status_code == 403
+    # 管理员可见，且能看到内容与提交人
+    data = admin.get('/api/feedback').get_json()
+    item = [it for it in data['items'] if it['content'] == '希望增加导出功能'][0]
+    assert item['username'] == 'fbuser' and item['status'] == 'open'
+    assert data['open'] >= 1
+
+
+def test_feedback_empty_rejected(admin):
+    assert admin.post('/api/feedback', json={'content': '   '}).status_code == 400
+
+
+def test_feedback_requires_login(client):
+    assert client.post('/api/feedback', json={'content': 'x'}).status_code == 401
+
+
+def test_feedback_mark_done_and_delete(admin):
+    admin.post('/api/feedback', json={'content': '待处理项'})
+    fid = admin.get('/api/feedback?status=open').get_json()['items'][0]['id']
+    # 标记已处理
+    assert admin.patch(f'/api/feedback/{fid}', json={'status': 'done'}).status_code == 200
+    assert admin.get('/api/feedback/open-count').get_json()['open'] == \
+        admin.get('/api/feedback?status=open').get_json()['total']
+    done = admin.get('/api/feedback?status=done').get_json()['items']
+    assert any(it['id'] == fid and it['handled_by'] for it in done)
+    # 删除
+    assert admin.delete(f'/api/feedback/{fid}').status_code == 200
+
+
+# ---------------- 图片压缩 ----------------
+
+def _big_jpeg(w=2600, h=1800):
+    from PIL import Image
+    im = Image.new('RGB', (w, h))
+    px = im.load()
+    for y in range(0, h, 3):
+        for x in range(0, w, 3):
+            c = ((x * 255) // w, (y * 255) // h, 100)
+            for dy in range(3):
+                for dx in range(3):
+                    if x + dx < w and y + dy < h:
+                        px[x + dx, y + dy] = c
+    buf = io.BytesIO(); im.save(buf, 'JPEG', quality=95)
+    return buf.getvalue()
+
+
+def test_upload_compresses_large_image(admin):
+    raw = _big_jpeg()
+    r = admin.post('/api/upload', data={'file': (io.BytesIO(raw), 'big.jpg')},
+                   content_type='multipart/form-data')
+    assert r.status_code == 200
+    body = r.get_json()
+    # 返回的 size 是压缩后的字节数，应明显小于原图
+    assert body['size'] < len(raw)
+    # 长边被压到 <= 1920
+    from PIL import Image
+    served = admin.get(body['url']).data
+    w, h = Image.open(io.BytesIO(served)).size
+    assert max(w, h) <= 1920
+
+
+def test_compress_helper_falls_back_for_gif(admin):
+    # GIF 原样返回（可能是动图）
+    gif = b'GIF89a' + b'\x00' * 50
+    assert _app.compress_image_bytes(gif, 'gif') == gif

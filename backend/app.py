@@ -170,6 +170,52 @@ def _sniff_image_ext(data):
         return 'webp', 'image/webp'
     return None, None
 
+# 图片压缩：保清晰度、减体积，上传时静默执行（无需用户干预）。
+#   NOTES_IMG_MAX_DIM   超过此像素的长边会等比缩小，默认 1920（屏幕观看足够清晰）
+#   NOTES_IMG_QUALITY   JPEG/WEBP 重编码质量，默认 82（肉眼几乎无损）
+IMG_MAX_DIM = int(os.environ.get('NOTES_IMG_MAX_DIM', '1920'))
+IMG_QUALITY = int(os.environ.get('NOTES_IMG_QUALITY', '82'))
+# 小于此体积的图片不值得压缩（多为图标/小截图，重编码收益小甚至变大），直接放行
+IMG_MIN_BYTES = int(os.environ.get('NOTES_IMG_MIN_KB', '60')) * 1024
+
+def compress_image_bytes(data, ext):
+    """在保证清晰度的前提下压缩图片字节，返回压缩后的 bytes。
+    - 超大图等比缩小到长边 IMG_MAX_DIM；JPEG/WEBP 以 IMG_QUALITY 重编码、PNG 做无损 optimize。
+    - GIF 可能是动图，保持原样不动；过小的图片不处理。
+    - 仅当结果确实更小才采用，否则返回原图。
+    - 未安装 Pillow 或任何异常都安全回退原图（功能可选、不阻断上传）。"""
+    if ext == 'gif' or len(data) < IMG_MIN_BYTES:
+        return data
+    try:
+        from PIL import Image, ImageOps
+    except Exception:
+        return data
+    try:
+        import io
+        im = Image.open(io.BytesIO(data))
+        im = ImageOps.exif_transpose(im)  # 按 EXIF 摆正方向，避免手机照片旋转
+        fmt = im.format or ext.upper()
+        w, h = im.size
+        scale = IMG_MAX_DIM / float(max(w, h)) if max(w, h) > IMG_MAX_DIM else 1.0
+        if scale < 1.0:
+            im = im.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
+        buf = io.BytesIO()
+        if ext in ('jpg', 'jpeg'):
+            im = im.convert('RGB')
+            im.save(buf, format='JPEG', quality=IMG_QUALITY, optimize=True, progressive=True)
+        elif ext == 'webp':
+            im.save(buf, format='WEBP', quality=IMG_QUALITY, method=6)
+        elif ext == 'png':
+            im.save(buf, format='PNG', optimize=True)
+        else:
+            return data
+        out = buf.getvalue()
+        # 只有真正变小才用压缩结果（缩放过的即使略大也采用，因像素已降、利于长期存储）
+        return out if (len(out) < len(data) or scale < 1.0) else data
+    except Exception:
+        app.logger.exception('图片压缩失败，回退原图')
+        return data
+
 def _referenced_uploads(db):
     """扫描所有笔记内容，返回被引用的上传图片文件名集合"""
     refs = set()
@@ -359,6 +405,18 @@ def init_db():
             PRIMARY KEY (user_id, note_id)
         );
         CREATE INDEX IF NOT EXISTS idx_fav_user ON favorites(user_id);
+
+        CREATE TABLE IF NOT EXISTS feedback (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER,
+            username    TEXT    NOT NULL DEFAULT '',
+            content     TEXT    NOT NULL,
+            status      TEXT    NOT NULL DEFAULT 'open',   -- open / done
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            handled_by  TEXT,
+            handled_at  TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);
     ''')
     db.commit()
     db.close()
@@ -1170,6 +1228,78 @@ def api_note_favorite(id):
     db.execute('DELETE FROM favorites WHERE user_id=? AND note_id=?', (uid, id))
     db.commit()
     return jsonify({'ok': True, 'favorited': False})
+
+# --- 使用反馈 / 建议（任意登录用户提交，管理员查看处理） ---
+FEEDBACK_MAX_LEN = 2000
+
+@app.route('/api/feedback', methods=['POST'])
+@login_required
+def api_feedback_create():
+    """提交一条使用反馈/建议。任意登录用户可用（会话用户记名，令牌记为(API令牌)）。"""
+    data = request.get_json() or {}
+    content = (data.get('content') or '').strip()
+    if not content:
+        return jsonify({'error': '反馈内容不能为空'}), 400
+    if len(content) > FEEDBACK_MAX_LEN:
+        return jsonify({'error': f'反馈内容过长（上限 {FEEDBACK_MAX_LEN} 字）'}), 400
+    _, uid, uname = effective_actor()
+    db = get_db()
+    db.execute('INSERT INTO feedback(user_id, username, content) VALUES(?,?,?)',
+               (uid, uname or '', content))
+    db.commit()
+    return jsonify({'ok': True})
+
+@app.route('/api/feedback')
+@admin_required
+def api_feedback_list():
+    """管理员查看反馈列表。?status=open/done/all（默认 all），分页 ?page=&per=。"""
+    db = get_db()
+    status = request.args.get('status', 'all')
+    page = parse_int(request.args.get('page'), 1, lo=1)
+    per = parse_int(request.args.get('per'), 30, lo=1, hi=MAX_PER)
+    where, params = '', []
+    if status in ('open', 'done'):
+        where, params = 'WHERE status=?', [status]
+    total = db.execute(f'SELECT COUNT(*) c FROM feedback {where}', params).fetchone()['c']
+    rows = db.execute(
+        f'SELECT * FROM feedback {where} ORDER BY id DESC LIMIT ? OFFSET ?',
+        params + [per, (page - 1) * per]).fetchall()
+    open_cnt = db.execute("SELECT COUNT(*) c FROM feedback WHERE status='open'").fetchone()['c']
+    return jsonify({'items': [dict(r) for r in rows], 'total': total,
+                    'page': page, 'per': per, 'open': open_cnt,
+                    'pages': max(1, (total + per - 1) // per)})
+
+@app.route('/api/feedback/open-count')
+@admin_required
+def api_feedback_open_count():
+    """未处理反馈数量（用于角标轮询）。"""
+    db = get_db()
+    c = db.execute("SELECT COUNT(*) c FROM feedback WHERE status='open'").fetchone()['c']
+    return jsonify({'open': c})
+
+@app.route('/api/feedback/<int:fid>', methods=['PATCH', 'DELETE'])
+@admin_required
+def api_feedback_update(fid):
+    """管理员标记处理状态或删除反馈。PATCH body: {status: open/done}。"""
+    db = get_db()
+    row = db.execute('SELECT 1 FROM feedback WHERE id=?', (fid,)).fetchone()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    if request.method == 'DELETE':
+        db.execute('DELETE FROM feedback WHERE id=?', (fid,))
+        db.commit()
+        return jsonify({'ok': True, 'deleted': fid})
+    status = (request.get_json() or {}).get('status', 'done')
+    if status not in ('open', 'done'):
+        return jsonify({'error': 'status 只能为 open / done'}), 400
+    _, _, uname = effective_actor()
+    if status == 'done':
+        db.execute("UPDATE feedback SET status='done', handled_by=?, "
+                   "handled_at=datetime('now','localtime') WHERE id=?", (uname or '', fid))
+    else:
+        db.execute("UPDATE feedback SET status='open', handled_by=NULL, handled_at=NULL WHERE id=?", (fid,))
+    db.commit()
+    return jsonify({'ok': True, 'status': status})
 
 @app.route('/api/notes', methods=['POST'])
 @writer_required
@@ -2160,6 +2290,9 @@ def api_upload():
     ext, mime = _sniff_image_ext(data)
     if not ext:
         return jsonify({'error': '仅支持 JPG/PNG/GIF/WEBP 图片'}), 415
+
+    # 后台静默压缩（保清晰度、减体积）；失败安全回退原图，对用户无感
+    data = compress_image_bytes(data, ext)
 
     digest = hashlib.sha256(data).hexdigest()
     name = f'{digest}.{ext}'

@@ -146,6 +146,54 @@ def cmd_import(args):
         print(f'  - [{it.get("index")}] {it.get("title", "")}: {it.get("reason")}')
 
 
+def cmd_get(args):
+    status, resp = _request('GET', args.url, f'/api/notes/{args.id}', args.token)
+    _check_auth(status, resp)
+    if status != 200:
+        print(f'✗ 获取失败: {resp.get("error", resp)}', file=sys.stderr)
+        sys.exit(1)
+    print(json.dumps(resp, ensure_ascii=False, indent=2))
+
+
+def cmd_update(args):
+    """更新单条笔记的指定字段（只传你给的字段，其余不动）。"""
+    fields = {}
+    for k in ('title', 'content', 'tags', 'source', 'level', 'section'):
+        v = getattr(args, k, None)
+        if v is not None:
+            fields[k] = v
+    if args.date is not None:
+        fields['note_date'] = args.date
+    if not fields:
+        print('✗ 未提供任何要更新的字段（--content/--title/--tags/--level/--source/--section/--date）',
+              file=sys.stderr)
+        sys.exit(1)
+    status, resp = _request('PUT', args.url, f'/api/notes/{args.id}', args.token, fields)
+    _check_auth(status, resp)
+    if status == 200:
+        print(f'✓ 已更新 #{args.id}：{", ".join(fields)}')
+    elif status == 202:
+        print(f'✓ 已提交更新申请 #{args.id}（共建者，待管理员确认）')
+    else:
+        print(f'✗ 更新失败: {resp.get("error", resp)}', file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_delete(args):
+    """删除一条或多条笔记。多个 id 走批量接口。"""
+    if len(args.ids) == 1:
+        status, resp = _request('DELETE', args.url, f'/api/notes/{args.ids[0]}', args.token)
+    else:
+        status, resp = _request('DELETE', args.url, '/api/notes/batch', args.token,
+                                {'ids': args.ids})
+    _check_auth(status, resp)
+    if status in (200, 202):
+        print(f'✓ 已删除/已提交删除：{args.ids}')
+    else:
+        print(f'✗ 删除失败: {resp.get("error", resp)}', file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_search(args):
     from urllib.parse import quote
     status, resp = _request('GET', args.url,
@@ -196,6 +244,21 @@ def build_parser():
     i.add_argument('file', help='JSON 文件路径，或用 - 从标准输入读取')
     i.add_argument('--no-dedup', action='store_true', help='关闭按标题去重（默认开启）')
     i.set_defaults(func=cmd_import)
+
+    g = sub.add_parser('get', help='按 id 获取单条笔记（JSON）')
+    g.add_argument('id', help='笔记 id')
+    g.set_defaults(func=cmd_get)
+
+    u = sub.add_parser('update', help='更新单条笔记的指定字段（只改你给的字段）')
+    u.add_argument('id', help='笔记 id')
+    u.add_argument('--title'); u.add_argument('--content'); u.add_argument('--tags')
+    u.add_argument('--source'); u.add_argument('--level'); u.add_argument('--section')
+    u.add_argument('--date', help='日期 YYYY-MM-DD')
+    u.set_defaults(func=cmd_update)
+
+    d = sub.add_parser('delete', help='删除一条或多条笔记（多个 id 走批量）')
+    d.add_argument('ids', nargs='+', help='一个或多个笔记 id')
+    d.set_defaults(func=cmd_delete)
 
     s = sub.add_parser('search', help='搜索笔记')
     s.add_argument('query', help='搜索关键词')
