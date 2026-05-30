@@ -2005,7 +2005,7 @@ def _apply_proposal(db, prop):
             return False, '章节或标题无效'
         level = payload.get('level', '★'); nd = payload.get('note_date') or datetime.now().strftime('%Y-%m-%d')
         insert_note(db, section, title, content=payload.get('content', ''),
-                    tags=payload.get('tags', ''), source=payload.get('source', '个人总结'),
+                    tags=payload.get('tags', ''), source=norm_source(payload.get('source', DEFAULT_SOURCE)),
                     level=level if valid_level(level) else '★',
                     note_date=nd if valid_date(nd) else datetime.now().strftime('%Y-%m-%d'),
                     source_file=(payload.get('source_file') or '').strip())
@@ -2022,6 +2022,9 @@ def _apply_proposal(db, prop):
         nd = payload.get('note_date', existing['note_date'])
         if not valid_level(level) or not valid_date(nd):
             return False, '提议的等级或日期非法'
+        # 来源同样在落库前校验：仅当本次确有改动且非法才拦截（保留历史遗留值）
+        if source != existing['source'] and not valid_source(source):
+            return False, '提议的来源不在允许列表内'
         db.execute('UPDATE notes SET title=?,content=?,tags=?,source=?,level=?,note_date=?,'
                    'updated_at=datetime("now","localtime") WHERE id=?',
                    (title, content, tags, source, level, nd, prop['note_id']))

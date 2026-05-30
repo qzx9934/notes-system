@@ -758,6 +758,37 @@ def test_contributor_delete_proposal(admin):
     assert admin.get(f'/api/notes/{nid}').status_code == 404
 
 
+def test_proposal_create_illegal_source_coerced_on_approve(admin):
+    """防御：直接构造非法 source 的 create 提议，批准落库时应被归一为默认来源。"""
+    import os, sqlite3
+    co = _contributor_client(admin, 'co_src_c')
+    co.post('/api/notes', json={'section': 'A01', 'title': '非法来源提议', 'content': 'x'})
+    pid = [p for p in admin.get('/api/proposals?status=pending').get_json()['items']
+           if p['payload'].get('title') == '非法来源提议'][0]['id']
+    # 绕过前端，直接把非法 source 写进 payload，模拟伪造请求
+    db = sqlite3.connect(os.environ['NOTES_DB_PATH'])
+    db.execute("UPDATE proposals SET payload=json_set(payload,'$.source','黑名单来源') WHERE id=?", (pid,))
+    db.commit(); db.close()
+    assert admin.post(f'/api/proposals/{pid}/approve').status_code == 200
+    item = admin.get('/api/notes?q=非法来源提议').get_json()['items'][0]
+    assert item['source'] in _app.VALID_SOURCES  # 已归一，非法值未入库
+
+
+def test_proposal_update_illegal_source_rejected_on_approve(admin):
+    """防御：update 提议把 source 改成非法值，批准时应被拦截（自动驳回）。"""
+    import os, sqlite3
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '改来源提议', 'content': 'y'}).get_json()['id']
+    co = _contributor_client(admin, 'co_src_u')
+    co.put(f'/api/notes/{nid}', json={'title': '改来源提议2'})
+    pid = admin.get('/api/proposals?status=pending').get_json()['items'][0]['id']
+    db = sqlite3.connect(os.environ['NOTES_DB_PATH'])
+    db.execute("UPDATE proposals SET payload=json_set(payload,'$.source','非法X') WHERE id=?", (pid,))
+    db.commit(); db.close()
+    # 非法来源 -> 自动驳回 409，原笔记来源不变
+    assert admin.post(f'/api/proposals/{pid}/approve').status_code == 409
+    assert admin.get(f'/api/notes/{nid}').get_json()['source'] in _app.VALID_SOURCES
+
+
 def test_contributor_sees_only_own_proposals(admin):
     co = _contributor_client(admin, 'co_own')
     co.post('/api/notes', json={'section': 'A01', 'title': '我的提交', 'content': 'x'})

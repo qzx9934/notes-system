@@ -1944,12 +1944,15 @@ function switchSettingsPage(page) {
 const _aiPromptDefaults = {};   // kind -> 内置默认全文，供"恢复默认"与"是否等于默认"判断
 async function loadAiPrompt(kind = 'summary', taId = 'aiPromptText') {
   const ta = document.getElementById(taId);
+  // 加载期间禁用并显示加载态，防止用户抢先输入后被异步结果覆盖
+  ta.value = '加载中…'; ta.disabled = true;
   try {
     const d = await (await _origFetch('/api/config/ai-prompt?kind=' + kind)).json();
     _aiPromptDefaults[kind] = d.default || '';
     ta.value = d.is_custom ? d.prompt : (d.default || '');
     ta.dataset.orig = ta.value;   // 记录打开时的内容，保存前判断是否真改了
-  } catch (e) { ta.value = ''; ta.placeholder = '加载失败'; }
+  } catch (e) { ta.value = ''; ta.placeholder = '加载失败，请关闭重开'; }
+  finally { ta.disabled = false; }
 }
 // 实际写入（不含确认），保存/恢复默认共用
 async function _putAiPrompt(kind, prompt, taId, outId) {
@@ -3266,18 +3269,26 @@ function beginInlineEdit(chipId, valId, makeControl) {
   const savedClick = chip.getAttribute('onclick');
   chip.onclick = null;
   chip.dataset.editing = '1';
-  // 固定定位到 chip 正下方，不影响 chip 本身的大小/布局
+  // 固定定位到 chip 正下方；右侧/底部做边界兜底，避免超出视口被截断
   const r = chip.getBoundingClientRect();
-  ctrl.style.cssText = `position:fixed;top:${r.bottom + 4}px;left:${r.left}px;z-index:2000;min-width:${Math.max(r.width, 120)}px`;
+  const w = Math.max(r.width, 140);
+  const left = Math.min(r.left, window.innerWidth - w - 8);
+  ctrl.style.cssText = `position:fixed;top:${r.bottom + 4}px;left:${Math.max(8, left)}px;z-index:2000;min-width:${w}px`;
   document.body.appendChild(ctrl);
   ctrl.focus();
   let closed = false;
   const restore = () => {
     if (closed) return; closed = true;
+    window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', restore);
     if (ctrl.parentNode) ctrl.parentNode.removeChild(ctrl);
     delete chip.dataset.editing;
     if (savedClick) chip.setAttribute('onclick', savedClick);
   };
+  // fixed 浮层不随抽屉/页面滚动跟随，滚动或缩放时直接收起，避免与 chip 脱节
+  const onScroll = () => restore();
+  window.addEventListener('scroll', onScroll, true);  // capture：捕获抽屉内部滚动
+  window.addEventListener('resize', restore);
   return { ctrl, valEl, restore };
 }
 
@@ -3298,7 +3309,8 @@ function editPreviewSource(event) {
     ctx.valEl.textContent = v; ctx.restore();
     if (v !== cur) patchField({ source: v });
   };
-  ctx.ctrl.onblur = () => { if (!done) ctx.restore(); };
+  // blur 延后收起：某些浏览器 blur 早于 change，延后让 change 先提交，避免改了不保存
+  ctx.ctrl.onblur = () => { setTimeout(() => { if (!done) ctx.restore(); }, 150); };
 }
 
 function editPreviewDate(event) {
@@ -3315,7 +3327,8 @@ function editPreviewDate(event) {
     ctx.valEl.textContent = v; ctx.restore();
     if (v !== cur) patchField({ note_date: v });
   };
-  ctx.ctrl.onblur = () => { if (!done) ctx.restore(); };
+  // blur 延后收起：某些浏览器 blur 早于 change，延后让 change 先提交，避免改了不保存
+  ctx.ctrl.onblur = () => { setTimeout(() => { if (!done) ctx.restore(); }, 150); };
 }
 
 // 详情抽屉正/背面切换
@@ -3892,7 +3905,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '4.1';
+const APP_VERSION = '4.2';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
