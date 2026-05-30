@@ -320,6 +320,9 @@ def get_db():
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA journal_mode=WAL")
         g.db.execute("PRAGMA foreign_keys=ON")
+        # 并发写等待：拿不到锁时最多等 5s 再放弃，避免多 worker 下立即抛
+        # "database is locked" 500（WAL 下读写不互斥，但写-写仍互斥）
+        g.db.execute("PRAGMA busy_timeout=5000")
     return g.db
 
 @app.teardown_appcontext
@@ -1099,7 +1102,12 @@ def insert_note(db, section, title, content='', tags='', source='个人总结',
 
 def move_note_to_section(db, note_id, target_section, extra=None):
     """把笔记移动到目标章节并按新章节重新生成编号；遇冲突自动重试。返回新 code。
-    extra: 需一并更新的字段，如 {'level': '★★', 'source': 'x'}。"""
+    extra: 需一并更新的字段，如 {'level': '★★', 'source': 'x'}。
+
+    ⚠️ 本函数【不】commit——只执行 UPDATE，提交由调用方负责。
+    这是为了让批量移动能把多条 move 合进一个事务里一次性提交/回滚（见
+    api_notes_batch_update）。单条调用务必在返回后自行 db.commit()，
+    否则改动会在请求结束、连接关闭时丢失（曾因漏 commit 导致"改章节没用"）。"""
     extra = extra or {}
     for _ in range(10):
         code = f'{target_section}-{next_code_num(db, target_section):03d}'
@@ -1511,14 +1519,15 @@ def api_note_summarize(id):
 def api_notes_summarize_batch():
     """一键总结：对一批勾选的笔记生成总结。
     body: {ids: [...], force: false}
-    默认跳过已有总结的；force=true 则全部重做。单次上限 50 条。"""
+    默认跳过已有总结的；force=true 则全部重做。单次上限 15 条
+    （串行调用大模型、每条最长 60s，限 15 条以免超过 gunicorn 120s 超时被 worker 杀）。"""
     data = request.get_json() or {}
     ids = data.get('ids') or []
     force = bool(data.get('force', False))
     if not isinstance(ids, list) or not ids:
         return jsonify({'error': '需要非空的 ids 数组'}), 400
-    if len(ids) > 50:
-        return jsonify({'error': '一次最多总结 50 条，请分批'}), 400
+    if len(ids) > 15:
+        return jsonify({'error': '一次最多总结 15 条，请分批'}), 400
     if not DEEPSEEK_API_KEY:
         return jsonify({'error': '未配置 DeepSeek 密钥，无法使用 AI 总结'}), 503
 

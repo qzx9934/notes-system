@@ -831,6 +831,14 @@ def test_summarize_batch_requires_admin(client):
     assert client.post('/api/notes/summarize-batch', json={'ids': [1]}).status_code == 401
 
 
+def test_summarize_batch_over_limit_rejected(admin, monkeypatch):
+    # 单批上限 15 条：超过应被拒（避免串行调用大模型超过 gunicorn 超时）
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    r = admin.post('/api/notes/summarize-batch', json={'ids': list(range(1, 17))})
+    assert r.status_code == 400
+    assert '15' in r.get_json()['error']
+
+
 # ---------------- AI 填充 ----------------
 
 def test_ai_fill_parses_fields(admin, monkeypatch):

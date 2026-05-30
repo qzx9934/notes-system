@@ -1613,6 +1613,19 @@ window.fetch = async function(...args) {
   return r;
 };
 
+// 统一 GET JSON：响应非 2xx 时抛错，避免把 {error:...} 当成正常数据用
+// （否则后端 500/网络异常时会出现白屏或显示 undefined）。401 已由上面的
+// fetch 包装统一跳登录，这里只负责把其它失败显式抛出交给调用方处理。
+async function fetchJSON(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    let msg = 'HTTP ' + r.status;
+    try { const d = await r.json(); if (d && d.error) msg = d.error; } catch (e) {}
+    throw new Error(msg);
+  }
+  return r.json();
+}
+
 async function checkAuth() {
   try {
     const r = await _origFetch('/api/check-auth');
@@ -2265,7 +2278,7 @@ function resetTidyUndo() {
 async function batchSummarize() {
   const ids = Array.from(selectedIds);
   if (!ids.length) { showToast('请先勾选笔记', 'error'); return; }
-  if (ids.length > 50) { showToast('一次最多 50 条，请分批', 'error'); return; }
+  if (ids.length > 15) { showToast('一次最多 15 条，请分批', 'error'); return; }
   if (!confirm(`对选中的 ${ids.length} 条笔记生成 AI 总结？（已有总结的会自动跳过）`)) return;
   showToast('正在生成总结，请稍候…', 'success');
   try {
@@ -2449,7 +2462,13 @@ function populateSourceOptions() {
 
 async function init() {
   populateSourceOptions();
-  await Promise.all([loadDomains(), loadSections(), loadStats()]);
+  try {
+    await Promise.all([loadDomains(), loadSections(), loadStats()]);
+  } catch (e) {
+    // 初始化数据加载失败（后端 500 / 网络异常）：提示并提供重试，避免白屏
+    showToast('加载失败：' + (e.message || '网络错误') + '，点此重试', 'error');
+    return;
+  }
   renderSidebar();
   populateBatchSectionSelect();
   populateBatchSourceSelect();
@@ -2458,19 +2477,16 @@ async function init() {
 }
 
 async function loadDomains() {
-  const r = await fetch('/api/domains');
-  domains = await r.json();
+  domains = await fetchJSON('/api/domains');
 }
 async function loadSections() {
-  const r = await fetch('/api/sections');
-  sections = await r.json();
+  sections = await fetchJSON('/api/sections');
   // 填充编辑弹窗的章节下拉
   const sel = document.getElementById('editSection');
   sel.innerHTML = sections.map(s => `<option value="${s.code}">${s.code} ${s.name}</option>`).join('');
 }
 async function loadStats() {
-  const r = await fetch('/api/stats');
-  const s = await r.json();
+  const s = await fetchJSON('/api/stats');
   const byLevel = {};
   s.by_level.forEach(l => byLevel[l.level] = l.cnt);
   document.getElementById('statsBar').innerHTML = `
@@ -2610,8 +2626,7 @@ async function doSearch() {
   params.set('per', 30);
 
   renderSkeleton();  // 请求期间显示骨架屏占位
-  const r = await fetch('/api/notes?' + params);
-  const data = await r.json();
+  const data = await fetchJSON('/api/notes?' + params);
   if (mySeq !== _searchSeq) return;  // 已有更新的搜索发出，丢弃本次过期结果
   allLoadedItems = data.items;
   lastSearchTotal = data.total;
@@ -3119,8 +3134,7 @@ async function batchUpdateDate() {
 async function openPreview(id) {
   previewNoteId = id;
   try {
-    const r = await fetch('/api/notes/' + id);
-    const n = await r.json();
+    const n = await fetchJSON('/api/notes/' + id);
     previewNote = n;
     document.getElementById('previewCode').textContent = n.code + ' · ' + (n.section_name || n.section);
     document.getElementById('previewTitle').textContent = n.title;
@@ -3492,8 +3506,13 @@ function ensureSelectOption(sel, value) {
 }
 
 async function openEditModal(id) {
-  const r = await fetch('/api/notes/' + id);
-  const n = await r.json();
+  let n;
+  try {
+    n = await fetchJSON('/api/notes/' + id);
+  } catch (e) {
+    showToast('加载笔记失败：' + (e.message || '网络错误'), 'error');
+    return;
+  }
   document.getElementById('modalTitle').textContent = '编辑笔记 - ' + n.code;
   document.getElementById('editId').value = n.id;
   document.getElementById('editSection').value = n.section;
@@ -3639,9 +3658,8 @@ async function startRoam() {
 
   try {
     document.getElementById('roamCard').classList.add('loading');
-    const r = await fetch('/api/notes?' + params);
-    const data = await r.json();
-    roamNotes = data.items;
+    const data = await fetchJSON('/api/notes?' + params);
+    roamNotes = data.items || [];
     document.getElementById('roamCard').classList.remove('loading');
 
     if (roamNotes.length === 0) {
@@ -3874,7 +3892,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '4.0';
+const APP_VERSION = '4.1';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
