@@ -818,6 +818,32 @@ def test_ai_tidy_returns_content_and_fields(admin, monkeypatch):
     assert f['title'] == '整理标题' and f['section'] == 'A01' and f['source'] == '规程'
 
 
+def test_ai_tidy_delimiter_format(admin, monkeypatch):
+    # 新版「正文 + ===字段=== + 单行JSON」协议：正文是纯文本，多行不再塞进 JSON
+    reply = ('1. 知识点一\n2. 知识点二\n===字段===\n'
+             '{"title":"整理标题","tags":"MFT,保护","section":"A01","level":"★★","source":"规程"}')
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    monkeypatch.setattr(_app, '_deepseek_chat', lambda system, user, temperature=0.3: reply)
+    body = admin.post('/api/ai/tidy', json={'content': '安排某班 一、知识点一 三、知识点二'}).get_json()
+    assert body['content'] == '1. 知识点一\n2. 知识点二'
+    assert body['fields']['title'] == '整理标题' and body['fields']['section'] == 'A01'
+
+
+def test_ai_tidy_non_object_reply_no_500(admin, monkeypatch):
+    # 模型返回数组等非对象时不应 500：正文兜底、字段置空
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    monkeypatch.setattr(_app, '_deepseek_chat', lambda system, user, temperature=0.3: '[1,2,3]')
+    r = admin.post('/api/ai/tidy', json={'content': '原文必须保留'})
+    assert r.status_code == 200
+    assert r.get_json()['content'] == '原文必须保留'
+
+
+def test_ai_fill_non_object_reply_502(admin, monkeypatch):
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    monkeypatch.setattr(_app, '_deepseek_chat', lambda system, user, temperature=0.3: '["not","an","object"]')
+    assert admin.post('/api/ai/fill', json={'content': 'x'}).status_code == 502
+
+
 def test_ai_tidy_blank_content_keeps_original(admin, monkeypatch):
     monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
     # 模型未给 content 时，兜底保留原文，避免清空

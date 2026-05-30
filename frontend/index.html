@@ -621,6 +621,10 @@ body.roam-immersive .batch-bar { display: none; }
 .proposal-badge { position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px; padding: 0 4px;
   background: #E74C3C; color: #fff; border-radius: 8px; font-size: 10px; line-height: 16px; text-align: center; font-weight: 700; }
 /* AI 填充按钮 */
+.field-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.field-head > label { margin: 0; }
+.ai-btns { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.ai-btns .ai-fill-btn { margin-left: 0; }
 .ai-fill-btn { margin-left: 10px; font-size: 12px; font-weight: 400; padding: 2px 10px; border: 1px solid var(--primary-light);
   color: var(--primary-light); background: #fff; border-radius: 12px; cursor: pointer; }
 .ai-fill-btn:hover { background: var(--primary-light); color: #fff; }
@@ -1374,11 +1378,14 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         <input type="text" id="editTitle" placeholder="简洁概括，不超过20字">
       </div>
       <div class="form-group">
-        <label>内容详情
-          <button type="button" class="ai-fill-btn" id="aiFillBtn" onclick="doAiFill()" title="根据正文用 AI 推断并填充：标题/标签/章节/等级/来源">🪄 AI 填充</button>
-          <button type="button" class="ai-fill-btn" id="aiTidyBtn" onclick="doAiTidy()" title="AI 整理：清理排班/通知等非知识内容、规范小序号，并顺带填充字段（一次调用）">🧹 AI 整理</button>
-          <button type="button" class="ai-fill-btn" id="aiTidyUndoBtn" onclick="undoTidy()" style="display:none" title="恢复整理前的正文">↩ 撤回整理</button>
-        </label>
+        <div class="field-head">
+          <label for="editContent">内容详情</label>
+          <span class="ai-btns">
+            <button type="button" class="ai-fill-btn" id="aiFillBtn" onclick="doAiFill()" title="根据正文用 AI 推断并填充：标题/标签/章节/等级/来源">🪄 AI 填充</button>
+            <button type="button" class="ai-fill-btn" id="aiTidyBtn" onclick="doAiTidy()" title="AI 整理：清理排班/通知等非知识内容、规范小序号，并顺带填充字段（一次调用）">🧹 AI 整理</button>
+            <button type="button" class="ai-fill-btn" id="aiTidyUndoBtn" onclick="undoTidy()" style="display:none" title="恢复整理前的正文">↩ 撤回整理</button>
+          </span>
+        </div>
         <div class="md-toolbar">
           <button title="标题2" onclick="mdInsert('## ')">H2</button>
           <button title="标题3" onclick="mdInsert('### ')">H3</button>
@@ -1897,7 +1904,7 @@ async function doAiFill() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content })
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) { showToast(d.error || 'AI 填充失败', 'error'); return; }
+    if (!r.ok) { showToast(d.error || ('AI 填充失败（HTTP ' + r.status + '）'), 'error'); return; }
     _applyFillFields(d.fields || {});
     showToast('已按正文填充，可再调整后保存', 'success');
   } catch (e) { showToast('AI 填充请求失败', 'error'); }
@@ -1925,7 +1932,7 @@ async function doAiTidy() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content })
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) { showToast(d.error || 'AI 整理失败', 'error'); return; }
+    if (!r.ok) { showToast(d.error || ('AI 整理失败（HTTP ' + r.status + '，可能后端未更新，请 git pull 并重启服务）'), 'error'); return; }
     _tidyUndo = ta.value;                 // 记录整理前正文，供撤回
     if (d.content) {
       ta.value = d.content;
@@ -3485,7 +3492,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '3.5';
+const APP_VERSION = '3.5.1';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
