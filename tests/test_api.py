@@ -88,7 +88,7 @@ def test_create_note_bad_source(admin):
 def test_update_invalid_source_rejected(admin):
     nid = admin.post('/api/notes', json={'section': 'A01', 'title': '改来源'}).get_json()['id']
     assert admin.put(f'/api/notes/{nid}', json={'source': '瞎写'}).status_code == 400
-    assert admin.put(f'/api/notes/{nid}', json={'source': '反事故措施'}).status_code == 200
+    assert admin.put(f'/api/notes/{nid}', json={'source': '技术通知'}).status_code == 200
 
 
 def test_update_unchanged_legacy_source_allowed(admin):
@@ -106,7 +106,7 @@ def test_update_unchanged_legacy_source_allowed(admin):
 def test_batch_update_bad_source(admin):
     nid = admin.post('/api/notes', json={'section': 'A01', 'title': '批改来源'}).get_json()['id']
     assert admin.put('/api/notes/batch', json={'ids': [nid], 'updates': {'source': 'XX'}}).status_code == 400
-    assert admin.put('/api/notes/batch', json={'ids': [nid], 'updates': {'source': '会议纪要'}}).status_code == 200
+    assert admin.put('/api/notes/batch', json={'ids': [nid], 'updates': {'source': '缺陷异常'}}).status_code == 200
 
 
 def test_ingest_coerces_bad_source(admin):
