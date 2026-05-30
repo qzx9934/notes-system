@@ -79,15 +79,15 @@ Authorization: Bearer <你的令牌>
 | `title` | string | **是** | 要点标题 |
 | `content` | string | 否 | 内容详情，支持 Markdown |
 | `tags` | string | 否 | 关键词标签，**逗号分隔**，如 `MFT,保护` |
-| `source` | string | 否 | 来源，默认 `个人总结`（推荐取值：规程 / 培训 / 操作票 / 事故预案 / 事故通报 / 经验反馈 / 技术文件 / 个人总结 / 规章制度；字段不强校验，可自定义） |
+| `source` | string | 否 | 来源，默认 `个人总结`。**只能取以下 13 个值之一**（API 强校验，不接受自定义）：规程 / 规章制度 / 技术文件 / 技术通知 / 反事故措施 / 操作票 / 事故预案 / 事故通报 / 经验反馈 / 缺陷异常记录 / 会议纪要 / 培训 / 个人总结 |
 | `level` | string | 否 | 重要等级，**只能为** `★` / `★★` / `★★★`，默认 `★` |
 | `note_date` / `date` | string | 否 | 日期，**须为** `YYYY-MM-DD` 格式，默认今天 |
 | `source_file` | string | 否 | 来源文件名（含格式，如 `运行规程.docx`）。大模型整理文件录入时自动记录；直接处理文本则留空。**不在总览列表显示**，仅在卡片背面顶部展示 |
 | `ai_summary` | string | 只读 | AI 总结正文（Markdown），由 `POST /api/notes/<id>/summarize` 生成并保存，显示在卡片背面 |
 | `ai_summary_at` | string | 只读 | AI 总结生成时间；若笔记此后又被更新，前端会提示总结可能已过时 |
 
-> **字段校验：** 单条接口（`POST /api/notes`、`PUT /api/notes/<id>`、`PUT /api/notes/batch`）会严格校验 `section`（须存在）、`level`、`note_date`，非法时返回 `400`。
-> 批量接口（`POST /api/notes/ingest`、`POST /api/notes/batch`）更宽容：非法的 `level`/`date` 会**自动回退**为默认值（`★` / 今天），便于大模型批量上传；但 `section` 非法仍会被跳过。
+> **字段校验：** 单条接口（`POST /api/notes`、`PUT /api/notes/<id>`、`PUT /api/notes/batch`）会严格校验 `section`（须存在）、`level`、`note_date`、`source`，非法时返回 `400`（`PUT /api/notes/<id>` 对 `source` 仅在本次实际改动时校验，以兼容历史遗留的自定义来源）。
+> 批量接口（`POST /api/notes/ingest`、`POST /api/notes/batch`）更宽容：非法的 `level`/`date`/`source` 会**自动回退**为默认值（`★` / 今天 / `个人总结`），便于大模型批量上传；但 `section` 非法仍会被跳过。
 
 ---
 
@@ -365,7 +365,7 @@ python note_cli.py stats                     # 统计
 - content：内容详情，可用要点编号，保留关键数字/参数
 - tags：3~5 个关键词，用英文逗号分隔
 - level：重要等级，★/★★/★★★（涉及保护、跳闸、安全的取 ★★★）
-- source：来源，从 规程/培训/操作票/事故预案/事故通报/经验反馈/技术文件/个人总结/规章制度 中选择
+- source：来源，从 规程/规章制度/技术文件/技术通知/反事故措施/操作票/事故预案/事故通报/经验反馈/缺陷异常记录/会议纪要/培训/个人总结 中选择（仅此 13 项，非法值上传时会被归一为「个人总结」）
 只输出 JSON 数组本身，不要任何解释或 Markdown 代码块标记。
 ```
 

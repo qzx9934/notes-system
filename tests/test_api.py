@@ -73,6 +73,50 @@ def test_update_note_bad_level(admin):
     assert r.status_code == 400
 
 
+# ---------------- 来源（source）校验 ----------------
+
+def test_create_note_new_source_accepted(admin):
+    r = admin.post('/api/notes', json={'section': 'A01', 'title': '技术通知样例', 'source': '技术通知'})
+    assert r.status_code == 201 and r.get_json()['source'] == '技术通知'
+
+
+def test_create_note_bad_source(admin):
+    r = admin.post('/api/notes', json={'section': 'A01', 'title': 't', 'source': '随便乱填'})
+    assert r.status_code == 400
+
+
+def test_update_invalid_source_rejected(admin):
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '改来源'}).get_json()['id']
+    assert admin.put(f'/api/notes/{nid}', json={'source': '瞎写'}).status_code == 400
+    assert admin.put(f'/api/notes/{nid}', json={'source': '反事故措施'}).status_code == 200
+
+
+def test_update_unchanged_legacy_source_allowed(admin):
+    # 历史遗留的自定义来源：直接改库注入非法来源，未改动来源时编辑应放行
+    import os, sqlite3
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '遗留来源'}).get_json()['id']
+    db = sqlite3.connect(os.environ['NOTES_DB_PATH'])
+    db.execute('UPDATE notes SET source=? WHERE id=?', ('工作票(旧)', nid)); db.commit(); db.close()
+    # 只改标题、不动来源 -> 允许（兼容历史数据）
+    assert admin.put(f'/api/notes/{nid}', json={'title': '遗留来源-改名'}).status_code == 200
+    # 但若把来源改成另一个非法值 -> 拦截
+    assert admin.put(f'/api/notes/{nid}', json={'source': '又一个乱来'}).status_code == 400
+
+
+def test_batch_update_bad_source(admin):
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '批改来源'}).get_json()['id']
+    assert admin.put('/api/notes/batch', json={'ids': [nid], 'updates': {'source': 'XX'}}).status_code == 400
+    assert admin.put('/api/notes/batch', json={'ids': [nid], 'updates': {'source': '会议纪要'}}).status_code == 200
+
+
+def test_ingest_coerces_bad_source(admin):
+    admin.post('/api/notes/ingest', json={'notes': [
+        {'section': 'C04', 'title': '来源归一化', 'source': '不存在的来源'}
+    ]})
+    items = admin.get('/api/notes?section=C04&q=来源归一化').get_json()['items']
+    assert items and items[0]['source'] == '个人总结'
+
+
 # ---------------- 编号生成 ----------------
 
 def test_code_generation_sequential(admin):

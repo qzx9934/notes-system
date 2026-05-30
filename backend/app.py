@@ -948,11 +948,25 @@ def api_sections():
 
 # --- 字段校验 ---
 VALID_LEVELS = {'★', '★★', '★★★'}
+# 来源（source）规范取值：网页端可下拉/手填，但 API 只认这张表，杜绝任意来源污染。
+# 顺序即网页下拉/数据列表的展示顺序。新增类别在此一处维护即可全局生效。
+VALID_SOURCES = ['规程', '规章制度', '技术文件', '技术通知', '反事故措施',
+                 '操作票', '事故预案', '事故通报', '经验反馈',
+                 '缺陷异常记录', '会议纪要', '培训', '个人总结']
+VALID_SOURCES_SET = set(VALID_SOURCES)
+DEFAULT_SOURCE = '个人总结'
 _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 MAX_PER = 200  # 单页最大返回条数，防止超大查询
 
 def valid_level(v):
     return v in VALID_LEVELS
+
+def valid_source(v):
+    return v in VALID_SOURCES_SET
+
+def norm_source(v):
+    """宽容路径（ingest / batch 追加）：非法来源回退默认，不报错、不入库任意值。"""
+    return v if v in VALID_SOURCES_SET else DEFAULT_SOURCE
 
 def valid_date(v):
     """校验 YYYY-MM-DD 且为真实日期"""
@@ -1176,15 +1190,18 @@ def api_note_create():
 
     level   = data.get('level', '★')
     note_date = data.get('note_date', datetime.now().strftime('%Y-%m-%d'))
+    source  = data.get('source', DEFAULT_SOURCE)
     if not valid_level(level):
         return jsonify({'error': 'level 只能为 ★ / ★★ / ★★★'}), 400
     if not valid_date(note_date):
         return jsonify({'error': 'note_date 格式应为 YYYY-MM-DD'}), 400
+    if not valid_source(source):
+        return jsonify({'error': '来源不在允许列表内：' + ' / '.join(VALID_SOURCES)}), 400
 
     fields = {
         'section': section, 'title': title,
         'content': data.get('content', ''), 'tags': data.get('tags', ''),
-        'source': data.get('source', '个人总结'), 'level': level,
+        'source': source, 'level': level,
         'note_date': note_date, 'source_file': (data.get('source_file') or '').strip(),
     }
 
@@ -1227,6 +1244,9 @@ def api_note_update(id):
         return jsonify({'error': 'level 只能为 ★ / ★★ / ★★★'}), 400
     if not valid_date(note_date):
         return jsonify({'error': 'note_date 格式应为 YYYY-MM-DD'}), 400
+    # 来源：仅当本次真的改了来源才校验，保留历史遗留的自定义来源（未改动不拦截）
+    if source != existing['source'] and not valid_source(source):
+        return jsonify({'error': '来源不在允许列表内：' + ' / '.join(VALID_SOURCES)}), 400
 
     # 共建者：仅记录其实际提交的字段，转为待审申请
     role, _, _ = effective_actor()
@@ -1409,12 +1429,12 @@ AI_FILL_SYSTEM_PROMPT = (
     '  tags     2~4个关键词，用英文逗号分隔的字符串\n'
     '  section  章节编码，必须从下面给定列表中选最贴切的一个\n'
     '  level    重要等级，只能是 "★" / "★★" / "★★★"；涉及保护、跳闸、安全取 ★★★\n'
-    '  source   来源，从 规程/培训/操作票/事故预案/事故通报/经验反馈/技术文件/个人总结/规章制度 中选\n'
+    '  source   来源，从 ' + '/'.join(VALID_SOURCES) + ' 中选\n'
     '只依据正文内容推断，不要臆造正文里没有的信息。'
 )
 
-AI_FILL_SOURCE_OPTS = {'规程', '培训', '操作票', '事故预案', '事故通报',
-                       '经验反馈', '技术文件', '个人总结', '规章制度'}
+# AI 推断的来源同样限定在规范列表内
+AI_FILL_SOURCE_OPTS = VALID_SOURCES_SET
 
 def _parse_ai_json(raw):
     """容错解析模型返回的 JSON 对象（可能裹了 ```json 代码块）。
@@ -1491,7 +1511,7 @@ AI_TIDY_SYSTEM_PROMPT = (
     '    title  要点标题(≤20字)、tags  2~4个关键词(英文逗号分隔)、'
     'section  章节编码(从给定列表中选最贴切的一个)、'
     'level  只能是 ★/★★/★★★(涉及保护/跳闸/安全取★★★)、'
-    'source  从 规程/培训/操作票/事故预案/事故通报/经验反馈/技术文件/个人总结/规章制度 中选。'
+    'source  从 ' + '/'.join(VALID_SOURCES) + ' 中选。'
 )
 
 def effective_tidy_prompt(db):
@@ -1686,6 +1706,8 @@ def api_notes_batch_update():
                 return jsonify({'error': 'level 只能为 ★ / ★★ / ★★★'}), 400
             extra['level'] = v
         elif k == 'source':
+            if not valid_source(v):
+                return jsonify({'error': '来源不在允许列表内：' + ' / '.join(VALID_SOURCES)}), 400
             extra['source'] = v
         elif k == 'section':
             if not section_exists(db, v):
@@ -1953,7 +1975,7 @@ def api_note_batch():
                         'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
                         'source_file=?,updated_at=datetime("now","localtime") WHERE section=? AND title=?',
                         (content, entry.get('tags', ''),
-                         entry.get('source', '个人总结'), norm_level(entry),
+                         norm_source(entry.get('source', DEFAULT_SOURCE)), norm_level(entry),
                          norm_date(entry), sf, section, title)
                     )
                 else:
@@ -1961,7 +1983,7 @@ def api_note_batch():
                         'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
                         'updated_at=datetime("now","localtime") WHERE section=? AND title=?',
                         (content, entry.get('tags', ''),
-                         entry.get('source', '个人总结'), norm_level(entry),
+                         norm_source(entry.get('source', DEFAULT_SOURCE)), norm_level(entry),
                          norm_date(entry), section, title)
                     )
                 merged.append({'title': title, 'merged_to': title})
@@ -1971,7 +1993,7 @@ def api_note_batch():
                 db, section, title,
                 content=entry.get('content', ''),
                 tags=entry.get('tags', ''),
-                source=entry.get('source', '个人总结'),
+                source=norm_source(entry.get('source', DEFAULT_SOURCE)),
                 level=norm_level(entry),
                 note_date=norm_date(entry),
                 source_file=norm_source_file(entry)
@@ -2038,6 +2060,10 @@ def api_notes_ingest():
         lv = entry.get('level', '★')
         return lv if valid_level(lv) else '★'
 
+    def pick_source(entry):
+        # 非法来源回退默认（与 level/date 一致的宽容策略），不入库任意值
+        return norm_source(entry.get('source', DEFAULT_SOURCE))
+
     # 顶层 source_file 作为缺省，条目可覆盖（同一文件整理出的多条笔记共用文件名）
     default_source_file = (data.get('source_file') or '').strip()
 
@@ -2074,7 +2100,7 @@ def api_notes_ingest():
                             'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
                             'source_file=?,updated_at=datetime("now","localtime") WHERE code=?',
                             (content, entry.get('tags', ''),
-                             entry.get('source', '个人总结'), pick_level(entry),
+                             pick_source(entry), pick_level(entry),
                              pick_date(entry), sf, dup['code'])
                         )
                     else:
@@ -2082,7 +2108,7 @@ def api_notes_ingest():
                             'UPDATE notes SET content=?,tags=?,source=?,level=?,note_date=?,'
                             'updated_at=datetime("now","localtime") WHERE code=?',
                             (content, entry.get('tags', ''),
-                             entry.get('source', '个人总结'), pick_level(entry),
+                             pick_source(entry), pick_level(entry),
                              pick_date(entry), dup['code'])
                         )
                     merged.append({'code': dup['code'], 'title': title})
@@ -2091,7 +2117,7 @@ def api_notes_ingest():
             code = insert_note(
                 db, section, title,
                 content=entry.get('content', ''), tags=entry.get('tags', ''),
-                source=entry.get('source', '个人总结'),
+                source=pick_source(entry),
                 level=pick_level(entry), note_date=pick_date(entry),
                 source_file=pick_source_file(entry)
             )
