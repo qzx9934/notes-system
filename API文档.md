@@ -233,10 +233,16 @@ Authorization: Bearer <你的令牌>
 
 根据正文 `content` 调用大模型推断并返回建议的 `title / tags / section / level / source`（**不落库**，由前端填入编辑框）。与 AI 总结共用 DeepSeek 密钥/模型。非法 `section`/`level`/`source` 会被置空。body：`{"content": "正文…"}`。
 
-### `GET/PUT /api/config/ai-prompt` —— AI 总结提示词（admin）
+### `POST /api/ai/tidy` —— AI 整理（admin / contributor）
 
-- `GET`：`{"prompt": "自定义或空", "default": "内置默认", "effective": "实际生效", "is_custom": bool}`。
-- `PUT`：body `{"prompt": "…"}` 设置自定义提示词；传**空字符串**则恢复内置默认。
+对正文做"轻度规整"并**同时**返回填充字段，一次调用省 token（**不落库**，前端可撤回）。整理动作：删除排班/通知/时效声明等非知识性内容、规范乱序或格式不统一的小序号、克制改动以防改错原意。body：`{"content": "正文…"}`。响应：`{"ok": true, "content": "整理后正文", "fields": {title, tags, section, level, source}}`。模型未给正文时兜底保留原文。
+
+### `GET/PUT /api/config/ai-prompt` —— AI 提示词（admin）
+
+支持两类提示词，用 `kind` 区分：`summary`（默认，AI 总结）/ `tidy`（AI 整理）。
+
+- `GET /api/config/ai-prompt?kind=summary|tidy`：`{"prompt": "自定义或空", "default": "内置默认", "effective": "实际生效", "is_custom": bool, "kind": "…"}`。
+- `PUT`：body `{"prompt": "…", "kind": "summary|tidy"}` 设置自定义提示词；`prompt` 传**空字符串**则恢复内置默认。两类提示词互相独立。
 
 ### `GET /api/login-log` —— 登录历史（admin）
 

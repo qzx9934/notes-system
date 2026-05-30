@@ -1365,30 +1365,40 @@ def api_notes_summarize_batch():
     return jsonify({'ok': True, 'done': len(done), 'skipped': len(skipped),
                     'failed': len(failed), 'failed_list': failed, 'skipped_list': skipped})
 
-# --- AI 提示词配置（管理员可随时修改） ---
+# --- AI 提示词配置（管理员可随时修改；支持 summary / tidy 两类） ---
+def _prompt_kind(kind):
+    """返回 (config_key, 内置默认提示词)。未知类型回退到总结。"""
+    if kind == 'tidy':
+        return 'ai_tidy_prompt', AI_TIDY_SYSTEM_PROMPT
+    return 'ai_summary_prompt', AI_SUMMARY_SYSTEM_PROMPT
+
 @app.route('/api/config/ai-prompt')
 @admin_required
 def api_get_ai_prompt():
     db = get_db()
-    custom = get_config(db, 'ai_summary_prompt', '')
-    return jsonify({'prompt': custom, 'default': AI_SUMMARY_SYSTEM_PROMPT,
-                    'effective': custom.strip() or AI_SUMMARY_SYSTEM_PROMPT,
-                    'is_custom': bool(custom.strip())})
+    kind = request.args.get('kind', 'summary')
+    key, default = _prompt_kind(kind)
+    custom = get_config(db, key, '')
+    return jsonify({'prompt': custom, 'default': default,
+                    'effective': custom.strip() or default,
+                    'is_custom': bool(custom.strip()), 'kind': kind})
 
 @app.route('/api/config/ai-prompt', methods=['PUT'])
 @admin_required
 def api_set_ai_prompt():
     data = request.get_json() or {}
+    kind = data.get('kind') or request.args.get('kind') or 'summary'
+    key, default = _prompt_kind(kind)
     prompt = (data.get('prompt') or '').strip()
     db = get_db()
     if prompt:
-        set_config(db, 'ai_summary_prompt', prompt)
+        set_config(db, key, prompt)
     else:
         # 清空 = 恢复内置默认
-        db.execute("DELETE FROM config WHERE key='ai_summary_prompt'")
+        db.execute('DELETE FROM config WHERE key=?', (key,))
     db.commit()
     return jsonify({'ok': True, 'is_custom': bool(prompt),
-                    'effective': prompt or AI_SUMMARY_SYSTEM_PROMPT})
+                    'effective': prompt or default, 'kind': kind})
 
 # --- AI 填充：根据正文推断 标题/标签/章节/等级/来源 ---
 AI_FILL_SYSTEM_PROMPT = (
@@ -1402,6 +1412,34 @@ AI_FILL_SYSTEM_PROMPT = (
     '  source   来源，从 规程/培训/操作票/事故预案/事故通报/经验反馈/技术文件/个人总结/规章制度 中选\n'
     '只依据正文内容推断，不要臆造正文里没有的信息。'
 )
+
+AI_FILL_SOURCE_OPTS = {'规程', '培训', '操作票', '事故预案', '事故通报',
+                       '经验反馈', '技术文件', '个人总结', '规章制度'}
+
+def _parse_ai_json(raw):
+    """容错解析模型返回的 JSON（可能裹了 ```json 代码块）。失败返回 None。"""
+    txt = (raw or '').strip()
+    if txt.startswith('```'):
+        txt = re.sub(r'^```[a-zA-Z]*\s*|\s*```$', '', txt).strip()
+    m = re.search(r'\{.*\}', txt, re.S)
+    try:
+        return json.loads(m.group(0) if m else txt)
+    except (ValueError, AttributeError):
+        return None
+
+def _normalize_fill_fields(parsed, valid_codes):
+    """对模型给出的结构化字段逐项校验，非法则置空交由前端忽略。"""
+    title = (parsed.get('title') or '').strip()[:60]
+    tags = parsed.get('tags') or ''
+    if isinstance(tags, list):
+        tags = ','.join(str(t).strip() for t in tags if str(t).strip())
+    tags = str(tags).strip()
+    section = (parsed.get('section') or '').strip()
+    if section not in valid_codes:
+        section = ''
+    level = parsed.get('level') if parsed.get('level') in VALID_LEVELS else ''
+    source = parsed.get('source') if parsed.get('source') in AI_FILL_SOURCE_OPTS else ''
+    return {'title': title, 'tags': tags, 'section': section, 'level': level, 'source': source}
 
 @app.route('/api/ai/fill', methods=['POST'])
 @writer_required
@@ -1424,31 +1462,68 @@ def api_ai_fill():
         msg = str(e)
         return jsonify({'error': msg}), _summarize_status_code(msg)
 
-    # 容错解析：模型可能裹了 ```json 代码块
-    txt = raw.strip()
-    if txt.startswith('```'):
-        txt = re.sub(r'^```[a-zA-Z]*\s*|\s*```$', '', txt).strip()
-    m = re.search(r'\{.*\}', txt, re.S)
-    try:
-        parsed = json.loads(m.group(0) if m else txt)
-    except (ValueError, AttributeError):
+    parsed = _parse_ai_json(raw)
+    if parsed is None:
         return jsonify({'error': 'AI 返回无法解析，请重试'}), 502
+    return jsonify({'ok': True, 'fields': _normalize_fill_fields(parsed, valid_codes)})
 
-    # 逐字段校验，非法则置空交由前端忽略
-    title = (parsed.get('title') or '').strip()[:60]
-    tags = parsed.get('tags') or ''
-    if isinstance(tags, list):
-        tags = ','.join(str(t).strip() for t in tags if str(t).strip())
-    tags = str(tags).strip()
-    section = (parsed.get('section') or '').strip()
-    if section not in valid_codes:
-        section = ''
-    level = parsed.get('level') if parsed.get('level') in VALID_LEVELS else ''
-    src_opts = {'规程', '培训', '操作票', '事故预案', '事故通报', '经验反馈', '技术文件', '个人总结', '规章制度'}
-    source = parsed.get('source') if parsed.get('source') in src_opts else ''
-    return jsonify({'ok': True, 'fields': {
-        'title': title, 'tags': tags, 'section': section, 'level': level, 'source': source
-    }})
+# --- AI 整理：规整正文（去事务噪声 / 规范小序号）并顺带填充字段（一次调用省 token） ---
+AI_TIDY_SYSTEM_PROMPT = (
+    '你是火力发电厂集控运行专业的资料整理助手。我会给你一条运行笔记的正文，请做"轻度规整"，'
+    '并【只】返回一个 JSON 对象，不要包含任何解释或代码块标记。\n'
+    '整理要求（务必克制，宁可少改也不要改错原意）：\n'
+    '  1. 删除与知识无关的事务性内容：如排班/值班安排（"安排某班""某班值班"）、'
+    '时效声明（"即日起""自X月X日起执行"）、通知抬头与落款（"某某通知""特此通知""请遵照执行"）、'
+    '签发单位/签发人落款、问候寒暄等；只保留真正的技术知识与操作要点。\n'
+    '  2. 正文小序号规整：若正文存在编号（如 1. 2. 、(1)(2)、一、二、）但序号缺失、乱序或格式不统一，'
+    '按其表达的并列知识点重新编号为规范的「1. 2. 3.」；若正文本是一段完整论述、并无明确并列项，'
+    '则当作单一知识点，不要强行拆分或添加编号。\n'
+    '  3. 不要改写技术数值、定值、设备名称、专业术语；不要新增正文中不存在的信息；不要扩写或润色，'
+    '仅做删除噪声与序号规整，整体改动尽量小。\n'
+    'JSON 字段：\n'
+    '  content  整理后的正文（保留 Markdown 格式），即上述规整后的结果\n'
+    '  title    要点标题，简洁准确，≤20字\n'
+    '  tags     2~4个关键词，用英文逗号分隔的字符串\n'
+    '  section  章节编码，必须从给定列表中选最贴切的一个\n'
+    '  level    重要等级，只能是 "★" / "★★" / "★★★"；涉及保护、跳闸、安全取 ★★★\n'
+    '  source   来源，从 规程/培训/操作票/事故预案/事故通报/经验反馈/技术文件/个人总结/规章制度 中选\n'
+    '字段只依据正文推断，不要臆造正文里没有的信息。'
+)
+
+def effective_tidy_prompt(db):
+    """有效的整理提示词：管理员若自定义则用之，否则用内置默认。"""
+    return get_config(db, 'ai_tidy_prompt', '').strip() or AI_TIDY_SYSTEM_PROMPT
+
+@app.route('/api/ai/tidy', methods=['POST'])
+@writer_required
+def api_ai_tidy():
+    """AI 整理：一次调用同时（1）规整正文：去事务性噪声、规范小序号、克制改动；
+    （2）顺带推断 标题/标签/章节/等级/来源。返回 {content, fields}，不落库，前端可撤回。"""
+    data = request.get_json() or {}
+    content = (data.get('content') or '').strip()
+    if not content:
+        return jsonify({'error': '请先填写内容正文'}), 400
+
+    db = get_db()
+    sections = db.execute('SELECT code, name FROM sections ORDER BY sort_order').fetchall()
+    valid_codes = {s['code'] for s in sections}
+    section_list = '；'.join(f"{s['code']}={s['name']}" for s in sections)
+    user_text = f'可选章节列表：\n{section_list}\n\n笔记正文：\n{content}'
+
+    try:
+        raw = _deepseek_chat(effective_tidy_prompt(db), user_text, temperature=0.2)
+    except RuntimeError as e:
+        msg = str(e)
+        return jsonify({'error': msg}), _summarize_status_code(msg)
+
+    parsed = _parse_ai_json(raw)
+    if parsed is None:
+        return jsonify({'error': 'AI 返回无法解析，请重试'}), 502
+    tidied = (parsed.get('content') or '').strip()
+    if not tidied:
+        tidied = content  # 兜底：模型未给正文则保留原文，避免清空
+    return jsonify({'ok': True, 'content': tidied,
+                    'fields': _normalize_fill_fields(parsed, valid_codes)})
 
 # --- 笔记查重 ---
 _DEDUP_PUNCT_RE = re.compile(r'[\s　,，。.;；:：、!！?？()（）\[\]【】"\'`~·\-—_/\\]+')

@@ -802,6 +802,67 @@ def test_ai_fill_contributor_allowed(admin, monkeypatch):
     assert co.post('/api/ai/fill', json={'content': 'x'}).status_code == 200
 
 
+# ---------------- AI 整理 ----------------
+
+def test_ai_tidy_returns_content_and_fields(admin, monkeypatch):
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    monkeypatch.setattr(_app, '_deepseek_chat',
+                        lambda system, user, temperature=0.3:
+                        '```json\n{"content":"1. 知识点一\\n2. 知识点二","title":"整理标题",'
+                        '"tags":"MFT,保护","section":"A01","level":"★★","source":"规程"}\n```')
+    r = admin.post('/api/ai/tidy', json={'content': '安排某班 即日起 一、知识点一 三、知识点二'})
+    body = r.get_json()
+    assert r.status_code == 200
+    assert body['content'] == '1. 知识点一\n2. 知识点二'
+    f = body['fields']
+    assert f['title'] == '整理标题' and f['section'] == 'A01' and f['source'] == '规程'
+
+
+def test_ai_tidy_blank_content_keeps_original(admin, monkeypatch):
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    # 模型未给 content 时，兜底保留原文，避免清空
+    monkeypatch.setattr(_app, '_deepseek_chat',
+                        lambda system, user, temperature=0.3: '{"title":"t","tags":"a","section":"A01"}')
+    body = admin.post('/api/ai/tidy', json={'content': '原始正文不能丢'}).get_json()
+    assert body['content'] == '原始正文不能丢'
+
+
+def test_ai_tidy_empty_content_400(admin):
+    assert admin.post('/api/ai/tidy', json={'content': ''}).status_code == 400
+
+
+def test_ai_tidy_contributor_allowed(admin, monkeypatch):
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    monkeypatch.setattr(_app, '_deepseek_chat',
+                        lambda system, user, temperature=0.3: '{"content":"x","title":"t","section":"A01"}')
+    co = _contributor_client(admin, 'co_tidy')
+    assert co.post('/api/ai/tidy', json={'content': 'x'}).status_code == 200
+
+
+def test_tidy_prompt_config_independent(admin):
+    # tidy 与 summary 提示词互不影响
+    admin.put('/api/config/ai-prompt', json={'prompt': '整理专用', 'kind': 'tidy'})
+    t = admin.get('/api/config/ai-prompt?kind=tidy').get_json()
+    s = admin.get('/api/config/ai-prompt').get_json()
+    assert t['is_custom'] is True and t['effective'] == '整理专用'
+    assert s['is_custom'] is False and s['effective'] == _app.AI_SUMMARY_SYSTEM_PROMPT
+    admin.put('/api/config/ai-prompt', json={'prompt': '', 'kind': 'tidy'})  # 还原
+    assert admin.get('/api/config/ai-prompt?kind=tidy').get_json()['is_custom'] is False
+
+
+def test_tidy_uses_custom_prompt(admin, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    def fake_chat(system, user, temperature=0.3):
+        captured['system'] = system
+        return '{"content":"x","title":"t","section":"A01"}'
+    monkeypatch.setattr(_app, '_deepseek_chat', fake_chat)
+    admin.put('/api/config/ai-prompt', json={'prompt': '我的整理规则', 'kind': 'tidy'})
+    admin.post('/api/ai/tidy', json={'content': '一些正文'})
+    assert captured['system'] == '我的整理规则'
+    admin.put('/api/config/ai-prompt', json={'prompt': '', 'kind': 'tidy'})  # 还原
+
+
 # ---------------- 用户收藏 ----------------
 
 def test_favorite_add_list_remove(admin):

@@ -1103,6 +1103,16 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
           <div class="form-group"><label>&nbsp;</label><span id="aiPromptResult" class="muted"></span></div>
         </div>
       </div>
+      <div class="add-user-form">
+        <h4>🧹 AI 整理提示词</h4>
+        <div class="token-hint">自定义「AI 整理」发给大模型的系统提示词（清理非知识内容、规范小序号、并填充字段）。留空保存即恢复内置默认，修改后立即生效。</div>
+        <textarea id="aiTidyPromptText" class="ai-prompt-text" placeholder="加载中…"></textarea>
+        <div class="form-row">
+          <div class="form-group flex-none"><button type="button" class="btn btn-primary btn-sm" onclick="saveAiPrompt('tidy','aiTidyPromptText','aiTidyPromptResult')">保存提示词</button></div>
+          <div class="form-group flex-none"><button type="button" class="btn btn-sm" onclick="resetAiPrompt('tidy','aiTidyPromptText','aiTidyPromptResult')">恢复默认</button></div>
+          <div class="form-group"><label>&nbsp;</label><span id="aiTidyPromptResult" class="muted"></span></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1352,6 +1362,8 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <div class="form-group">
         <label>内容详情
           <button type="button" class="ai-fill-btn" id="aiFillBtn" onclick="doAiFill()" title="根据正文用 AI 推断并填充：标题/标签/章节/等级/来源">🪄 AI 填充</button>
+          <button type="button" class="ai-fill-btn" id="aiTidyBtn" onclick="doAiTidy()" title="AI 整理：清理排班/通知等非知识内容、规范小序号，并顺带填充字段（一次调用）">🧹 AI 整理</button>
+          <button type="button" class="ai-fill-btn" id="aiTidyUndoBtn" onclick="undoTidy()" style="display:none" title="恢复整理前的正文">↩ 撤回整理</button>
         </label>
         <div class="md-toolbar">
           <button title="标题2" onclick="mdInsert('## ')">H2</button>
@@ -1732,29 +1744,29 @@ function openTokenModal() {
   document.getElementById('tokenNewBox').style.display = 'none';
   document.getElementById('newTokenLabel').value = '';
   document.getElementById('aiPromptResult').textContent = '';
+  document.getElementById('aiTidyPromptResult').textContent = '';
   document.getElementById('dupResult').innerHTML = '';
   loadTokens();
   loadAiPrompt();
+  loadAiPrompt('tidy', 'aiTidyPromptText');
 }
 
-// ---- AI 总结提示词 ----
-let _aiPromptDefault = '';
-async function loadAiPrompt() {
-  const ta = document.getElementById('aiPromptText');
+// ---- AI 提示词（kind: summary=总结 / tidy=整理）----
+async function loadAiPrompt(kind = 'summary', taId = 'aiPromptText') {
+  const ta = document.getElementById(taId);
   try {
-    const d = await (await _origFetch('/api/config/ai-prompt')).json();
-    _aiPromptDefault = d.default || '';
+    const d = await (await _origFetch('/api/config/ai-prompt?kind=' + kind)).json();
     ta.value = d.is_custom ? d.prompt : '';
-    ta.placeholder = '（留空 = 使用内置默认提示词）\n\n内置默认：\n' + _aiPromptDefault;
+    ta.placeholder = '（留空 = 使用内置默认提示词）\n\n内置默认：\n' + (d.default || '');
   } catch (e) { ta.placeholder = '加载失败'; }
 }
-async function saveAiPrompt() {
-  const out = document.getElementById('aiPromptResult');
-  const prompt = document.getElementById('aiPromptText').value;
+async function saveAiPrompt(kind = 'summary', taId = 'aiPromptText', outId = 'aiPromptResult') {
+  const out = document.getElementById(outId);
+  const prompt = document.getElementById(taId).value;
   out.textContent = '保存中…';
   try {
     const r = await _origFetch('/api/config/ai-prompt', {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt })
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, kind })
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || '保存失败');
@@ -1762,9 +1774,9 @@ async function saveAiPrompt() {
     showToast('提示词已更新', 'success');
   } catch (e) { out.textContent = ''; showToast(e.message || '保存失败', 'error'); }
 }
-function resetAiPrompt() {
-  document.getElementById('aiPromptText').value = '';
-  saveAiPrompt();
+function resetAiPrompt(kind = 'summary', taId = 'aiPromptText', outId = 'aiPromptResult') {
+  document.getElementById(taId).value = '';
+  saveAiPrompt(kind, taId, outId);
 }
 
 // ---- 变更申请审批 ----
@@ -1872,15 +1884,58 @@ async function doAiFill() {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { showToast(d.error || 'AI 填充失败', 'error'); return; }
-    const f = d.fields || {};
-    if (f.title) document.getElementById('editTitle').value = f.title;
-    if (f.tags) document.getElementById('editTags').value = f.tags;
-    if (f.section) document.getElementById('editSection').value = f.section;
-    if (f.level) document.getElementById('editLevel').value = f.level;
-    if (f.source) { ensureSelectOption(document.getElementById('editSource'), f.source); document.getElementById('editSource').value = f.source; }
+    _applyFillFields(d.fields || {});
     showToast('已按正文填充，可再调整后保存', 'success');
   } catch (e) { showToast('AI 填充请求失败', 'error'); }
   finally { btn.disabled = false; btn.textContent = old; }
+}
+
+// ---- AI 整理：规整正文 + 顺带填充字段（一次调用），可撤回 ----
+let _tidyUndo = null;
+function _applyFillFields(f) {
+  if (f.title) document.getElementById('editTitle').value = f.title;
+  if (f.tags) document.getElementById('editTags').value = f.tags;
+  if (f.section) document.getElementById('editSection').value = f.section;
+  if (f.level) document.getElementById('editLevel').value = f.level;
+  if (f.source) { ensureSelectOption(document.getElementById('editSource'), f.source); document.getElementById('editSource').value = f.source; }
+}
+async function doAiTidy() {
+  const ta = document.getElementById('editContent');
+  const content = ta.value.trim();
+  if (!content) { showToast('请先填写内容正文', 'error'); return; }
+  const btn = document.getElementById('aiTidyBtn');
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ 整理中…';
+  try {
+    const r = await fetch('/api/ai/tidy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(d.error || 'AI 整理失败', 'error'); return; }
+    _tidyUndo = ta.value;                 // 记录整理前正文，供撤回
+    if (d.content) {
+      ta.value = d.content;
+      if (document.getElementById('mdPreview').style.display !== 'none') document.getElementById('mdPreview').innerHTML = mdSafe(ta.value);
+    }
+    _applyFillFields(d.fields || {});     // 整理同时完成填充，避免再调一次大模型
+    document.getElementById('aiTidyUndoBtn').style.display = '';
+    showToast('已整理正文并填充字段，请核对后保存；如不满意可点「撤回整理」', 'success');
+  } catch (e) { showToast('AI 整理请求失败', 'error'); }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+function undoTidy() {
+  if (_tidyUndo === null) return;
+  const ta = document.getElementById('editContent');
+  ta.value = _tidyUndo;
+  if (document.getElementById('mdPreview').style.display !== 'none') document.getElementById('mdPreview').innerHTML = mdSafe(ta.value);
+  _tidyUndo = null;
+  document.getElementById('aiTidyUndoBtn').style.display = 'none';
+  showToast('已恢复整理前的正文', 'success');
+}
+function resetTidyUndo() {
+  _tidyUndo = null;
+  const b = document.getElementById('aiTidyUndoBtn');
+  if (b) b.style.display = 'none';
 }
 
 // ---- 一键（批量）总结选中笔记 ----
@@ -3023,7 +3078,7 @@ function openAddModal() {
   document.getElementById('editLevel').value = '★★★';
   document.getElementById('editDate').value = new Date().toISOString().split('T')[0];
   if (currentSection) document.getElementById('editSection').value = currentSection;
-  resetMdEditor();
+  resetMdEditor(); resetTidyUndo();
   document.getElementById('modalOverlay').classList.add('open');
 }
 
@@ -3050,7 +3105,7 @@ async function openEditModal(id) {
   document.getElementById('editSource').value = n.source;
   document.getElementById('editLevel').value = n.level;
   document.getElementById('editDate').value = n.note_date;
-  resetMdEditor();
+  resetMdEditor(); resetTidyUndo();
   document.getElementById('modalOverlay').classList.add('open');
 }
 
@@ -3416,7 +3471,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '3.3';
+const APP_VERSION = '3.4';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
