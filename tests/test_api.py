@@ -619,7 +619,7 @@ def test_summarize_empty_content_returns_400(admin):
 def test_summarize_success_saves_to_note(admin, monkeypatch):
     monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'test-key')
     monkeypatch.setattr(_app, '_deepseek_summarize',
-                        lambda title, content, prompt=None: '## 要点\n- 总结好的内容')
+                        lambda title, content, prompt=None, source=None: '## 要点\n- 总结好的内容')
     nid = admin.post('/api/notes', json={
         'section': 'A01', 'title': '可总结', 'content': '原始笔记内容'}).get_json()['id']
     r = admin.post(f'/api/notes/{nid}/summarize')
@@ -631,7 +631,7 @@ def test_summarize_success_saves_to_note(admin, monkeypatch):
 
 
 def test_summarize_upstream_error_returns_502(admin, monkeypatch):
-    def boom(title, content, prompt=None):
+    def boom(title, content, prompt=None, source=None):
         raise RuntimeError('DeepSeek 接口返回 500：err')
     monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'test-key')
     monkeypatch.setattr(_app, '_deepseek_summarize', boom)
@@ -793,7 +793,7 @@ def test_summarize_uses_custom_prompt(admin, monkeypatch):
 
 def test_summarize_batch(admin, monkeypatch):
     monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
-    monkeypatch.setattr(_app, '_deepseek_summarize', lambda t, c, p=None: '## 批量总结')
+    monkeypatch.setattr(_app, '_deepseek_summarize', lambda t, c, p=None, s=None: '## 批量总结')
     a = admin.post('/api/notes', json={'section': 'A01', 'title': '批1', 'content': '甲'}).get_json()['id']
     b = admin.post('/api/notes', json={'section': 'A01', 'title': '批2', 'content': '乙'}).get_json()['id']
     empty = admin.post('/api/notes', json={'section': 'A01', 'title': '批空'}).get_json()['id']

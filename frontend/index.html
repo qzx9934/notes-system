@@ -143,6 +143,7 @@ body.roam-immersive .site-footer { display: none; }
 .batch-bar .sel-info { font-size: 13px; font-weight: 500; color: var(--primary); }
 .batch-bar .actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
 .batch-bar select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
+.batch-date-input { padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; background: var(--card); color: var(--text); cursor: pointer; }
 
 /* Stats Bar */
 .stats-bar { display: flex; gap: 12px; margin-bottom: 16px; }
@@ -357,6 +358,7 @@ tbody tr.selected { background: #EBF5FB; }
   .batch-bar { flex-wrap: wrap; gap: 6px; }
   .batch-bar .actions { flex-wrap: wrap; gap: 4px; }
   .batch-bar .actions select { flex: 1; min-width: 70px; font-size: 11px; }
+  .batch-bar .actions .batch-date-input { flex: 1; min-width: 70px; font-size: 11px; }
   .batch-bar .actions .btn { font-size: 11px; padding: 4px 8px; }
   /* 分页 */
   .pagination { gap: 4px; flex-wrap: wrap; }
@@ -1288,6 +1290,12 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         <option value="">改章节…</option>
       </select>
       <button class="btn btn-sm btn-outline" onclick="batchUpdateSection()">应用章节</button>
+      <select id="batchSource" title="批量修改来源">
+        <option value="">改来源…</option>
+      </select>
+      <button class="btn btn-sm btn-outline" onclick="batchUpdateSource()">应用来源</button>
+      <input type="date" id="batchDate" title="批量修改日期" class="batch-date-input">
+      <button class="btn btn-sm btn-outline" onclick="batchUpdateDate()">应用日期</button>
       <button class="btn btn-sm btn-outline" onclick="batchSummarize()" title="对选中且尚无总结的笔记一键生成 AI 总结">🤖 一键总结</button>
       <button class="btn btn-sm btn-danger" onclick="batchDelete()">删除选中</button>
       <button class="btn btn-sm btn-outline" onclick="clearSelection()">取消选择</button>
@@ -1640,9 +1648,9 @@ function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('show');
 }
-// 导航点击后自动关闭手机侧边栏
+// 点击二级叶节点（nav-item）后自动关闭手机侧边栏；点击一级领域（nav-domain）仅展开/收起，不关闭
 document.addEventListener('click', function(e) {
-  if (e.target.closest('.nav-item') || e.target.closest('.nav-domain')) {
+  if (e.target.closest('.nav-item')) {
     setTimeout(closeSidebar, 200);
   }
 });
@@ -2344,7 +2352,7 @@ async function doDeleteToken(id, label) {
 // 来源规范取值：与后端 VALID_SOURCES 保持一致（顺序即展示顺序）。
 // 网页可下拉/手填，但后端只认这张表，非法来源会被拒绝/归一。
 const SOURCE_OPTS = ['规程', '规章制度', '技术文件', '技术通知', '操作票',
-                     '事故预案', '事故通报与经验反馈', '缺陷异常', '培训', '个人总结'];
+                     '事故预案', '事故通报', '缺陷异常', '培训', '个人总结'];
 let _editOrigSource = '';   // 当前编辑笔记的原始来源（新增为空）
 
 function populateSourceOptions() {
@@ -2364,6 +2372,7 @@ async function init() {
   await Promise.all([loadDomains(), loadSections(), loadStats()]);
   renderSidebar();
   populateBatchSectionSelect();
+  populateBatchSourceSelect();
   doSearch();
   document.getElementById('editDate').value = new Date().toISOString().split('T')[0];
 }
@@ -2404,6 +2413,13 @@ function populateBatchSectionSelect() {
   sections.forEach(s => {
     sel.innerHTML += `<option value="${s.code}">${s.code} ${s.name}</option>`;
   });
+}
+
+function populateBatchSourceSelect() {
+  const sel = document.getElementById('batchSource');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">改来源…</option>' +
+    SOURCE_OPTS.map(s => `<option value="${s}">${s}</option>`).join('');
 }
 
 // ==================== Sidebar ====================
@@ -2656,19 +2672,25 @@ function mdGetTA() { return document.getElementById('editContent'); }
 
 function mdInsert(text) {
   const ta = mdGetTA();
-  const start = ta.selectionStart, end = ta.selectionEnd;
-  ta.setRangeText(text, start, end, 'end');
   ta.focus();
+  // execCommand 写入可被 Ctrl+Z 撤回；失败时回退 setRangeText
+  if (!document.execCommand('insertText', false, text)) {
+    const s = ta.selectionStart, e = ta.selectionEnd;
+    ta.setRangeText(text, s, e, 'end');
+  }
 }
 
 function mdWrap(sym) {
   const ta = mdGetTA();
+  ta.focus();
   const start = ta.selectionStart, end = ta.selectionEnd;
   const sel = ta.value.substring(start, end) || '文字';
-  ta.setRangeText(sym + sel + sym, start, end, 'start');
-  ta.selectionStart = start + sym.length;
-  ta.selectionEnd = start + sym.length + sel.length;
-  ta.focus();
+  const wrapped = sym + sel + sym;
+  ta.setSelectionRange(start, end === start ? start : end);
+  if (!document.execCommand('insertText', false, wrapped)) {
+    ta.setRangeText(wrapped, start, end, 'start');
+  }
+  ta.setSelectionRange(start + sym.length, start + sym.length + sel.length);
 }
 
 function mdLink() {
@@ -2971,6 +2993,48 @@ async function batchUpdateSection() {
   } catch(e) { showToast('网络错误', 'error'); }
 }
 
+async function batchUpdateSource() {
+  const newSource = document.getElementById('batchSource').value;
+  if (!newSource) { showToast('请先选择来源', 'error'); return; }
+  const ids = Array.from(selectedIds);
+  if (ids.length === 0) return;
+  try {
+    const r = await fetch('/api/notes/batch', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ ids, updates: { source: newSource } })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      showToast(`已更新 ${data.updated} 条来源`, 'success');
+      document.getElementById('batchSource').value = '';
+      clearSelection();
+      doSearch();
+    } else { showToast(data.error || '更新失败', 'error'); }
+  } catch(e) { showToast('网络错误', 'error'); }
+}
+
+async function batchUpdateDate() {
+  const newDate = document.getElementById('batchDate').value;
+  if (!newDate) { showToast('请先选择日期', 'error'); return; }
+  const ids = Array.from(selectedIds);
+  if (ids.length === 0) return;
+  try {
+    const r = await fetch('/api/notes/batch', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ ids, updates: { note_date: newDate } })
+    });
+    const data = await r.json();
+    if (r.ok) {
+      showToast(`已更新 ${data.updated} 条日期`, 'success');
+      document.getElementById('batchDate').value = '';
+      clearSelection();
+      doSearch();
+    } else { showToast(data.error || '更新失败', 'error'); }
+  } catch(e) { showToast('网络错误', 'error'); }
+}
+
 // ==================== Preview Drawer ====================
 async function openPreview(id) {
   previewNoteId = id;
@@ -3098,23 +3162,26 @@ function editPreviewLevel() {
   patchField({ level: next }, ok => { if (!ok) setLevelChip(previewNote.level); });
 }
 
-// 通用：把某 chip 的值区临时替换成编辑控件，提交后只刷新该值区
+// 通用：在 chip 下方浮出编辑控件（chip 本身不扩张），提交后只刷新该值区
 function beginInlineEdit(chipId, valId, makeControl) {
   const chip = document.getElementById(chipId);
   const valEl = document.getElementById(valId);
-  if (!chip || !valEl || chip.querySelector('.inline-edit')) return;
+  if (!chip || !valEl || chip.dataset.editing) return;
   const ctrl = makeControl();
   ctrl.classList.add('inline-edit');
   const savedClick = chip.getAttribute('onclick');
   chip.onclick = null;
-  valEl.style.display = 'none';
-  chip.appendChild(ctrl);
+  chip.dataset.editing = '1';
+  // 固定定位到 chip 正下方，不影响 chip 本身的大小/布局
+  const r = chip.getBoundingClientRect();
+  ctrl.style.cssText = `position:fixed;top:${r.bottom + 4}px;left:${r.left}px;z-index:2000;min-width:${Math.max(r.width, 120)}px`;
+  document.body.appendChild(ctrl);
   ctrl.focus();
   let closed = false;
   const restore = () => {
     if (closed) return; closed = true;
-    if (ctrl.parentNode) ctrl.remove();
-    valEl.style.display = '';
+    if (ctrl.parentNode) ctrl.parentNode.removeChild(ctrl);
+    delete chip.dataset.editing;
     if (savedClick) chip.setAttribute('onclick', savedClick);
   };
   return { ctrl, valEl, restore };
@@ -3727,7 +3794,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '3.8';
+const APP_VERSION = '3.9';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 

@@ -158,6 +158,21 @@ AI_SUMMARY_SYSTEM_PROMPT = (
     '4. 语言精炼，避免空话套话，直接给运行人员能用的干货。'
 )
 
+# 事故通报来源专项提示词：强调事故链、原因分析与防范措施
+AI_SUMMARY_ACCIDENT_PROMPT = (
+    '你是一名经验丰富的火力发电厂集控运行人员。请把下面这条事故通报笔记总结成'
+    '结构化的事故分析要点，面向集控运行同行，用于举一反三、防止同类事故。要求：\n'
+    '1. 只依据笔记原文，不臆造数据、过程或细节。\n'
+    '2. 按以下结构输出 Markdown（原文无对应内容的小节可省略）：\n'
+    '   - **事故经过**：事故链（起因→发展→后果），简明扼要。\n'
+    '   - **直接原因**：导致事故的直接技术/操作原因。\n'
+    '   - **根本原因**：管理缺陷、设计隐患、违规行为等深层因素。\n'
+    '   - **暴露问题**：本次事故暴露出的薄弱环节或管理漏洞。\n'
+    '   - **防范措施**：防止同类事故的关键操作要点、管控措施或制度要求。\n'
+    '3. 保留原文中的重要数值、设备名称和参数。\n'
+    '4. 语言精炼，直接给运行人员能用的干货，避免套话。'
+)
+
 def _sniff_image_ext(data):
     """按文件头魔数判定图片类型，返回 (规范扩展名, MIME)；非图片返回 (None, None)"""
     if data[:3] == b'\xff\xd8\xff':
@@ -519,6 +534,10 @@ def seed_db():
     # 数据修正：统一 A03 涵盖范围 6kV -> 10kV（仅当仍为旧值时更新，避免覆盖用户自定义）
     db.execute("UPDATE sections SET scope=REPLACE(scope,'6kV/380V','10kV/380V') "
                "WHERE code='A03' AND scope LIKE '%6kV/380V%'")
+    db.commit()
+
+    # 数据迁移：来源字段「事故通报与经验反馈」→「事故通报」（简化名称）
+    db.execute("UPDATE notes SET source='事故通报' WHERE source='事故通报与经验反馈'")
     db.commit()
 
     if seeded:
@@ -1009,7 +1028,7 @@ VALID_LEVELS = {'★', '★★', '★★★'}
 # 来源（source）规范取值：网页端可下拉/手填，但 API 只认这张表，杜绝任意来源污染。
 # 顺序即网页下拉/数据列表的展示顺序。新增类别在此一处维护即可全局生效。
 VALID_SOURCES = ['规程', '规章制度', '技术文件', '技术通知', '操作票',
-                 '事故预案', '事故通报与经验反馈', '缺陷异常', '培训', '个人总结']
+                 '事故预案', '事故通报', '缺陷异常', '培训', '个人总结']
 VALID_SOURCES_SET = set(VALID_SOURCES)
 DEFAULT_SOURCE = '个人总结'
 _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
@@ -1446,10 +1465,13 @@ def effective_summary_prompt(db):
     """有效的总结提示词：管理员若在配置里自定义则用之，否则用内置默认。"""
     return get_config(db, 'ai_summary_prompt', '').strip() or AI_SUMMARY_SYSTEM_PROMPT
 
-def _deepseek_summarize(title, content, prompt=None):
-    """调用 DeepSeek 生成 Markdown 总结。prompt 为空时用内置默认提示词。"""
+def _deepseek_summarize(title, content, prompt=None, source=None):
+    """调用 DeepSeek 生成 Markdown 总结。
+    无自定义 prompt 时：事故通报来源使用事故链专项提示词，其余使用通用提示词。"""
+    if not prompt:
+        prompt = AI_SUMMARY_ACCIDENT_PROMPT if source == '事故通报' else AI_SUMMARY_SYSTEM_PROMPT
     user_text = f'笔记标题：{title}\n\n笔记内容：\n{content}'
-    return _deepseek_chat(prompt or AI_SUMMARY_SYSTEM_PROMPT, user_text)
+    return _deepseek_chat(prompt, user_text)
 
 def _summarize_status_code(msg):
     return 503 if '未配置' in msg else 502
@@ -1466,7 +1488,7 @@ def api_note_summarize(id):
         return jsonify({'error': '该笔记内容为空，无可总结的内容'}), 400
 
     try:
-        summary = _deepseek_summarize(row['title'], row['content'], effective_summary_prompt(db))
+        summary = _deepseek_summarize(row['title'], row['content'], effective_summary_prompt(db), row['source'])
     except RuntimeError as e:
         msg = str(e)
         return jsonify({'error': msg}), _summarize_status_code(msg)
@@ -1504,7 +1526,7 @@ def api_notes_summarize_batch():
         if row['ai_summary'] and not force:
             skipped.append({'id': nid, 'reason': '已有总结'}); continue
         try:
-            summary = _deepseek_summarize(row['title'], row['content'], prompt)
+            summary = _deepseek_summarize(row['title'], row['content'], prompt, row['source'])
         except RuntimeError as e:
             failed.append({'id': nid, 'reason': str(e)[:60]}); continue
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -1815,7 +1837,7 @@ def api_notes_batch_delete():
 @app.route('/api/notes/batch', methods=['PUT'])
 @admin_required
 def api_notes_batch_update():
-    """批量更新笔记字段（等级/章节/来源）"""
+    """批量更新笔记字段（等级/章节/来源/日期）"""
     data = request.get_json()
     if not data:
         return jsonify({'error': 'invalid JSON'}), 400
@@ -1838,6 +1860,10 @@ def api_notes_batch_update():
             if not valid_source(v):
                 return jsonify({'error': '来源不在允许列表内：' + ' / '.join(VALID_SOURCES)}), 400
             extra['source'] = v
+        elif k == 'note_date':
+            if not valid_date(v):
+                return jsonify({'error': '日期格式错误，需为 YYYY-MM-DD'}), 400
+            extra['note_date'] = v
         elif k == 'section':
             if not section_exists(db, v):
                 return jsonify({'error': f'未知的章节编码: {v}'}), 400
