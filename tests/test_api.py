@@ -208,7 +208,26 @@ def test_batch_move_section_regenerates_code(admin):
 
     moved = admin.get('/api/notes/%d' % note['id']).get_json()
     assert moved['section'] == 'E04'
-    assert moved['code'].startswith('E04-')  # 编号已按新章节重新生成
+    assert moved['code'].startswith('E04-')
+
+
+def test_edit_change_section_regenerates_code(admin):
+    # 单条编辑改章节：section 与编号 code 都要随之变化（修复"编辑改章节没用"）
+    note = admin.post('/api/notes', json={'section': 'B02', 'title': '编辑改章节'}).get_json()
+    assert note['code'].startswith('B02-')
+
+    r = admin.put('/api/notes/%d' % note['id'], json={'section': 'D03', 'title': '编辑改章节'})
+    assert r.status_code == 200
+    assert r.get_json().get('code', '').startswith('D03-')
+
+    after = admin.get('/api/notes/%d' % note['id']).get_json()
+    assert after['section'] == 'D03'
+    assert after['code'].startswith('D03-')
+
+
+def test_edit_unknown_section_rejected(admin):
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '非法章节编辑'}).get_json()['id']
+    assert admin.put('/api/notes/%d' % nid, json={'section': 'ZZZ'}).status_code == 400  # 编号已按新章节重新生成
 
 
 def test_batch_append_uses_exact_title_dedup(admin):
