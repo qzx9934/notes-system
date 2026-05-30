@@ -662,7 +662,20 @@ body.roam-immersive .batch-bar { display: none; }
 .roam-title-row { display: flex; align-items: flex-start; gap: 12px; }
 .roam-title-row .roam-card-title { flex: 1; margin: 16px 0; }
 .roam-title-row .fav-star-lg { margin-top: 18px; }
-.preview-meta .fav-star { align-self: center; }
+/* 抽屉在液态玻璃背景上，未收藏的空心星(默认浅灰)几乎看不清；
+   不改玻璃效果，仅给抽屉里的星加深颜色 + 高光描边，使其在任意背景上都清晰 */
+.preview-meta .fav-star {
+  align-self: center;
+  color: #6b7280;                 /* 未收藏：中性深灰，明显可辨 */
+  text-shadow: 0 0 2px rgba(255,255,255,.95), 0 1px 2px rgba(0,0,0,.28);
+  -webkit-text-stroke: .4px rgba(0,0,0,.18);
+}
+.preview-meta .fav-star:not(.on):hover { color: #C9A227; }  /* 悬停预示金色 */
+.preview-meta .fav-star.on {
+  color: #F1C40F;
+  -webkit-text-stroke: .4px rgba(146,110,5,.55);
+  text-shadow: 0 0 2px rgba(255,255,255,.85), 0 1px 2px rgba(0,0,0,.22);
+}
 
 /* ============================================================
    Liquid Glass 主题（叠加层 · 试验，置于样式末尾以覆盖前面规则）
@@ -3471,7 +3484,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '3.4';
+const APP_VERSION = '3.4.1';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
