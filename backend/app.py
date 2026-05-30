@@ -1417,7 +1417,7 @@ def api_note_update(id):
             'UPDATE notes SET title=?,content=?,tags=?,source=?,level=?,note_date=?,updated_at=datetime("now","localtime") WHERE id=?',
             (title, content, tags, source, level, note_date, id)
         )
-        db.commit()
+    db.commit()
 
     # 内容变更可能移除了图片引用 -> 顺手回收孤儿图片
     if 'content' in data and content != existing['content']:
