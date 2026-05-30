@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>使用说明 · 运行人员工作笔记管理系统</title>
+<style>
+  :root{
+    --primary:#1f6feb; --primary-dark:#1657c0; --bg:#f5f7fa; --card:#fff;
+    --text:#23272e; --muted:#6b7280; --border:#e6e9ef;
+    --code-bg:#f3f5f8; --gold:#F1C40F;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.75;font-size:15px}
+  a{color:var(--primary);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:980px;margin:0 auto;padding:0 20px 80px}
+  header.hero{background:linear-gradient(135deg,#1f6feb,#3b82f6);color:#fff;padding:42px 20px 36px;margin-bottom:28px;
+    box-shadow:0 6px 24px rgba(31,111,235,.25)}
+  header.hero .inner{max-width:980px;margin:0 auto}
+  header.hero h1{margin:0 0 6px;font-size:28px;font-weight:700}
+  header.hero p{margin:0;opacity:.92;font-size:15px}
+  .back{display:inline-block;margin-top:18px;color:#fff;border:1px solid rgba(255,255,255,.6);
+    padding:5px 14px;border-radius:20px;font-size:13px}
+  .back:hover{background:rgba(255,255,255,.15);text-decoration:none}
+  nav.toc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 22px;margin-bottom:26px}
+  nav.toc h2{margin:0 0 10px;font-size:15px;color:var(--muted);font-weight:600}
+  nav.toc ol{margin:0;padding-left:22px;columns:2;column-gap:32px}
+  @media(max-width:640px){nav.toc ol{columns:1}}
+  nav.toc li{margin:3px 0}
+  section.card{background:var(--card);border:1px solid var(--border);border-radius:12px;
+    padding:24px 28px;margin-bottom:22px;box-shadow:0 1px 3px rgba(0,0,0,.03)}
+  section.card h2{margin:0 0 14px;font-size:20px;display:flex;align-items:center;gap:8px;
+    padding-bottom:10px;border-bottom:2px solid #eef1f6}
+  section.card h3{margin:20px 0 8px;font-size:16px;color:var(--primary-dark)}
+  p{margin:8px 0}
+  ul,ol{margin:8px 0;padding-left:24px}
+  li{margin:5px 0}
+  code{background:var(--code-bg);padding:2px 6px;border-radius:5px;font-family:"SFMono-Regular",Consolas,monospace;font-size:13px;color:#b4326e}
+  pre{background:#1f2430;color:#e6e9ef;padding:14px 16px;border-radius:8px;overflow:auto;font-size:13px;line-height:1.6}
+  pre code{background:none;color:inherit;padding:0}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{border:1px solid var(--border);padding:8px 12px;text-align:left;vertical-align:top}
+  th{background:#f0f4fa;font-weight:600}
+  .tag{display:inline-block;background:#eef4ff;color:var(--primary-dark);border:1px solid #d4e2ff;
+    border-radius:6px;padding:1px 8px;font-size:12px;margin:0 2px}
+  .role{display:inline-block;border-radius:6px;padding:1px 9px;font-size:12px;font-weight:600;color:#fff}
+  .role.admin{background:#e74c3c}.role.contrib{background:#27ae60}.role.viewer{background:#7f8c9b}
+  .note{background:#fff8e1;border-left:4px solid var(--gold);padding:10px 16px;border-radius:0 8px 8px 0;margin:14px 0}
+  .tip{background:#e8f6ee;border-left:4px solid #27ae60;padding:10px 16px;border-radius:0 8px 8px 0;margin:14px 0}
+  .step{counter-reset:s;list-style:none;padding-left:0}
+  .step>li{position:relative;padding-left:38px;margin:12px 0}
+  .step>li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:0;
+    width:26px;height:26px;background:var(--primary);color:#fff;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600}
+  .star{color:var(--gold)}
+  footer{text-align:center;color:var(--muted);font-size:13px;margin-top:30px}
+  kbd{background:#eaecef;border:1px solid #ccd0d6;border-bottom-width:2px;border-radius:4px;padding:1px 6px;font-size:12px;font-family:monospace}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="inner">
+    <h1>📘 使用说明</h1>
+    <p>运行人员工作笔记管理系统 —— 面向火力发电厂集控运行专业的知识沉淀与 AI 辅助平台</p>
+    <a class="back" href="/">← 返回系统</a>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <h2>目录</h2>
+  <ol>
+    <li><a href="#intro">系统简介</a></li>
+    <li><a href="#login">登录与角色权限</a></li>
+    <li><a href="#kb">知识体系（5 大领域 26 子类）</a></li>
+    <li><a href="#basic">日常操作：搜索 / 筛选 / 编辑</a></li>
+    <li><a href="#image">插入图片与 Markdown</a></li>
+    <li><a href="#fav">收藏卡片</a></li>
+    <li><a href="#roam">笔记漫游</a></li>
+    <li><a href="#ai">AI 智能功能</a></li>
+    <li><a href="#flow">共建者审批流程</a></li>
+    <li><a href="#admin">管理：用户 / 登录日志 / 令牌</a></li>
+    <li><a href="#pwa">手机安装（PWA）</a></li>
+    <li><a href="#cli">命令行 / 大模型批量上传</a></li>
+  </ol>
+</nav>
+
+<section class="card" id="intro">
+  <h2>🎯 系统简介</h2>
+  <p>本系统是一个面向电厂运行人员的 <b>Web 工作笔记管理平台</b>，把零散的规程要点、操作经验、事故反馈、培训笔记，按统一的知识体系结构化沉淀下来，做到 <b>随手记录、按需检索、AI 辅助整理</b>。</p>
+  <ul>
+    <li>浏览器即可使用，电脑、手机均可（支持安装为手机 App）；</li>
+    <li>内置 <b>5 大领域 / 26 个子类</b> 的电厂知识编码体系，每条笔记自动编号；</li>
+    <li>支持全文搜索、多维筛选、图片、Markdown、收藏、卡片漫游；</li>
+    <li>接入 <b>DeepSeek 大模型</b>，提供 AI 总结、AI 填充、AI 整理等智能辅助；</li>
+    <li>三级角色权限 + 共建者审批流，既鼓励人人参与，又保证内容质量。</li>
+  </ul>
+</section>
+
+<section class="card" id="login">
+  <h2>🔐 登录与角色权限</h2>
+  <p>首次使用默认管理员账号 <code>admin / admin123</code> 登录，<b>请立即通过「🔑 修改密码」更换默认口令</b>。系统设有登录失败限流（默认 5 次/5 分钟），可防止口令暴力破解。</p>
+  <table>
+    <tr><th>角色</th><th>权限范围</th></tr>
+    <tr><td><span class="role admin">管理员</span></td><td>读写全部内容，增删改<b>即时生效</b>；管理用户、API 令牌、AI 提示词；审批共建者提交的变更。</td></tr>
+    <tr><td><span class="role contrib">共建者</span></td><td>可提交 新增 / 编辑 / 删除，但<b>不直接生效</b>——会生成一条「变更申请」，待管理员审批通过后才执行。</td></tr>
+    <tr><td><span class="role viewer">查看者</span></td><td>只读：可浏览、搜索、收藏，不能修改内容。</td></tr>
+  </table>
+</section>
+
+<section class="card" id="kb">
+  <h2>🗂️ 知识体系（5 大领域 26 子类）</h2>
+  <p>每条笔记都归属一个<b>章节编码</b>，编号形如 <code>A01-001</code>，由系统按章节自增生成：</p>
+  <table>
+    <tr><th>领域</th><th>子类</th></tr>
+    <tr><td><b>A 系统设备知识</b></td><td>A01 锅炉 / A02 汽轮机 / A03 电气 / A04 热控自动化 / A05 辅机 / A06 脱硫脱硝 / A07 化水 / A08 燃料 / A09 除灰除尘</td></tr>
+    <tr><td><b>B 运行操作知识</b></td><td>B01 机组启停 / B02 正常调整 / B03 定期工作与试验 / B04 设备切换 / B05 停送电</td></tr>
+    <tr><td><b>C 安全管理知识</b></td><td>C01 安措与两票 / C02 事故预案与应急 / C03 异常工况处理 / C04 安全规程制度</td></tr>
+    <tr><td><b>D 技术标准知识</b></td><td>D01 参数与运行限额 / D02 保护定值与联锁 / D03 运行规程要点 / D04 检修质量标准</td></tr>
+    <tr><td><b>E 综合管理知识</b></td><td>E01 事故通报与经验反馈 / E02 培训与考试 / E03 值班管理 / E04 技术改造与优化</td></tr>
+  </table>
+  <p>笔记还带有<b>重要等级</b>（<span class="star">★</span> 了解参考 / <span class="star">★★</span> 重要掌握 / <span class="star">★★★</span> 核心必会）与<b>来源</b>（规程 / 培训 / 操作票 / 事故预案 / 事故通报 / 经验反馈 / 技术文件 / 个人总结 / 规章制度）。</p>
+</section>
+
+<section class="card" id="basic">
+  <h2>📝 日常操作：搜索 / 筛选 / 编辑</h2>
+  <h3>检索</h3>
+  <ul>
+    <li><b>关键词搜索</b>：顶部搜索框输入关键字，匹配标题 / 内容 / 标签 / 编号。后台采用 SQLite FTS5 全文索引（支持中文子串、大小写不敏感），数据量大时依然很快。</li>
+    <li><b>多维筛选</b>：左侧 / 顶部可按领域、章节、等级、来源筛选，并支持排序（编号 / 更新时间 / 创建时间 / 随机）。</li>
+  </ul>
+  <h3>新增与编辑（管理员 / 共建者）</h3>
+  <ol class="step">
+    <li>点击「➕ 新增笔记」或卡片上的编辑按钮，打开编辑窗口。</li>
+    <li>选择所属章节、等级，填写要点标题与内容详情（支持 Markdown），可填关键词标签与来源。</li>
+    <li>点「保存」。管理员即时生效；共建者则提交为变更申请，等待审批。</li>
+  </ol>
+  <div class="tip">抽屉详情页中，管理员可<b>就地快速修改</b>等级、来源、日期、标签——点一下即可改，标签以"小药丸"形式增删，无需打开完整编辑窗口。</div>
+</section>
+
+<section class="card" id="image">
+  <h2>🖼️ 插入图片与 Markdown</h2>
+  <ul>
+    <li>编辑器工具栏支持加粗、标题、列表、引用、表格、链接等 Markdown 快捷插入，并可「👁 预览」。</li>
+    <li>插入图片三种方式：点「🖼」选图、<b>直接粘贴截图</b>、<b>拖拽图片</b>到编辑框，均会自动上传（JPG/PNG/GIF/WEBP，默认 ≤5MB）。</li>
+    <li>删除或编辑笔记时，系统会自动回收无人引用的"孤儿图片"，节省存储。</li>
+  </ul>
+</section>
+
+<section class="card" id="fav">
+  <h2>⭐ 收藏卡片</h2>
+  <p>每位用户拥有<b>独立的收藏夹</b>，互不影响：</p>
+  <ul>
+    <li>在列表行或卡片详情中点击 <span class="star">☆</span> 即可收藏 / 取消；</li>
+    <li>通过「我的收藏」筛选，可一键列出自己收藏的全部笔记，方便随时复习重点。</li>
+  </ul>
+</section>
+
+<section class="card" id="roam">
+  <h2>🎴 笔记漫游</h2>
+  <p>「笔记漫游」以全屏卡片形式逐条翻阅笔记，适合碎片时间随机复习。卡片可翻面查看 <b>AI 总结</b>，并可直接收藏当前卡片。</p>
+</section>
+
+<section class="card" id="ai">
+  <h2>🤖 AI 智能功能</h2>
+  <p>系统接入 DeepSeek 大模型（密钥经环境变量配置，不写入代码）。以下功能共用同一套密钥 / 模型：</p>
+  <h3>① AI 总结</h3>
+  <p>对单条笔记，以"集控运行人员"视角把内容提炼成 Markdown 要点，保存于卡片背面，可重复生成覆盖。</p>
+  <h3>② 一键（批量）总结</h3>
+  <p>勾选多条笔记后一键批量生成总结（单批上限 50 条），默认跳过已有总结的；遇到限流会自动退避重试，并在结束时反馈成功 / 跳过 / 失败明细。</p>
+  <h3>③ AI 填充</h3>
+  <p>在编辑窗口填好正文后点「🪄 AI 填充」，大模型会根据正文自动推断并填入 <b>标题 / 标签 / 章节 / 等级 / 来源</b>，人工核对后保存即可。</p>
+  <h3>④ AI 整理</h3>
+  <p>点「🧹 AI 整理」对正文做<b>轻度规整</b>，并<b>同时</b>完成上面的字段填充（一次调用，节省 token）：</p>
+  <ul>
+    <li>删除排班、通知、"即日起"等与知识无关的事务性内容；</li>
+    <li>正文小序号乱序 / 格式不统一时，按并列知识点规范重排为 1. 2. 3.；</li>
+    <li>克制改动，不修改技术数值与术语，避免把内容改错；</li>
+    <li>整理后可点「↩ 撤回整理」一键恢复整理前的正文。</li>
+  </ul>
+  <h3>⑤ 提示词可配置（管理员）</h3>
+  <p>管理员可在「🎫 令牌管理」面板随时修改 <b>AI 总结提示词</b> 与 <b>AI 整理提示词</b>（两者独立），留空保存即恢复内置默认，改后立即生效。</p>
+  <div class="note">AI 功能需部署时配置 <code>NOTES_DEEPSEEK_API_KEY</code> 环境变量，未配置时相关按钮会给出明确提示。</div>
+</section>
+
+<section class="card" id="flow">
+  <h2>📥 共建者审批流程</h2>
+  <p>为兼顾"人人可补充"与"内容质量可控"，共建者的所有写操作都走审批：</p>
+  <ol class="step">
+    <li>共建者新增 / 编辑 / 删除笔记 → 系统生成一条<b>变更申请</b>，原内容暂不改变。</li>
+    <li>管理员在「📥 变更申请」收件箱看到待办，可逐条查看<b>改动明细</b>（原值 → 新值，正文以完整前后对照展示）。</li>
+    <li>管理员<b>批准</b>则改动真正执行；<b>驳回</b>可填写理由。若目标笔记已被删除等导致无法执行，会自动驳回提示。</li>
+  </ol>
+</section>
+
+<section class="card" id="admin">
+  <h2>⚙️ 管理：用户 / 登录日志 / 令牌</h2>
+  <ul>
+    <li><b>👥 用户管理</b>：新增用户并指定角色（管理员 / 共建者 / 查看者），重置密码、删除用户；列表显示每位用户的<b>最后上线时间</b>。</li>
+    <li><b>登录日志</b>：可查看各用户的历次登录记录（时间、IP），便于安全审计。</li>
+    <li><b>🎫 API 令牌管理</b>：创建 / 吊销用于命令行或大模型批量上传的令牌；同面板可配置 AI 提示词、清理孤儿图片、笔记查重。</li>
+  </ul>
+</section>
+
+<section class="card" id="pwa">
+  <h2>📱 手机安装（PWA）</h2>
+  <p>用手机浏览器打开站点后，通过浏览器菜单选择「添加到主屏幕」，即可把系统安装为 App，像原生应用一样全屏使用，断网时也能打开外壳界面。</p>
+</section>
+
+<section class="card" id="cli">
+  <h2>💻 命令行 / 大模型批量上传</h2>
+  <p>除网页端外，可用 API 令牌在命令行或大模型流水线中批量录入笔记，无需打开浏览器：</p>
+  <pre><code>export NOTES_API_URL=https://你的域名
+export NOTES_API_TOKEN=ntk_你的令牌
+python note_cli.py sections           # 查看章节编码
+python note_cli.py import notes.json  # 批量上传整理好的笔记</code></pre>
+  <p>完整接口、字段规范与"给大模型的提示词模板"见随附的 <b>API 文档</b>。推荐流程：大模型把零散资料整理成规范 JSON，再经 <code>POST /api/notes/ingest</code> 一次性上传。</p>
+</section>
+
+<footer>
+  运行人员工作笔记管理系统 · 使用说明 &nbsp;|&nbsp; <a href="/">返回系统首页</a>
+</footer>
+
+</div>
+</body>
+</html>

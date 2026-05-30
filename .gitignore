@@ -19,3 +19,7 @@ backend/uploads/
 python/
 # 数据库备份文件
 backend/notes.db.bak*
+
+# 生成的报告（按需本地生成，不入库）
+*.docx
+!电厂运行人员工作笔记模板.xlsx
