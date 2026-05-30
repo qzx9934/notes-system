@@ -1081,6 +1081,13 @@ def api_notes_list():
     # count
     total = db.execute(f'SELECT COUNT(*) FROM notes n WHERE {where_clause}', params).fetchone()[0]
 
+    # 跨页全选：仅返回当前筛选下的全部 id（忽略分页，设上限防滥用）
+    if request.args.get('ids_only', '').strip() in ('1', 'true'):
+        cap = 5000
+        idrows = db.execute(f'SELECT n.id FROM notes n WHERE {where_clause} LIMIT ?',
+                            params + [cap]).fetchall()
+        return jsonify({'ids': [r['id'] for r in idrows], 'total': total, 'capped': total > cap})
+
     # data
     # 'code' 按「章节 + 编号数字部分」排序：避免纯文本排序在某章节超过 999 条时
     # 把 A01-1000 排到 A01-999 之前（编号 :03d 仅是最小宽度，可自然增长到 4 位以上）
@@ -1258,23 +1265,33 @@ def _deepseek_chat(system_prompt, user_text, temperature=0.3):
         'temperature': temperature,
     }
     headers = {'Authorization': f'Bearer {DEEPSEEK_API_KEY}', 'Content-Type': 'application/json'}
-    try:
-        resp = requests.post(f'{DEEPSEEK_BASE_URL}/chat/completions',
-                             json=payload, headers=headers, timeout=DEEPSEEK_TIMEOUT)
-    except requests.Timeout:
-        raise RuntimeError(f'调用 DeepSeek 超时（>{DEEPSEEK_TIMEOUT}s），请稍后重试')
-    except requests.RequestException as e:
-        raise RuntimeError(f'调用 DeepSeek 失败：{e}')
-    if resp.status_code != 200:
+    # 限流(429)/网关抖动(5xx) 自动退避重试，缓解「请求过快」导致的失败
+    last_err = ''
+    for attempt in range(3):
+        try:
+            resp = requests.post(f'{DEEPSEEK_BASE_URL}/chat/completions',
+                                 json=payload, headers=headers, timeout=DEEPSEEK_TIMEOUT)
+        except requests.Timeout:
+            raise RuntimeError(f'调用 DeepSeek 超时（>{DEEPSEEK_TIMEOUT}s），请稍后重试')
+        except requests.RequestException as e:
+            raise RuntimeError(f'调用 DeepSeek 失败：{e}')
+        if resp.status_code == 200:
+            try:
+                text = resp.json()['choices'][0]['message']['content'].strip()
+            except (ValueError, KeyError, IndexError, TypeError):
+                raise RuntimeError('DeepSeek 返回格式异常，无法解析')
+            if not text:
+                raise RuntimeError('DeepSeek 返回为空')
+            return text
+        if resp.status_code in (429, 500, 502, 503, 504) and attempt < 2:
+            last_err = f'{resp.status_code}'
+            time.sleep(1.5 * (attempt + 1))  # 1.5s, 3s 退避
+            continue
         snippet = (resp.text or '')[:200]  # 不回显完整响应
+        if resp.status_code == 429:
+            raise RuntimeError('DeepSeek 请求过于频繁(429)，已重试仍受限，请稍后或减少一次数量')
         raise RuntimeError(f'DeepSeek 接口返回 {resp.status_code}：{snippet}')
-    try:
-        text = resp.json()['choices'][0]['message']['content'].strip()
-    except (ValueError, KeyError, IndexError, TypeError):
-        raise RuntimeError('DeepSeek 返回格式异常，无法解析')
-    if not text:
-        raise RuntimeError('DeepSeek 返回为空')
-    return text
+    raise RuntimeError(f'DeepSeek 多次重试仍失败（{last_err}），请稍后重试')
 
 def effective_summary_prompt(db):
     """有效的总结提示词：管理员若在配置里自定义则用之，否则用内置默认。"""

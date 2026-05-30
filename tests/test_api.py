@@ -845,3 +845,24 @@ def test_favorite_cleaned_on_delete(admin):
     # 收藏筛选里不应再残留
     fav = admin.get('/api/notes?favorites=1&per=200').get_json()
     assert not any(it['id'] == nid for it in fav['items'])
+
+
+# ---------------- 跨页全选 ids_only ----------------
+
+def test_ids_only_returns_all_matching_ids(admin):
+    for i in range(3):
+        admin.post('/api/notes', json={'section': 'E02', 'title': f'全选项-{i}', 'content': 'x'})
+    d = admin.get('/api/notes?section=E02&ids_only=1').get_json()
+    assert 'ids' in d and d['total'] == len(d['ids'])
+    assert d['total'] >= 3
+    # ids_only 下不返回分页 items
+    assert 'items' not in d
+
+
+def test_proposal_current_includes_content_for_diff(admin):
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '差异原文', 'content': '原始正文ABC'}).get_json()['id']
+    co = _contributor_client(admin, 'co_diff')
+    co.put(f'/api/notes/{nid}', json={'content': '修改后的正文XYZ'})
+    p = admin.get('/api/proposals?status=pending').get_json()['items'][0]
+    assert p['current']['content'] == '原始正文ABC'      # 原文可对比
+    assert p['payload']['content'] == '修改后的正文XYZ'   # 新值

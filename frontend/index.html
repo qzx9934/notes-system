@@ -638,13 +638,31 @@ body.roam-immersive .batch-bar { display: none; }
 .prop-st.pending { background: #FEF5E7; color: #E67E22; }
 .prop-st.ok { background: #EAFAF1; color: #27AE60; }
 .prop-st.rej { background: #FDEDEC; color: #E74C3C; }
+/* 申请改动明细 */
+.diff-row { font-size: 13px; margin: 4px 0; line-height: 1.5; }
+.diff-label { font-weight: 600; color: var(--text-secondary); margin-right: 4px; }
+.diff-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.diff-old { color: #C0392B; text-decoration: line-through; }
+.diff-new { color: #1E8449; font-weight: 600; }
+.diff-arrow { color: var(--text-secondary); margin: 0 2px; }
+.diff-content { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; margin: 2px 0 6px;
+  font-size: 12px; line-height: 1.5; max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: inherit; }
+.diff-content.old { background: #FDF2F0; }
+.diff-content.new { background: #F0FAF4; }
+/* 跨页全选链接 */
+.select-all-pages { font-size: 12px; color: var(--primary-light); cursor: pointer; margin-left: 10px; white-space: nowrap; }
+.select-all-pages:hover { text-decoration: underline; }
 
 /* 收藏星标 */
 .fav-star { cursor: pointer; color: #ccc; font-size: 15px; margin-right: 5px; user-select: none; transition: color .15s, transform .1s; background: none; border: none; padding: 0; line-height: 1; }
 .fav-star:hover { transform: scale(1.2); }
 .fav-star.on { color: #F1C40F; }
-.fav-star-lg { font-size: 22px; margin-right: 8px; flex-shrink: 0; }
+.fav-star-lg { font-size: 22px; margin-right: 0; flex-shrink: 0; }
 #favFilterBtn.active { background: #FEF9E7; border-color: #F1C40F; color: #B7950B; }
+.roam-title-row { display: flex; align-items: flex-start; gap: 12px; }
+.roam-title-row .roam-card-title { flex: 1; margin: 16px 0; }
+.roam-title-row .fav-star-lg { margin-top: 18px; }
+.preview-meta .fav-star { align-self: center; }
 
 /* ============================================================
    Liquid Glass 主题（叠加层 · 试验，置于样式末尾以覆盖前面规则）
@@ -1154,6 +1172,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
   <div class="batch-bar" id="batchBar">
     <input type="checkbox" id="checkAll" onchange="toggleAllCheck()" class="clickable">
     <span class="sel-info" id="selInfo">已选 0 条</span>
+    <a href="#" id="selectAllPages" class="select-all-pages" style="display:none" onclick="selectAllMatching();return false"></a>
     <div class="actions">
       <select id="batchLevel" title="批量修改等级">
         <option value="">改等级…</option>
@@ -1242,7 +1261,10 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
               <button class="roam-flip-btn" onclick="flipRoam()" title="查看背面（来源文件 / AI 总结）">🔄 翻面</button>
             </span>
           </div>
-          <div class="roam-card-title clickable" id="roamTitle" onclick="openRoamPreview()"></div>
+          <div class="roam-title-row">
+            <div class="roam-card-title clickable" id="roamTitle" onclick="openRoamPreview()"></div>
+            <button class="fav-star fav-star-lg" id="roamFavStar" title="收藏/取消收藏" onclick="toggleRoamFavorite()">☆</button>
+          </div>
           <div class="roam-card-content" id="roamContent"></div>
           <div class="roam-card-meta">
             <div class="roam-card-tags" id="roamTags"></div>
@@ -1282,7 +1304,6 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         <div class="code" id="previewCode"></div>
         <div class="title" id="previewTitle"></div>
       </div>
-      <button class="fav-star fav-star-lg" id="previewFavStar" title="收藏/取消收藏" onclick="togglePreviewFavorite()">☆</button>
       <button class="preview-close" onclick="closePreview()">×</button>
     </div>
     <div class="preview-meta" id="previewMeta"></div>
@@ -1766,19 +1787,39 @@ function closeProposalModal() {
   document.getElementById('proposalModalOverlay').classList.remove('open');
 }
 const _kindLabel = { create: '➕ 新增', update: '✎ 修改', delete: '🗑 删除' };
+const _fieldLabel = { title: '标题', section: '章节', level: '等级', source: '来源', tags: '标签', content: '正文' };
+
+// 单字段「原值 → 新值」对比行；正文用可滚动块展示全文
+function _diffRow(label, oldV, newV, isContent) {
+  oldV = oldV == null ? '' : String(oldV);
+  newV = newV == null ? '' : String(newV);
+  const changed = oldV !== newV;
+  if (isContent) {
+    return `<div class="diff-row"><div class="diff-label">${label}${changed ? '' : '（未变）'}</div>`
+      + (changed && oldV ? `<div class="diff-sub">原：</div><pre class="diff-content old">${esc(oldV)}</pre>` : '')
+      + `<div class="diff-sub">${changed ? '新：' : ''}</div><pre class="diff-content new">${esc(newV)}</pre></div>`;
+  }
+  if (!changed) return `<div class="diff-row"><span class="diff-label">${label}</span> <span class="muted">${esc(newV) || '（空）'}（未变）</span></div>`;
+  return `<div class="diff-row"><span class="diff-label">${label}</span> `
+    + `<span class="diff-old">${esc(oldV) || '（空）'}</span> <span class="diff-arrow">→</span> <span class="diff-new">${esc(newV) || '（空）'}</span></div>`;
+}
+
 function _payloadSummary(p) {
   const f = p.payload || {};
-  if (p.kind === 'delete') return '删除：' + esc((p.current && p.current.title) || f.title || ('#' + p.note_id));
-  const parts = [];
-  if (f.title !== undefined) parts.push('标题=' + esc(f.title));
-  if (f.section !== undefined) parts.push('章节=' + esc(f.section));
-  if (f.level !== undefined) parts.push('等级=' + esc(f.level));
-  if (f.source !== undefined) parts.push('来源=' + esc(f.source));
-  if (f.tags !== undefined) parts.push('标签=' + esc(f.tags));
-  if (f.content !== undefined) parts.push('正文(' + (f.content || '').length + '字)');
-  let head = '';
-  if (p.kind === 'update' && p.current) head = '原标题：' + esc(p.current.title) + '<br>';
-  return head + parts.join('；');
+  const cur = p.current || {};
+  if (p.kind === 'delete') {
+    return `<div class="diff-row"><span class="diff-label">删除笔记</span> ${esc(cur.code ? cur.code + ' ' : '')}${esc(cur.title || f.title || ('#' + p.note_id))}</div>`
+      + (cur.content ? `<pre class="diff-content old">${esc(cur.content)}</pre>` : '');
+  }
+  if (p.kind === 'create') {
+    const rows = ['section', 'title', 'level', 'source', 'tags'].filter(k => f[k] !== undefined && f[k] !== '')
+      .map(k => `<div class="diff-row"><span class="diff-label">${_fieldLabel[k]}</span> ${esc(f[k])}</div>`).join('');
+    return rows + (f.content !== undefined ? `<div class="diff-row"><div class="diff-label">正文</div><pre class="diff-content new">${esc(f.content || '')}</pre></div>` : '');
+  }
+  // update：逐字段对比原值与提议值
+  const keys = ['title', 'section', 'level', 'source', 'tags', 'content'].filter(k => f[k] !== undefined);
+  if (!keys.length) return '<span class="muted">无字段改动</span>';
+  return keys.map(k => _diffRow(_fieldLabel[k], cur[k], f[k], k === 'content')).join('');
 }
 async function loadProposals() {
   const box = document.getElementById('proposalList');
@@ -1855,8 +1896,13 @@ async function batchSummarize() {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { showToast(d.error || '批量总结失败', 'error'); return; }
-    showToast(`完成：成功 ${d.done}，跳过 ${d.skipped}，失败 ${d.failed}`, d.failed ? 'error' : 'success');
-  } catch (e) { showToast('批量总结请求失败', 'error'); }
+    let msg = `完成：成功 ${d.done}，跳过 ${d.skipped}，失败 ${d.failed}`;
+    showToast(msg, d.failed ? 'error' : 'success');
+    // 有失败时把首条失败原因弹出来，便于定位（如密钥/模型/限流）
+    if (d.failed && d.failed_list && d.failed_list.length) {
+      alert('部分总结失败，原因示例：\n' + d.failed_list.slice(0, 3).map(f => '· ' + (f.reason || '未知')).join('\n'));
+    }
+  } catch (e) { showToast('批量总结请求失败（可能是请求耗时过长被网关中断，请减少一次选择的数量）', 'error'); }
 }
 
 function closeTokenModal() {
@@ -2129,18 +2175,13 @@ function onSearchInput() {
 
 // 请求序号：丢弃过期（乱序返回）的搜索响应，避免结果闪烁/错乱
 let _searchSeq = 0;
+let lastSearchTotal = 0;  // 上次查询命中总数（用于跨页全选）
 
-async function doSearch() {
-  const mySeq = ++_searchSeq;
-  try {
-  // Exit roam mode if active
-  if (isRoamMode) exitRoam();
-
+// 统一构造当前筛选条件的查询参数（不含分页），供列表与「跨页全选」复用
+function buildListParams() {
   const params = new URLSearchParams();
   const q = document.getElementById('searchInput').value.trim();
-  if (q) { params.set('q', q); document.getElementById('clearSearch').style.display = 'block'; }
-  else document.getElementById('clearSearch').style.display = 'none';
-
+  if (q) params.set('q', q);
   const level = document.getElementById('filterLevel').value;
   const source = document.getElementById('filterSource').value;
   const domain = document.getElementById('filterDomain').value;
@@ -2149,23 +2190,34 @@ async function doSearch() {
   if (domain) params.set('domain', domain);
   if (currentSection) params.set('section', currentSection);
   if (favoritesOnly) params.set('favorites', '1');
+  const sort = document.getElementById('sortSelect')?.value || currentSort;
+  currentSort = sort;
+  if (sort && sort !== 'code') params.set('sort', sort);
+  return params;
+}
+
+async function doSearch() {
+  const mySeq = ++_searchSeq;
+  try {
+  // Exit roam mode if active
+  if (isRoamMode) exitRoam();
+
+  const params = buildListParams();
+  document.getElementById('clearSearch').style.display = params.get('q') ? 'block' : 'none';
   params.set('page', currentPage);
   params.set('per', 30);
-
-  // Sort parameter
-  const sort = document.getElementById('sortSelect')?.value || currentSort;
-  if (sort && sort !== 'code') params.set('sort', sort);
-  currentSort = sort;
 
   renderSkeleton();  // 请求期间显示骨架屏占位
   const r = await fetch('/api/notes?' + params);
   const data = await r.json();
   if (mySeq !== _searchSeq) return;  // 已有更新的搜索发出，丢弃本次过期结果
   allLoadedItems = data.items;
+  lastSearchTotal = data.total;
 
   document.getElementById('resultCount').textContent = `共 ${data.total} 条`;
   renderTable(data.items);
   renderPagination(data);
+  updateBatchBar();
   document.getElementById('emptyState').style.display = data.total === 0 ? 'block' : 'none';
   document.getElementById('pagination').style.display = data.total <= 30 ? 'none' : '';
   document.getElementById('resultCount').style.display = data.total === 0 ? 'none' : '';
@@ -2253,6 +2305,24 @@ function updatePreviewFavStar(on) {
   if (!el) return;
   el.classList.toggle('on', on);
   el.textContent = on ? '★' : '☆';
+}
+
+function updateRoamFavStar(on) {
+  const el = document.getElementById('roamFavStar');
+  if (!el) return;
+  el.classList.toggle('on', on);
+  el.textContent = on ? '★' : '☆';
+}
+
+async function toggleRoamFavorite() {
+  const n = roamNotes[roamIndex];
+  if (!n) return;
+  const on = !n.favorited;
+  const res = await setFavorite(n.id, on);
+  if (res === null) return;
+  n.favorited = res;
+  updateRoamFavStar(res);
+  showToast(res ? '已收藏' : '已取消收藏', 'success');
 }
 
 async function togglePreviewFavorite() {
@@ -2469,10 +2539,52 @@ function updateBatchBar() {
   // Update header checkbox state
   const allChecks = document.querySelectorAll('#notesTable input[type=checkbox]');
   const headerCheck = document.getElementById('headerCheck');
+  const pageIds = allLoadedItems.map(it => it.id);
+  const pageAllSel = pageIds.length > 0 && pageIds.every(id => selectedIds.has(id));
+  // 跨页全选提示：本页已全选且还有更多匹配项时出现
+  const link = document.getElementById('selectAllPages');
+  if (link) {
+    if (count > 0 && currentRole === 'admin' && pageAllSel && lastSearchTotal > pageIds.length) {
+      link.style.display = '';
+      link.textContent = (selectedIds.size >= lastSearchTotal)
+        ? '已选择全部，点此仅保留本页'
+        : `选择全部 ${lastSearchTotal} 条`;
+    } else link.style.display = 'none';
+  }
   if (allChecks.length === 0) { headerCheck.checked = false; headerCheck.indeterminate = false; return; }
   const checkedCount = document.querySelectorAll('#notesTable input[type=checkbox]:checked').length;
   headerCheck.checked = checkedCount === allChecks.length;
   headerCheck.indeterminate = checkedCount > 0 && checkedCount < allChecks.length;
+}
+
+// 跨页全选：拉取当前筛选下的全部 id 选中；若已全选则收回到本页
+async function selectAllMatching() {
+  if (selectedIds.size >= lastSearchTotal && lastSearchTotal > 0) {
+    // 收回到仅本页
+    const pageIds = new Set(allLoadedItems.map(it => it.id));
+    selectedIds = new Set([...selectedIds].filter(id => pageIds.has(id)));
+    syncCheckboxesFromSelection();
+    updateBatchBar();
+    return;
+  }
+  try {
+    const params = buildListParams();
+    params.set('ids_only', '1');
+    const d = await (await fetch('/api/notes?' + params)).json();
+    (d.ids || []).forEach(id => selectedIds.add(id));
+    syncCheckboxesFromSelection();
+    updateBatchBar();
+    showToast(`已选择全部 ${selectedIds.size} 条` + (d.capped ? '（超过上限，仅选取前 5000 条）' : ''), 'success');
+  } catch (e) { showToast('全选失败', 'error'); }
+}
+
+// 依据 selectedIds 同步当前页复选框与行高亮
+function syncCheckboxesFromSelection() {
+  document.querySelectorAll('#notesTable input[type=checkbox]').forEach(cb => {
+    const on = selectedIds.has(parseInt(cb.dataset.id));
+    cb.checked = on;
+    cb.closest('tr').classList.toggle('selected', on);
+  });
 }
 
 function clearSelection() {
@@ -2586,6 +2698,7 @@ function renderPreviewMeta(n) {
     <span class="meta-item${ec}" id="pmLevel" ${admin ? 'onclick="editPreviewLevel()"' : ''}><span class="meta-label">等级</span> <span class="pm-val pm-stars ${levelClass(n.level)}" id="pmLevelVal">${esc(n.level)}</span></span>
     <span class="meta-item${ec}" id="pmSource" ${admin ? 'onclick="editPreviewSource(event)"' : ''}><span class="meta-label">来源</span> <span class="pm-val" id="pmSourceVal">${esc(n.source)}</span></span>
     <span class="meta-item${ec}" id="pmDate" ${admin ? 'onclick="editPreviewDate(event)"' : ''}><span class="meta-label">日期</span> <span class="pm-val" id="pmDateVal">${esc(n.note_date)}</span></span>
+    <button class="fav-star" id="previewFavStar" title="收藏/取消收藏" onclick="togglePreviewFavorite()">${n.favorited ? '★' : '☆'}</button>
     <span class="meta-item meta-tags" id="pmTags"><span class="meta-label">标签</span> <span class="pm-val" id="pmTagsVal"></span></span>
   `;
   renderTagsVal(n);
@@ -3125,6 +3238,7 @@ function renderRoamCard() {
   document.getElementById('roamUpdatedAt').textContent = (n.updated_at || '').slice(0, 10) || '—';
   document.getElementById('roamSource').textContent = n.source || '—';
 
+  updateRoamFavStar(!!n.favorited);
   // 背面内容 + 每张卡复位到正面
   renderRoamBack(n);
   roamFlipped = false;
@@ -3302,7 +3416,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '3.2';
+const APP_VERSION = '3.3';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 

@@ -5,7 +5,7 @@
  *  - 其余同源静态资源：缓存优先，未命中则网络并回填
  * 升级缓存：改 CACHE 版本号即可，activate 时清理旧缓存。
  */
-const CACHE = 'notes-shell-v11';
+const CACHE = 'notes-shell-v12';
 const SHELL = [
   './',
   'index.html',
