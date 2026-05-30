@@ -933,6 +933,32 @@ def test_tidy_uses_custom_prompt(admin, monkeypatch):
     admin.put('/api/config/ai-prompt', json={'prompt': '', 'kind': 'tidy'})  # 还原
 
 
+def test_fill_prompt_config_independent(admin):
+    # fill 提示词独立于 summary / tidy
+    d0 = admin.get('/api/config/ai-prompt?kind=fill').get_json()
+    assert d0['is_custom'] is False and d0['effective'] == _app.AI_FILL_SYSTEM_PROMPT
+    admin.put('/api/config/ai-prompt', json={'prompt': '填充专用规则', 'kind': 'fill'})
+    f = admin.get('/api/config/ai-prompt?kind=fill').get_json()
+    s = admin.get('/api/config/ai-prompt').get_json()
+    assert f['is_custom'] is True and f['effective'] == '填充专用规则'
+    assert s['is_custom'] is False  # summary 不受影响
+    admin.put('/api/config/ai-prompt', json={'prompt': '', 'kind': 'fill'})  # 还原
+    assert admin.get('/api/config/ai-prompt?kind=fill').get_json()['is_custom'] is False
+
+
+def test_fill_uses_custom_prompt(admin, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    def fake_chat(system, user, temperature=0.3):
+        captured['system'] = system
+        return '{"title":"t","tags":"a,b","section":"A01","level":"★","source":"规程"}'
+    monkeypatch.setattr(_app, '_deepseek_chat', fake_chat)
+    admin.put('/api/config/ai-prompt', json={'prompt': '我的填充规则', 'kind': 'fill'})
+    admin.post('/api/ai/fill', json={'content': '一些正文'})
+    assert captured['system'] == '我的填充规则'
+    admin.put('/api/config/ai-prompt', json={'prompt': '', 'kind': 'fill'})  # 还原
+
+
 # ---------------- 用户收藏 ----------------
 
 def test_favorite_add_list_remove(admin):

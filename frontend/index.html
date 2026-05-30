@@ -395,6 +395,13 @@ tbody tr.selected { background: #EBF5FB; }
   /* 用户管理 */
   .user-mgmt-modal { width: 100vw; max-width: 100vw; border-radius: 0; }
   .add-user-form .form-row { flex-direction: column; gap: 6px; }
+  /* 系统设置：窄屏改为上下堆叠，菜单横向滚动 */
+  .settings-modal { width: 100vw; }
+  .settings-body { flex-direction: column; }
+  .settings-menu { flex: none; flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--border); padding: 6px 8px; gap: 4px; }
+  .settings-tab { border-left: none; border-bottom: 3px solid transparent; padding: 8px 12px; border-radius: 6px 6px 0 0; }
+  .settings-tab.active { border-left: none; border-bottom-color: var(--primary-light); }
+  .settings-pages { padding: 14px; }
 }
 
 /* ===== Login Screen ===== */
@@ -634,6 +641,18 @@ body.roam-immersive .batch-bar { display: none; }
 /* AI 提示词编辑框 */
 .ai-prompt-text { width: 100%; min-height: 120px; font-size: 13px; line-height: 1.6; padding: 8px 10px;
   border: 1px solid var(--border); border-radius: 6px; resize: vertical; font-family: inherit; box-sizing: border-box; margin-bottom: 8px; }
+/* 系统设置弹窗：左侧菜单 + 右侧分页 */
+.settings-modal { width: 820px; }
+.settings-body { display: flex; gap: 0; padding: 0; }
+.settings-menu { flex: 0 0 168px; border-right: 1px solid var(--border); padding: 12px 0; display: flex; flex-direction: column; gap: 2px; }
+.settings-tab { text-align: left; background: none; border: none; padding: 9px 16px; font-size: 13px; color: var(--text); cursor: pointer; border-left: 3px solid transparent; white-space: nowrap; }
+.settings-tab:hover { background: rgba(0,0,0,.04); }
+.settings-tab.active { background: rgba(46,139,240,.10); border-left-color: var(--primary-light); color: var(--primary); font-weight: 600; }
+.settings-pages { flex: 1; min-width: 0; padding: 18px 20px; }
+.settings-page { display: none; }
+.settings-page.active { display: block; }
+.settings-page-title { font-size: 15px; color: var(--primary); margin-bottom: 12px; }
+.settings-page .add-user-form:first-child { border-top: none; padding-top: 0; }
 /* 变更申请列表 */
 .proposal-list { display: flex; flex-direction: column; gap: 10px; }
 .prop-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: #fafbfc; }
@@ -1051,112 +1070,145 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
   </div>
 </div>
 
-<!-- ===== API 令牌管理弹窗 ===== -->
-<div class="modal-overlay" id="tokenModalOverlay">
-  <div class="user-mgmt-modal" role="dialog" aria-modal="true" aria-labelledby="tokenMgmtTitle">
+<!-- ===== 系统设置弹窗（左侧菜单 + 右侧分页） ===== -->
+<div class="modal-overlay" id="settingsModalOverlay">
+  <div class="user-mgmt-modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="modal-header">
-      <h3 id="tokenMgmtTitle">🎫 API 令牌管理</h3>
-      <button class="modal-close" onclick="closeTokenModal()">×</button>
+      <h3 id="settingsTitle">⚙️ 系统设置</h3>
+      <button class="modal-close" onclick="closeSettingsModal()">×</button>
     </div>
-    <div class="modal-body" id="tokenModalBody">
-      <div class="token-hint">
-        令牌用于在命令行 / 脚本 / 大模型流水线中调用接口写入笔记，无需登录浏览器。<br>
-        调用时在请求头携带 <code>X-API-Token: 令牌</code>。详见项目内 <strong>API文档.md</strong>。
-      </div>
-      <table class="user-table token-table">
-        <thead><tr><th>用途备注</th><th>角色</th><th>创建时间</th><th>最近使用</th><th class="col-actions">操作</th></tr></thead>
-        <tbody id="tokenTableBody"></tbody>
-      </table>
-      <!-- 新建令牌后明文仅显示一次 -->
-      <div class="token-new" id="tokenNewBox" style="display:none">
-        <div class="token-label-line">✅ 令牌已创建，请立即复制保存（此明文仅显示这一次）：</div>
-        <div class="token-value-row">
-          <code id="tokenNewValue"></code>
-          <button class="btn btn-primary btn-sm" onclick="copyNewToken()">复制</button>
-        </div>
-        <div class="token-warn">关闭后将无法再次查看完整令牌，如遗失请删除并重新创建。</div>
-      </div>
-      <div class="add-user-form">
-        <h4>+ 创建令牌</h4>
-        <div class="form-row">
-          <div class="form-group">
-            <label>用途备注</label>
-            <input type="text" id="newTokenLabel" placeholder="如：大模型整理脚本">
+    <div class="modal-body settings-body">
+      <nav class="settings-menu" id="settingsMenu">
+        <button type="button" class="settings-tab active" data-page="token" onclick="switchSettingsPage('token')">🎫 API 令牌</button>
+        <button type="button" class="settings-tab" data-page="uploads" onclick="switchSettingsPage('uploads')">🧹 图片存储维护</button>
+        <button type="button" class="settings-tab" data-page="dup" onclick="switchSettingsPage('dup')">🔁 笔记查重</button>
+        <button type="button" class="settings-tab" data-page="summary" onclick="switchSettingsPage('summary')">🤖 AI 总结提示词</button>
+        <button type="button" class="settings-tab" data-page="tidy" onclick="switchSettingsPage('tidy')">📝 AI 整理提示词</button>
+        <button type="button" class="settings-tab" data-page="fill" onclick="switchSettingsPage('fill')">✏️ AI 填充提示词</button>
+      </nav>
+      <div class="settings-pages">
+        <!-- 页：API 令牌 -->
+        <section class="settings-page active" id="settingsPage-token">
+          <div class="token-hint">
+            令牌用于在命令行 / 脚本 / 大模型流水线中调用接口写入笔记，无需登录浏览器。<br>
+            调用时在请求头携带 <code>X-API-Token: 令牌</code>。详见项目内 <strong>API文档.md</strong>。
           </div>
-          <div class="form-group">
-            <label>角色</label>
-            <select id="newTokenRole">
-              <option value="admin">admin（可读写）</option>
-              <option value="contributor">contributor（共建·需审批）</option>
-              <option value="viewer">viewer（只读）</option>
-            </select>
+          <table class="user-table token-table">
+            <thead><tr><th>用途备注</th><th>角色</th><th>创建时间</th><th>最近使用</th><th class="col-actions">操作</th></tr></thead>
+            <tbody id="tokenTableBody"></tbody>
+          </table>
+          <!-- 新建令牌后明文仅显示一次 -->
+          <div class="token-new" id="tokenNewBox" style="display:none">
+            <div class="token-label-line">✅ 令牌已创建，请立即复制保存（此明文仅显示这一次）：</div>
+            <div class="token-value-row">
+              <code id="tokenNewValue"></code>
+              <button class="btn btn-primary btn-sm" onclick="copyNewToken()">复制</button>
+            </div>
+            <div class="token-warn">关闭后将无法再次查看完整令牌，如遗失请删除并重新创建。</div>
           </div>
-          <div class="form-group flex-none">
-            <label>&nbsp;</label>
-            <button class="btn btn-primary btn-sm" onclick="doCreateToken()">创建</button>
+          <div class="add-user-form">
+            <h4>+ 创建令牌</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label>用途备注</label>
+                <input type="text" id="newTokenLabel" placeholder="如：大模型整理脚本">
+              </div>
+              <div class="form-group">
+                <label>角色</label>
+                <select id="newTokenRole">
+                  <option value="admin">admin（可读写）</option>
+                  <option value="contributor">contributor（共建·需审批）</option>
+                  <option value="viewer">viewer（只读）</option>
+                </select>
+              </div>
+              <div class="form-group flex-none">
+                <label>&nbsp;</label>
+                <button class="btn btn-primary btn-sm" onclick="doCreateToken()">创建</button>
+              </div>
+            </div>
+            <div class="user-error" id="tokenError"></div>
           </div>
-        </div>
-        <div class="user-error" id="tokenError"></div>
-      </div>
-      <div class="add-user-form">
-        <h4>🧹 图片存储维护</h4>
-        <div class="token-hint">删除笔记时会自动回收无引用的图片；也可在此手动清理孤儿图片（无任何笔记引用、且上传超过 24 小时的图片文件）。</div>
-        <div class="form-row">
-          <div class="form-group flex-none">
-            <button type="button" class="btn btn-sm" onclick="doCleanupUploads(true)">预览可清理</button>
+        </section>
+
+        <!-- 页：图片存储维护 -->
+        <section class="settings-page" id="settingsPage-uploads">
+          <h4 class="settings-page-title">🧹 图片存储维护</h4>
+          <div class="token-hint">删除笔记时会自动回收无引用的图片；也可在此手动清理孤儿图片（无任何笔记引用、且上传超过 24 小时的图片文件）。</div>
+          <div class="form-row">
+            <div class="form-group flex-none">
+              <button type="button" class="btn btn-sm" onclick="doCleanupUploads(true)">预览可清理</button>
+            </div>
+            <div class="form-group flex-none">
+              <button type="button" class="btn btn-primary btn-sm" onclick="doCleanupUploads(false)">清理孤儿图片</button>
+            </div>
+            <div class="form-group"><label>&nbsp;</label><span id="cleanupResult" class="muted"></span></div>
           </div>
-          <div class="form-group flex-none">
-            <button type="button" class="btn btn-primary btn-sm" onclick="doCleanupUploads(false)">清理孤儿图片</button>
+        </section>
+
+        <!-- 页：笔记查重 -->
+        <section class="settings-page" id="settingsPage-dup">
+          <h4 class="settings-page-title">🔁 笔记查重</h4>
+          <div class="token-hint">扫描全库，按「标题归一化相等」或「正文相似度」找出疑似重复的笔记，便于人工核对删除。点击结果中的笔记可直接打开查看。</div>
+          <div class="form-row">
+            <div class="form-group flex-none">
+              <label>范围</label>
+              <select id="dupScope">
+                <option value="section">仅同章节内</option>
+                <option value="all">跨章节全库</option>
+              </select>
+            </div>
+            <div class="form-group flex-none">
+              <label>正文相似度阈值</label>
+              <select id="dupThreshold">
+                <option value="0.95">0.95（很严格）</option>
+                <option value="0.85" selected>0.85（推荐）</option>
+                <option value="0.75">0.75（宽松）</option>
+                <option value="0.65">0.65（很宽松）</option>
+              </select>
+            </div>
+            <div class="form-group flex-none">
+              <label>&nbsp;</label>
+              <button type="button" class="btn btn-primary btn-sm" onclick="doFindDuplicates()">开始查重</button>
+            </div>
           </div>
-          <div class="form-group"><label>&nbsp;</label><span id="cleanupResult" class="muted"></span></div>
-        </div>
-      </div>
-      <div class="add-user-form">
-        <h4>🔁 笔记查重</h4>
-        <div class="token-hint">扫描全库，按「标题归一化相等」或「正文相似度」找出疑似重复的笔记，便于人工核对删除。点击结果中的笔记可直接打开查看。</div>
-        <div class="form-row">
-          <div class="form-group flex-none">
-            <label>范围</label>
-            <select id="dupScope">
-              <option value="section">仅同章节内</option>
-              <option value="all">跨章节全库</option>
-            </select>
+          <div id="dupResult" class="dup-result"></div>
+        </section>
+
+        <!-- 页：AI 总结提示词 -->
+        <section class="settings-page" id="settingsPage-summary">
+          <h4 class="settings-page-title">🤖 AI 总结提示词</h4>
+          <div class="token-hint">AI 总结时发给大模型的系统提示词，打开即显示当前生效内容（已保存的自定义优先，否则为内置默认），可直接编辑。修改保存后立即对后续「AI 总结 / 一键总结」生效。</div>
+          <textarea id="aiPromptText" class="ai-prompt-text" placeholder="加载中…"></textarea>
+          <div class="form-row">
+            <div class="form-group flex-none"><button type="button" class="btn btn-primary btn-sm" onclick="saveAiPrompt('summary','aiPromptText','aiPromptResult')">保存提示词</button></div>
+            <div class="form-group flex-none"><button type="button" class="btn btn-sm" onclick="resetAiPrompt('summary','aiPromptText','aiPromptResult')">恢复默认</button></div>
+            <div class="form-group"><label>&nbsp;</label><span id="aiPromptResult" class="muted"></span></div>
           </div>
-          <div class="form-group flex-none">
-            <label>正文相似度阈值</label>
-            <select id="dupThreshold">
-              <option value="0.95">0.95（很严格）</option>
-              <option value="0.85" selected>0.85（推荐）</option>
-              <option value="0.75">0.75（宽松）</option>
-              <option value="0.65">0.65（很宽松）</option>
-            </select>
+        </section>
+
+        <!-- 页：AI 整理提示词 -->
+        <section class="settings-page" id="settingsPage-tidy">
+          <h4 class="settings-page-title">📝 AI 整理提示词</h4>
+          <div class="token-hint">「AI 整理」发给大模型的系统提示词（清理非知识内容、规范小序号、并填充字段），打开即显示当前生效内容，可直接编辑。修改保存后立即生效。</div>
+          <textarea id="aiTidyPromptText" class="ai-prompt-text" placeholder="加载中…"></textarea>
+          <div class="form-row">
+            <div class="form-group flex-none"><button type="button" class="btn btn-primary btn-sm" onclick="saveAiPrompt('tidy','aiTidyPromptText','aiTidyPromptResult')">保存提示词</button></div>
+            <div class="form-group flex-none"><button type="button" class="btn btn-sm" onclick="resetAiPrompt('tidy','aiTidyPromptText','aiTidyPromptResult')">恢复默认</button></div>
+            <div class="form-group"><label>&nbsp;</label><span id="aiTidyPromptResult" class="muted"></span></div>
           </div>
-          <div class="form-group flex-none">
-            <label>&nbsp;</label>
-            <button type="button" class="btn btn-primary btn-sm" onclick="doFindDuplicates()">开始查重</button>
+        </section>
+
+        <!-- 页：AI 填充提示词 -->
+        <section class="settings-page" id="settingsPage-fill">
+          <h4 class="settings-page-title">✏️ AI 填充提示词</h4>
+          <div class="token-hint">「AI 填充」发给大模型的系统提示词（据正文推断 标题/标签/章节/等级/来源），打开即显示当前生效内容，可直接编辑。章节候选列表由系统自动附加，无需在此列出。修改保存后立即生效。</div>
+          <textarea id="aiFillPromptText" class="ai-prompt-text" placeholder="加载中…"></textarea>
+          <div class="form-row">
+            <div class="form-group flex-none"><button type="button" class="btn btn-primary btn-sm" onclick="saveAiPrompt('fill','aiFillPromptText','aiFillPromptResult')">保存提示词</button></div>
+            <div class="form-group flex-none"><button type="button" class="btn btn-sm" onclick="resetAiPrompt('fill','aiFillPromptText','aiFillPromptResult')">恢复默认</button></div>
+            <div class="form-group"><label>&nbsp;</label><span id="aiFillPromptResult" class="muted"></span></div>
           </div>
-        </div>
-        <div id="dupResult" class="dup-result"></div>
-      </div>
-      <div class="add-user-form">
-        <h4>🤖 AI 总结提示词</h4>
-        <div class="token-hint">自定义 AI 总结时发给大模型的系统提示词。留空保存即恢复内置默认。修改后立即对后续「AI 总结 / 一键总结」生效。</div>
-        <textarea id="aiPromptText" class="ai-prompt-text" placeholder="加载中…"></textarea>
-        <div class="form-row">
-          <div class="form-group flex-none"><button type="button" class="btn btn-primary btn-sm" onclick="saveAiPrompt()">保存提示词</button></div>
-          <div class="form-group flex-none"><button type="button" class="btn btn-sm" onclick="resetAiPrompt()">恢复默认</button></div>
-          <div class="form-group"><label>&nbsp;</label><span id="aiPromptResult" class="muted"></span></div>
-        </div>
-      </div>
-      <div class="add-user-form">
-        <h4>🧹 AI 整理提示词</h4>
-        <div class="token-hint">自定义「AI 整理」发给大模型的系统提示词（清理非知识内容、规范小序号、并填充字段）。留空保存即恢复内置默认，修改后立即生效。</div>
-        <textarea id="aiTidyPromptText" class="ai-prompt-text" placeholder="加载中…"></textarea>
-        <div class="form-row">
-          <div class="form-group flex-none"><button type="button" class="btn btn-primary btn-sm" onclick="saveAiPrompt('tidy','aiTidyPromptText','aiTidyPromptResult')">保存提示词</button></div>
-          <div class="form-group flex-none"><button type="button" class="btn btn-sm" onclick="resetAiPrompt('tidy','aiTidyPromptText','aiTidyPromptResult')">恢复默认</button></div>
-          <div class="form-group"><label>&nbsp;</label><span id="aiTidyPromptResult" class="muted"></span></div>
-        </div>
+        </section>
       </div>
     </div>
   </div>
@@ -1243,7 +1295,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         <button type="button" class="icon-btn proposal-entry" id="proposalEntry" style="display:none" onclick="openProposalModal()" title="变更申请审批" aria-label="变更申请">📥<span class="proposal-badge" id="proposalBadge" style="display:none">0</span></button>
         <button type="button" class="icon-btn proposal-entry" id="feedbackInboxBtn" style="display:none" onclick="openFeedbackInbox()" title="反馈箱（用户建议）" aria-label="反馈箱">📨<span class="proposal-badge" id="feedbackBadge" style="display:none">0</span></button>
         <button type="button" class="icon-btn" id="userMgmtBtn" style="display:none" onclick="openUserModal()" title="用户管理" aria-label="用户管理">👥</button>
-        <button type="button" class="icon-btn" id="tokenMgmtBtn" style="display:none" onclick="openTokenModal()" title="API 令牌管理" aria-label="API 令牌管理">🎫</button>
+        <button type="button" class="icon-btn" id="settingsBtn" style="display:none" onclick="openSettingsModal()" title="系统设置" aria-label="系统设置">⚙️</button>
         <button type="button" class="icon-btn" onclick="openFeedbackModal()" title="反馈建议" aria-label="反馈建议">💬</button>
         <button type="button" class="icon-btn" onclick="openPwdModal()" title="修改密码" aria-label="修改密码">🔑</button>
         <button type="button" class="icon-btn" onclick="doLogout()" title="退出登录" aria-label="退出登录">🚪</button>
@@ -1572,7 +1624,7 @@ async function checkAuth() {
       currentUsername = data.username;
       document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : currentRole === 'contributor' ? ' (共建)' : ' (只读)');
       document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
-      document.getElementById('tokenMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
+      document.getElementById('settingsBtn').style.display = currentRole === 'admin' ? '' : 'none';
       maybeShowDefaultPwBanner(data.default_password);
       applyRoleUI();
       init();
@@ -1616,7 +1668,7 @@ async function doLogin(e) {
       currentUsername = data.username;
       document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : currentRole === 'contributor' ? ' (共建)' : ' (只读)');
       document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
-      document.getElementById('tokenMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
+      document.getElementById('settingsBtn').style.display = currentRole === 'admin' ? '' : 'none';
       maybeShowDefaultPwBanner(data.default_password);
       applyRoleUI();
       init(); // 登录成功 → 初始化主应用
@@ -1846,32 +1898,49 @@ async function doDeleteUser(id, username) {
   }
 }
 
-// ---- API 令牌管理 ----
-function openTokenModal() {
-  document.getElementById('tokenModalOverlay').classList.add('open');
+// ---- 系统设置（令牌 / 图片维护 / 查重 / 三类 AI 提示词）----
+function openSettingsModal() {
+  document.getElementById('settingsModalOverlay').classList.add('open');
   document.getElementById('tokenError').textContent = '';
   document.getElementById('tokenNewBox').style.display = 'none';
   document.getElementById('newTokenLabel').value = '';
   document.getElementById('aiPromptResult').textContent = '';
   document.getElementById('aiTidyPromptResult').textContent = '';
+  document.getElementById('aiFillPromptResult').textContent = '';
   document.getElementById('dupResult').innerHTML = '';
+  document.getElementById('cleanupResult').textContent = '';
+  switchSettingsPage('token');
   loadTokens();
-  loadAiPrompt();
+  loadAiPrompt('summary', 'aiPromptText');
   loadAiPrompt('tidy', 'aiTidyPromptText');
+  loadAiPrompt('fill', 'aiFillPromptText');
+}
+function closeSettingsModal() {
+  document.getElementById('settingsModalOverlay').classList.remove('open');
+}
+// 左侧菜单切换页面
+function switchSettingsPage(page) {
+  document.querySelectorAll('#settingsMenu .settings-tab').forEach(b =>
+    b.classList.toggle('active', b.dataset.page === page));
+  document.querySelectorAll('.settings-page').forEach(s =>
+    s.classList.toggle('active', s.id === 'settingsPage-' + page));
 }
 
-// ---- AI 提示词（kind: summary=总结 / tidy=整理）----
+// ---- AI 提示词（kind: summary=总结 / tidy=整理 / fill=填充）----
+// 打开即把"当前生效内容"填入文本框：已保存的自定义优先，否则填内置默认。
+const _aiPromptDefaults = {};   // kind -> 内置默认全文，供"恢复默认"与"是否等于默认"判断
 async function loadAiPrompt(kind = 'summary', taId = 'aiPromptText') {
   const ta = document.getElementById(taId);
   try {
     const d = await (await _origFetch('/api/config/ai-prompt?kind=' + kind)).json();
-    ta.value = d.is_custom ? d.prompt : '';
-    ta.placeholder = '（留空 = 使用内置默认提示词）\n\n内置默认：\n' + (d.default || '');
-  } catch (e) { ta.placeholder = '加载失败'; }
+    _aiPromptDefaults[kind] = d.default || '';
+    ta.value = d.is_custom ? d.prompt : (d.default || '');
+    ta.dataset.orig = ta.value;   // 记录打开时的内容，保存前判断是否真改了
+  } catch (e) { ta.value = ''; ta.placeholder = '加载失败'; }
 }
-async function saveAiPrompt(kind = 'summary', taId = 'aiPromptText', outId = 'aiPromptResult') {
+// 实际写入（不含确认），保存/恢复默认共用
+async function _putAiPrompt(kind, prompt, taId, outId) {
   const out = document.getElementById(outId);
-  const prompt = document.getElementById(taId).value;
   out.textContent = '保存中…';
   try {
     const r = await _origFetch('/api/config/ai-prompt', {
@@ -1880,12 +1949,26 @@ async function saveAiPrompt(kind = 'summary', taId = 'aiPromptText', outId = 'ai
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || '保存失败');
     out.textContent = d.is_custom ? '已保存自定义提示词' : '已恢复内置默认';
+    document.getElementById(taId).dataset.orig = document.getElementById(taId).value;
     showToast('提示词已更新', 'success');
   } catch (e) { out.textContent = ''; showToast(e.message || '保存失败', 'error'); }
 }
+function saveAiPrompt(kind = 'summary', taId = 'aiPromptText', outId = 'aiPromptResult') {
+  const ta = document.getElementById(taId);
+  const val = ta.value;
+  if (val === (ta.dataset.orig || '')) { showToast('提示词未修改', 'info'); return; }
+  if (!confirm('确认保存修改后的 AI 提示词？\n保存后将立即对后续相关 AI 调用生效。')) return;
+  // 与内置默认完全一致 => 发空串，即不存自定义（恢复默认语义）
+  const def = _aiPromptDefaults[kind] || '';
+  _putAiPrompt(kind, val.trim() === def.trim() ? '' : val, taId, outId);
+}
 function resetAiPrompt(kind = 'summary', taId = 'aiPromptText', outId = 'aiPromptResult') {
-  document.getElementById(taId).value = '';
-  saveAiPrompt(kind, taId, outId);
+  const def = _aiPromptDefaults[kind] || '';
+  const ta = document.getElementById(taId);
+  if (ta.value.trim() === def.trim()) { showToast('当前已是内置默认', 'info'); return; }
+  if (!confirm('确认恢复为内置默认提示词？\n当前自定义内容将被清除。')) return;
+  ta.value = def;
+  _putAiPrompt(kind, '', taId, outId);
 }
 
 // ---- 变更申请审批 ----
@@ -2200,9 +2283,6 @@ async function batchSummarize() {
   } catch (e) { showToast('批量总结请求失败（可能是请求耗时过长被网关中断，请减少一次选择的数量）', 'error'); }
 }
 
-function closeTokenModal() {
-  document.getElementById('tokenModalOverlay').classList.remove('open');
-}
 
 async function doCleanupUploads(dryRun) {
   const out = document.getElementById('cleanupResult');
@@ -2258,9 +2338,9 @@ async function doFindDuplicates() {
   }
 }
 
-// 从查重结果点开某条笔记：关闭管理弹窗再打开预览，避免遮挡
+// 从查重结果点开某条笔记：关闭设置弹窗再打开预览，避免遮挡
 function openPreviewFromDup(id) {
-  closeTokenModal();
+  closeSettingsModal();
   openPreview(id);
 }
 
@@ -3730,7 +3810,7 @@ document.addEventListener('keydown', e => {
     }
     if (document.getElementById('pwdModalOverlay').classList.contains('open')) { closePwdModal(); return; }
     if (document.getElementById('userModalOverlay').classList.contains('open')) { closeUserModal(); return; }
-    if (document.getElementById('tokenModalOverlay').classList.contains('open')) { closeTokenModal(); return; }
+    if (document.getElementById('settingsModalOverlay').classList.contains('open')) { closeSettingsModal(); return; }
     if (document.getElementById('modalOverlay').classList.contains('open')) {
       closeModal(); return;
     }
@@ -3745,7 +3825,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== 弹窗无障碍：焦点陷阱 + 打开聚焦 + 关闭还焦 ====================
 (function setupModalA11y() {
-  const overlayIds = ['pwdModalOverlay', 'userModalOverlay', 'tokenModalOverlay', 'modalOverlay', 'previewOverlay'];
+  const overlayIds = ['pwdModalOverlay', 'userModalOverlay', 'settingsModalOverlay', 'modalOverlay', 'previewOverlay'];
   const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
   const openers = new WeakMap();  // overlay -> 打开前持有焦点的元素
 
@@ -3794,7 +3874,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '3.9';
+const APP_VERSION = '4.0';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 

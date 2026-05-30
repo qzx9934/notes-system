@@ -1538,9 +1538,12 @@ def api_notes_summarize_batch():
 
 # --- AI 提示词配置（管理员可随时修改；支持 summary / tidy 两类） ---
 def _prompt_kind(kind):
-    """返回 (config_key, 内置默认提示词)。未知类型回退到总结。"""
+    """返回 (config_key, 内置默认提示词)。未知类型回退到总结。
+    summary=AI总结 / tidy=AI整理 / fill=AI填充。"""
     if kind == 'tidy':
         return 'ai_tidy_prompt', AI_TIDY_SYSTEM_PROMPT
+    if kind == 'fill':
+        return 'ai_fill_prompt', AI_FILL_SYSTEM_PROMPT
     return 'ai_summary_prompt', AI_SUMMARY_SYSTEM_PROMPT
 
 @app.route('/api/config/ai-prompt')
@@ -1587,6 +1590,10 @@ AI_FILL_SYSTEM_PROMPT = (
 # AI 推断的来源同样限定在规范列表内
 AI_FILL_SOURCE_OPTS = VALID_SOURCES_SET
 
+def effective_fill_prompt(db):
+    """有效的填充提示词：管理员若自定义则用之，否则用内置默认。"""
+    return get_config(db, 'ai_fill_prompt', '').strip() or AI_FILL_SYSTEM_PROMPT
+
 def _parse_ai_json(raw):
     """容错解析模型返回的 JSON 对象（可能裹了 ```json 代码块）。
     仅在解析出 dict 时返回，否则（数组/标量/解析失败）返回 None，避免下游 .get 抛 500。"""
@@ -1630,7 +1637,7 @@ def api_ai_fill():
     user_text = f'可选章节列表：\n{section_list}\n\n笔记正文：\n{content}'
 
     try:
-        raw = _deepseek_chat(AI_FILL_SYSTEM_PROMPT, user_text, temperature=0.2)
+        raw = _deepseek_chat(effective_fill_prompt(db), user_text, temperature=0.2)
     except RuntimeError as e:
         msg = str(e)
         return jsonify({'error': msg}), _summarize_status_code(msg)
