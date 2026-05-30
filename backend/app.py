@@ -1929,14 +1929,20 @@ def api_proposals_list():
     if status:
         where.append('status=?'); params.append(status)
     wc = ' AND '.join(where)
+    page = parse_int(request.args.get('page'), 1, lo=1)
+    per = parse_int(request.args.get('per'), 20, lo=1, hi=MAX_PER)
+    total = db.execute(f'SELECT COUNT(*) FROM proposals WHERE {wc}', params).fetchone()[0]
     rows = db.execute(
         f'SELECT * FROM proposals WHERE {wc} ORDER BY '
-        f"CASE status WHEN 'pending' THEN 0 ELSE 1 END, id DESC LIMIT 500", params
+        f"CASE status WHEN 'pending' THEN 0 ELSE 1 END, id DESC LIMIT ? OFFSET ?",
+        params + [per, (page - 1) * per]
     ).fetchall()
     pending = db.execute("SELECT COUNT(*) FROM proposals WHERE status='pending'"
                          + ('' if role == 'admin' else ' AND proposer_id=?'),
                          ([] if role == 'admin' else [uid])).fetchone()[0]
-    return jsonify({'items': [_proposal_to_dict(db, r) for r in rows], 'pending': pending})
+    return jsonify({'items': [_proposal_to_dict(db, r) for r in rows], 'pending': pending,
+                    'total': total, 'page': page, 'per': per,
+                    'pages': max(1, (total + per - 1) // per)})
 
 def _apply_proposal(db, prop):
     """执行一条申请的实际变更。返回 (ok, message)。"""

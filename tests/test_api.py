@@ -999,6 +999,20 @@ def test_proposal_current_includes_content_for_diff(admin):
     assert p['payload']['content'] == '修改后的正文XYZ'   # 新值
 
 
+def test_proposals_pagination(admin):
+    co = _contributor_client(admin, 'co_page')
+    for i in range(5):
+        co.post('/api/notes', json={'section': 'A01', 'title': f'分页申请-{i}', 'content': 'x'})
+    d = admin.get('/api/proposals?per=2&page=1').get_json()
+    assert d['per'] == 2 and d['page'] == 1
+    assert len(d['items']) == 2
+    assert d['total'] >= 5 and d['pages'] >= 3
+    # 第二页内容不同
+    d2 = admin.get('/api/proposals?per=2&page=2').get_json()
+    assert d2['page'] == 2 and len(d2['items']) == 2
+    assert d['items'][0]['id'] != d2['items'][0]['id']
+
+
 # ---------------- 使用反馈 / 建议 ----------------
 
 def test_feedback_submit_and_admin_list(admin):

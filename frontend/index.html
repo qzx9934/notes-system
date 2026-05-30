@@ -655,6 +655,30 @@ body.roam-immersive .batch-bar { display: none; }
   font-size: 12px; line-height: 1.5; max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: inherit; }
 .diff-content.old { background: #FDF2F0; }
 .diff-content.new { background: #F0FAF4; }
+/* 变更申请：列表行 + 翻页 + 左右并列详情 */
+.prop-row { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: #fafbfc; cursor: pointer; transition: background .12s, border-color .12s; }
+.prop-row:hover { background: #f0f5ff; border-color: var(--primary-light); }
+.prop-row-kind { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.prop-row-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prop-row-meta { white-space: nowrap; }
+.prop-row-arrow { color: var(--text-secondary); font-size: 18px; }
+.prop-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.prop-detail-head { font-size: 14px; font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin: 6px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.diff-field { margin: 0 0 12px; }
+.diff-field.changed > .diff-flabel { color: var(--primary); }
+.diff-flabel { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
+.diff-cols { display: flex; gap: 10px; }
+.diff-col { flex: 1; min-width: 0; }
+.diff-coltag { font-size: 11px; color: var(--text-secondary); margin-bottom: 2px; }
+.diff-coltag.old { color: #C0392B; }
+.diff-coltag.new { color: #1E8449; }
+.diff-cell { background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px;
+  font-size: 13px; line-height: 1.5; word-break: break-word; }
+.diff-cell.old { background: #FDF2F0; }
+.diff-cell.new { background: #F0FAF4; }
+@media (max-width: 600px) { .diff-cols { flex-direction: column; } }
 /* 跨页全选链接 */
 .select-all-pages { font-size: 12px; color: var(--primary-light); cursor: pointer; margin-left: 10px; white-space: nowrap; }
 .select-all-pages:hover { text-decoration: underline; }
@@ -1145,7 +1169,14 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
     </div>
     <div class="modal-body">
       <div class="token-hint" id="proposalHint">共建者提交的新增/编辑/删除需管理员确认后才生效。</div>
-      <div id="proposalList" class="proposal-list"></div>
+      <div id="proposalListView">
+        <div id="proposalList" class="proposal-list"></div>
+        <div id="proposalPager" class="prop-pager"></div>
+      </div>
+      <div id="proposalDetailView" style="display:none">
+        <button class="btn btn-sm btn-outline" onclick="backToProposalList()">← 返回列表</button>
+        <div id="proposalDetail"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -1859,10 +1890,13 @@ async function refreshProposalBadge() {
     else badge.style.display = 'none';
   } catch (e) {}
 }
+let _propPage = 1;
+let _propItems = {};   // id -> proposal，供详情页取用
 function openProposalModal() {
   document.getElementById('proposalModalOverlay').classList.add('open');
   document.getElementById('proposalHint').textContent = currentRole === 'admin'
-    ? '共建者提交的新增/编辑/删除需你确认后才生效。' : '你提交的变更，待管理员确认后生效。';
+    ? '共建者提交的新增/编辑/删除需你确认后才生效。点条目查看改动明细。' : '你提交的变更，待管理员确认后生效。点条目查看明细。';
+  _propPage = 1;
   loadProposals();
 }
 function closeProposalModal() {
@@ -1870,60 +1904,106 @@ function closeProposalModal() {
 }
 const _kindLabel = { create: '➕ 新增', update: '✎ 修改', delete: '🗑 删除' };
 const _fieldLabel = { title: '标题', section: '章节', level: '等级', source: '来源', tags: '标签', content: '正文' };
+function _propStatusTag(s) {
+  return s === 'pending' ? '<span class="prop-st pending">待审</span>'
+    : s === 'approved' ? '<span class="prop-st ok">已通过</span>'
+    : '<span class="prop-st rej">已驳回</span>';
+}
+function _propTitle(p) {
+  const f = p.payload || {}, cur = p.current || {};
+  return f.title || cur.title || (p.note_id ? '#' + p.note_id : '(无标题)');
+}
 
-// 单字段「原值 → 新值」对比行；正文用可滚动块展示全文
-function _diffRow(label, oldV, newV, isContent) {
+// ---- 列表视图 ----
+async function loadProposals(page) {
+  if (page) _propPage = page;
+  _showProposalList();
+  const box = document.getElementById('proposalList');
+  box.innerHTML = '<span class="muted">加载中…</span>';
+  document.getElementById('proposalPager').innerHTML = '';
+  try {
+    const d = await (await _origFetch('/api/proposals?page=' + _propPage + '&per=20')).json();
+    _propItems = {};
+    (d.items || []).forEach(p => { _propItems[p.id] = p; });
+    if (!d.items.length) { box.innerHTML = '<div class="muted" style="padding:12px">暂无变更申请</div>'; return; }
+    box.innerHTML = d.items.map(p => {
+      const cur = p.current || {};
+      const code = cur.code ? `<span class="muted fs-xs">${esc(cur.code)}</span> ` : '';
+      return `<div class="prop-row" onclick="openProposalDetail(${p.id})">
+        <span class="prop-row-kind">${_kindLabel[p.kind] || p.kind}</span>
+        ${_propStatusTag(p.status)}
+        <span class="prop-row-title">${code}${esc(_propTitle(p))}</span>
+        <span class="muted fs-xs prop-row-meta">${esc(p.proposer_name)} · ${esc(p.created_at)}</span>
+        <span class="prop-row-arrow">›</span>
+      </div>`;
+    }).join('');
+    _renderPropPager(d);
+  } catch (e) { box.innerHTML = '<span class="muted">加载失败</span>'; }
+}
+function _renderPropPager(d) {
+  const pg = document.getElementById('proposalPager');
+  if (!d.pages || d.pages <= 1) { pg.innerHTML = `<span class="muted fs-xs">共 ${d.total || 0} 条</span>`; return; }
+  pg.innerHTML = `
+    <button class="btn btn-sm btn-outline" ${d.page <= 1 ? 'disabled' : ''} onclick="loadProposals(${d.page - 1})">‹ 上一页</button>
+    <span class="muted fs-xs">第 ${d.page} / ${d.pages} 页 · 共 ${d.total} 条</span>
+    <button class="btn btn-sm btn-outline" ${d.page >= d.pages ? 'disabled' : ''} onclick="loadProposals(${d.page + 1})">下一页 ›</button>`;
+}
+function _showProposalList() {
+  document.getElementById('proposalListView').style.display = '';
+  document.getElementById('proposalDetailView').style.display = 'none';
+}
+function backToProposalList() { _showProposalList(); }
+
+// ---- 详情视图：左右并列对比 ----
+// 一个字段一行：左=原值，右=新值；改动高亮，正文用可滚动块
+function _diffField(label, oldV, newV, isContent, mode) {
   oldV = oldV == null ? '' : String(oldV);
   newV = newV == null ? '' : String(newV);
   const changed = oldV !== newV;
-  if (isContent) {
-    return `<div class="diff-row"><div class="diff-label">${label}${changed ? '' : '（未变）'}</div>`
-      + (changed && oldV ? `<div class="diff-sub">原：</div><pre class="diff-content old">${esc(oldV)}</pre>` : '')
-      + `<div class="diff-sub">${changed ? '新：' : ''}</div><pre class="diff-content new">${esc(newV)}</pre></div>`;
-  }
-  if (!changed) return `<div class="diff-row"><span class="diff-label">${label}</span> <span class="muted">${esc(newV) || '（空）'}（未变）</span></div>`;
-  return `<div class="diff-row"><span class="diff-label">${label}</span> `
-    + `<span class="diff-old">${esc(oldV) || '（空）'}</span> <span class="diff-arrow">→</span> <span class="diff-new">${esc(newV) || '（空）'}</span></div>`;
+  const cell = (v, cls) => isContent
+    ? `<pre class="diff-content ${cls}">${esc(v) || '<span class="muted">（空）</span>'}</pre>`
+    : `<div class="diff-cell ${cls}">${esc(v) || '<span class="muted">（空）</span>'}</div>`;
+  // create 只有新值；delete 只有原值；update 左右并列
+  let cols;
+  if (mode === 'create') cols = `<div class="diff-col"><div class="diff-coltag new">新增</div>${cell(newV, 'new')}</div>`;
+  else if (mode === 'delete') cols = `<div class="diff-col"><div class="diff-coltag old">将删除</div>${cell(oldV, 'old')}</div>`;
+  else cols = `<div class="diff-col"><div class="diff-coltag old">原值</div>${cell(oldV, 'old')}</div>`
+            + `<div class="diff-col"><div class="diff-coltag new">新值</div>${cell(newV, 'new')}</div>`;
+  return `<div class="diff-field${changed ? ' changed' : ''}">
+    <div class="diff-flabel">${label}${(mode === 'update' && !changed) ? ' <span class="muted fs-xs">（未变）</span>' : ''}</div>
+    <div class="diff-cols">${cols}</div></div>`;
 }
-
-function _payloadSummary(p) {
-  const f = p.payload || {};
-  const cur = p.current || {};
+function _proposalDetailHtml(p) {
+  const f = p.payload || {}, cur = p.current || {};
+  const order = ['title', 'section', 'level', 'source', 'tags', 'content'];
   if (p.kind === 'delete') {
-    return `<div class="diff-row"><span class="diff-label">删除笔记</span> ${esc(cur.code ? cur.code + ' ' : '')}${esc(cur.title || f.title || ('#' + p.note_id))}</div>`
-      + (cur.content ? `<pre class="diff-content old">${esc(cur.content)}</pre>` : '');
+    return _diffField('笔记', (cur.title || ''), '', false, 'delete')
+      + _diffField('正文', cur.content || '', '', true, 'delete');
   }
   if (p.kind === 'create') {
-    const rows = ['section', 'title', 'level', 'source', 'tags'].filter(k => f[k] !== undefined && f[k] !== '')
-      .map(k => `<div class="diff-row"><span class="diff-label">${_fieldLabel[k]}</span> ${esc(f[k])}</div>`).join('');
-    return rows + (f.content !== undefined ? `<div class="diff-row"><div class="diff-label">正文</div><pre class="diff-content new">${esc(f.content || '')}</pre></div>` : '');
+    return order.filter(k => f[k] !== undefined && f[k] !== '')
+      .map(k => _diffField(_fieldLabel[k], '', f[k], k === 'content', 'create')).join('')
+      || '<span class="muted">无内容</span>';
   }
-  // update：逐字段对比原值与提议值
-  const keys = ['title', 'section', 'level', 'source', 'tags', 'content'].filter(k => f[k] !== undefined);
+  const keys = order.filter(k => f[k] !== undefined);
   if (!keys.length) return '<span class="muted">无字段改动</span>';
-  return keys.map(k => _diffRow(_fieldLabel[k], cur[k], f[k], k === 'content')).join('');
+  return keys.map(k => _diffField(_fieldLabel[k], cur[k], f[k], k === 'content', 'update')).join('');
 }
-async function loadProposals() {
-  const box = document.getElementById('proposalList');
-  box.innerHTML = '<span class="muted">加载中…</span>';
-  try {
-    const d = await (await _origFetch('/api/proposals')).json();
-    if (!d.items.length) { box.innerHTML = '<div class="muted" style="padding:12px">暂无变更申请</div>'; return; }
-    const isAdmin = currentRole === 'admin';
-    box.innerHTML = d.items.map(p => {
-      const st = p.status === 'pending' ? '<span class="prop-st pending">待审</span>'
-        : p.status === 'approved' ? '<span class="prop-st ok">已通过</span>'
-        : '<span class="prop-st rej">已驳回</span>';
-      const actions = (isAdmin && p.status === 'pending')
-        ? `<div class="prop-actions"><button class="btn btn-sm btn-success" onclick="approveProposal(${p.id})">批准</button>`
-          + `<button class="btn btn-sm btn-danger" onclick="rejectProposal(${p.id})">驳回</button></div>` : '';
-      const note = p.review_note ? `<div class="prop-note">审批备注：${esc(p.review_note)}</div>` : '';
-      return `<div class="prop-card">
-        <div class="prop-head">${_kindLabel[p.kind] || p.kind} ${st}
-          <span class="muted fs-xs">${esc(p.proposer_name)} · ${esc(p.created_at)}</span></div>
-        <div class="prop-body">${_payloadSummary(p)}</div>${note}${actions}</div>`;
-    }).join('');
-  } catch (e) { box.innerHTML = '<span class="muted">加载失败</span>'; }
+function openProposalDetail(id) {
+  const p = _propItems[id];
+  if (!p) return;
+  const isAdmin = currentRole === 'admin';
+  const code = (p.current && p.current.code) ? esc(p.current.code) + ' · ' : '';
+  const note = p.review_note ? `<div class="prop-note">审批备注：${esc(p.review_note)}</div>` : '';
+  const actions = (isAdmin && p.status === 'pending')
+    ? `<div class="prop-actions"><button class="btn btn-sm btn-success" onclick="approveProposal(${p.id})">批准并生效</button>`
+      + `<button class="btn btn-sm btn-danger" onclick="rejectProposal(${p.id})">驳回</button></div>` : '';
+  document.getElementById('proposalDetail').innerHTML = `
+    <div class="prop-detail-head">${_kindLabel[p.kind] || p.kind} ${_propStatusTag(p.status)}
+      <span class="muted fs-xs">${code}${esc(p.proposer_name)} · ${esc(p.created_at)}</span></div>
+    ${_proposalDetailHtml(p)}${note}${actions}`;
+  document.getElementById('proposalListView').style.display = 'none';
+  document.getElementById('proposalDetailView').style.display = '';
 }
 async function approveProposal(id) {
   const r = await _origFetch('/api/proposals/' + id + '/approve', { method: 'POST' });
@@ -3647,7 +3727,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '3.7';
+const APP_VERSION = '3.8';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
