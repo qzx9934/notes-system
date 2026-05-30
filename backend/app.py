@@ -1395,6 +1395,8 @@ def api_note_update(id):
     # 来源：仅当本次真的改了来源才校验，保留历史遗留的自定义来源（未改动不拦截）
     if source != existing['source'] and not valid_source(source):
         return jsonify({'error': '来源不在允许列表内：' + ' / '.join(VALID_SOURCES)}), 400
+    if 'section' in data and not section_exists(db, data['section']):
+        return jsonify({'error': f'未知的章节编码: {data["section"]}'}), 400
 
     # 共建者：仅记录其实际提交的字段，转为待审申请
     role, _, _ = effective_actor()
@@ -1405,11 +1407,17 @@ def api_note_update(id):
             return jsonify({'error': '没有要修改的字段'}), 400
         return queue_proposal('update', id, proposed)
 
-    db.execute(
-        'UPDATE notes SET title=?,content=?,tags=?,source=?,level=?,note_date=?,updated_at=datetime("now","localtime") WHERE id=?',
-        (title, content, tags, source, level, note_date, id)
-    )
-    db.commit()
+    # 改章节：必须随新章节重新生成编号（否则 code 前缀仍是旧章节，看起来"改章节没用"）
+    if 'section' in data and data['section'] != existing['section']:
+        move_note_to_section(db, id, data['section'],
+                             {'title': title, 'content': content, 'tags': tags,
+                              'source': source, 'level': level, 'note_date': note_date})
+    else:
+        db.execute(
+            'UPDATE notes SET title=?,content=?,tags=?,source=?,level=?,note_date=?,updated_at=datetime("now","localtime") WHERE id=?',
+            (title, content, tags, source, level, note_date, id)
+        )
+        db.commit()
 
     # 内容变更可能移除了图片引用 -> 顺手回收孤儿图片
     if 'content' in data and content != existing['content']:
