@@ -56,7 +56,7 @@ body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; background: va
 .roam-hint { font-size: var(--fs-md); color: var(--text-secondary); flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 16px; }
 .page-active { background: var(--primary-light); color: #fff; font-weight: 600; }
-.nav-domain.active-all { background: rgba(255,255,255,.1); }
+.nav-domain.active-all, .nav-domain.active-domain { background: rgba(255,255,255,.1); }
 .footer-actions { display: flex; align-items: center; gap: 4px; }
 .dot-all { background: #7F8C8D; }
 
@@ -201,7 +201,7 @@ tbody tr.selected { background: #EBF5FB; }
   background: var(--card); z-index: 260;
   box-shadow: 0 10px 40px rgba(0,0,0,.2); border-radius: var(--radius);
   display: flex; flex-direction: column; overflow: hidden;
-  width: 750px; max-width: 95vw; max-height: 90vh;
+  width: 920px; max-width: 95vw; max-height: 90vh;
 }
 .preview-header {
   padding: 16px 20px; border-bottom: 1px solid var(--border);
@@ -2525,10 +2525,11 @@ function populateBatchSourceSelect() {
 function renderSidebar() {
   const nav = document.getElementById('sidebarNav');
   const domainColors = {A: 'var(--accent-A)', B: 'var(--accent-B)', C: 'var(--accent-C)', D: 'var(--accent-D)', E: 'var(--accent-E)'};
+  const selectedDomain = document.getElementById('filterDomain')?.value || '';
   let html = '';
   // "全部笔记" at the same level as the 5 domains
   html += `<div class="nav-section">
-    <div class="nav-domain ${currentSection === '' ? 'active-all' : ''}" onclick="selectSection('')">
+    <div class="nav-domain ${currentSection === '' && selectedDomain === '' ? 'active-all' : ''}" onclick="selectSection('')">
       <span class="dot dot-all"></span>
       📋 全部笔记
       ${totalCount ? `<span class="count">${totalCount}</span>` : ''}
@@ -2538,7 +2539,7 @@ function renderSidebar() {
     const domainSections = sections.filter(s => s.domain === d.code);
     const domainTotal = domainSections.reduce((sum, s) => sum + (sectionCounts[s.code] || 0), 0);
     html += `<div class="nav-section">
-      <div class="nav-domain" onclick="toggleDomain('${d.code}')">
+      <div class="nav-domain ${selectedDomain === d.code && !currentSection ? 'active-domain' : ''}" onclick="selectDomain('${d.code}')">
         <span class="dot" style="background:${domainColors[d.code]}"></span>
         ${d.code} ${d.name}
         ${domainTotal ? `<span class="count">${domainTotal}</span>` : ''}
@@ -2557,6 +2558,8 @@ function renderSidebar() {
   if (currentSection) {
     const sec = sections.find(s => s.code === currentSection);
     if (sec) toggleDomain(sec.domain, true);
+  } else if (selectedDomain) {
+    toggleDomain(selectedDomain, true);
   }
 }
 
@@ -2576,12 +2579,25 @@ function selectSection(code) {
   doSearch();
   document.getElementById('tableTitle').textContent = code ? `${code} ${sections.find(s=>s.code===code)?.name || ''}` : '全部笔记';
 }
+function selectDomain(code) {
+  currentSection = '';
+  currentPage = 1;
+  selectedIds.clear();
+  updateBatchBar();
+  document.getElementById('filterDomain').value = code;
+  renderSidebar();
+  doSearch();
+  const domain = domains.find(d => d.code === code);
+  document.getElementById('tableTitle').textContent = domain ? `${domain.code} ${domain.name}` : '全部笔记';
+}
 function onDomainFilter() {
   currentSection = '';
   currentPage = 1;
   selectedIds.clear();
   updateBatchBar();
-  document.getElementById('tableTitle').textContent = '全部笔记';
+  const code = document.getElementById('filterDomain').value;
+  const domain = domains.find(d => d.code === code);
+  document.getElementById('tableTitle').textContent = domain ? `${domain.code} ${domain.name}` : '全部笔记';
   renderSidebar();
   doSearch();
 }
@@ -3905,7 +3921,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '4.2';
+const APP_VERSION = '4.3';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
