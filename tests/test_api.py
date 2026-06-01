@@ -632,6 +632,36 @@ def test_duplicates_distinct_notes_not_clustered(admin):
     assert '输煤皮带' not in flat and '燃油泵' not in flat
 
 
+# ---------------- 标题/正文一致性检查 ----------------
+
+def test_title_content_check_requires_admin(client):
+    assert client.post('/api/notes/title-content-check').status_code == 401
+
+
+def test_title_content_check_background_job_flags_mismatch(admin, monkeypatch):
+    monkeypatch.setattr(_app, '_start_title_check_worker', lambda job_id: None)
+    bad = admin.post('/api/notes', json={
+        'section': 'A01',
+        'title': '给水泵启动条件',
+        'content': '凝结水泵联锁投入后，检查凝汽器水位和凝结水压力。'
+    }).get_json()['id']
+    good = admin.post('/api/notes', json={
+        'section': 'A01',
+        'title': '锅炉MFT动作条件',
+        'content': '锅炉MFT动作条件包括炉膛压力高、汽包水位低等保护动作。'
+    }).get_json()['id']
+
+    r = admin.post('/api/notes/title-content-check')
+    assert r.status_code == 202
+    job_id = r.get_json()['job']['id']
+    _app._run_title_check_job(job_id)
+    job = admin.get(f'/api/notes/title-content-check/{job_id}').get_json()['job']
+    ids = {x['id'] for x in job['results']}
+    assert bad in ids
+    assert good not in ids
+    assert job['suspicious'] == len(job['results'])
+
+
 # ---------------- AI 总结（DeepSeek，打桩） ----------------
 
 def test_summarize_requires_admin(client):

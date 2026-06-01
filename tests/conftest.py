@@ -29,6 +29,8 @@ def _reset_login_throttle():
     app_module._LOGIN_FAILS.clear()
     app_module._SUMMARY_JOBS.clear()
     app_module._SUMMARY_ACTIVE_JOB_ID = None
+    app_module._TITLE_CHECK_JOBS.clear()
+    app_module._TITLE_CHECK_ACTIVE_JOB_ID = None
     yield
 
 

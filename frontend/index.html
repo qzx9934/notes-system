@@ -626,6 +626,16 @@ body.roam-immersive .batch-bar { display: none; }
 .dup-code { font-family: 'Consolas', monospace; font-size: 12px; color: var(--primary-light); flex-shrink: 0; }
 .dup-title { flex: 1; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dup-date { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+.check-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+.check-table th, .check-table td { border-bottom: 1px solid var(--border); padding: 7px 8px; text-align: left; vertical-align: top; }
+.check-table th { color: var(--text-secondary); font-weight: 600; background: #fafbfc; }
+.check-risk { display: inline-block; min-width: 34px; text-align: center; border-radius: 10px; padding: 1px 8px; font-size: 11px; color: #fff; }
+.check-risk.high { background: #C0392B; }
+.check-risk.medium { background: #E67E22; }
+.check-title-cell { max-width: 190px; font-weight: 600; color: var(--text); }
+.check-excerpt { max-width: 280px; color: var(--text-secondary); line-height: 1.55; }
+.check-reason { max-width: 220px; line-height: 1.55; }
+.check-terms { color: var(--text-secondary); font-size: 11px; margin-top: 3px; }
 
 /* 待审申请入口徽标 */
 .proposal-entry { position: relative; }
@@ -1084,6 +1094,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         <button type="button" class="settings-tab active" data-page="token" onclick="switchSettingsPage('token')">🎫 API 令牌</button>
         <button type="button" class="settings-tab" data-page="uploads" onclick="switchSettingsPage('uploads')">🧹 图片存储维护</button>
         <button type="button" class="settings-tab" data-page="dup" onclick="switchSettingsPage('dup')">🔁 笔记查重</button>
+        <button type="button" class="settings-tab" data-page="titlecheck" onclick="switchSettingsPage('titlecheck')">🔎 标题核查</button>
         <button type="button" class="settings-tab" data-page="summary" onclick="switchSettingsPage('summary')">🤖 AI 总结提示词</button>
         <button type="button" class="settings-tab" data-page="tidy" onclick="switchSettingsPage('tidy')">📝 AI 整理提示词</button>
         <button type="button" class="settings-tab" data-page="fill" onclick="switchSettingsPage('fill')">✏️ AI 填充提示词</button>
@@ -1174,6 +1185,19 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
             </div>
           </div>
           <div id="dupResult" class="dup-result"></div>
+        </section>
+
+        <!-- 页：标题/正文一致性检查 -->
+        <section class="settings-page" id="settingsPage-titlecheck">
+          <h4 class="settings-page-title">🔎 标题/正文一致性检查</h4>
+          <div class="token-hint">用本地规则扫描全库，找出标题关键词与正文命中明显不一致、正文为空或正文过短的疑似笔记；不调用 AI，也不会自动修改数据。</div>
+          <div class="form-row">
+            <div class="form-group flex-none">
+              <button type="button" class="btn btn-primary btn-sm" onclick="startTitleContentCheck()">开始核查</button>
+            </div>
+            <div class="form-group"><label>&nbsp;</label><span id="titleCheckStatus" class="muted"></span></div>
+          </div>
+          <div id="titleCheckResult" class="dup-result"></div>
         </section>
 
         <!-- 页：AI 总结提示词 -->
@@ -1924,6 +1948,8 @@ function openSettingsModal() {
   document.getElementById('aiTidyPromptResult').textContent = '';
   document.getElementById('aiFillPromptResult').textContent = '';
   document.getElementById('dupResult').innerHTML = '';
+  document.getElementById('titleCheckStatus').textContent = '';
+  document.getElementById('titleCheckResult').innerHTML = '';
   document.getElementById('cleanupResult').textContent = '';
   switchSettingsPage('token');
   loadTokens();
@@ -2407,6 +2433,69 @@ async function doFindDuplicates() {
     out.innerHTML = '';
     showToast(err.message || '查重失败', 'error');
   }
+}
+
+async function startTitleContentCheck() {
+  const status = document.getElementById('titleCheckStatus');
+  const out = document.getElementById('titleCheckResult');
+  status.textContent = '任务提交中…';
+  out.innerHTML = '';
+  try {
+    const r = await _origFetch('/api/notes/title-content-check', { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '标题核查启动失败');
+    status.textContent = '后台核查中…';
+    pollTitleContentCheck(d.job.id);
+  } catch (err) {
+    status.textContent = '';
+    showToast(err.message || '标题核查启动失败', 'error');
+  }
+}
+
+async function pollTitleContentCheck(jobId) {
+  const status = document.getElementById('titleCheckStatus');
+  const out = document.getElementById('titleCheckResult');
+  try {
+    const r = await _origFetch('/api/notes/title-content-check/' + encodeURIComponent(jobId));
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '标题核查状态获取失败');
+    const j = d.job;
+    status.textContent = `已检查 ${j.checked || 0} / ${j.total || 0} 条，发现疑似 ${j.suspicious || 0} 条`;
+    if (j.status === 'queued' || j.status === 'running') {
+      setTimeout(() => pollTitleContentCheck(jobId), 1200);
+      return;
+    }
+    renderTitleContentCheck(j);
+  } catch (err) {
+    status.textContent = '';
+    out.innerHTML = '';
+    showToast(err.message || '标题核查失败', 'error');
+  }
+}
+
+function renderTitleContentCheck(job) {
+  const out = document.getElementById('titleCheckResult');
+  const items = job.results || [];
+  if (!items.length) {
+    out.innerHTML = '<div class="dup-none">✅ 未发现明显的标题/正文不一致问题（共扫描 ' + (job.total || 0) + ' 条）</div>';
+    return;
+  }
+  let html = '<div class="dup-summary">发现 <b>' + items.length + '</b> 条疑似标题/正文不一致笔记（扫描 ' + (job.total || 0) + ' 条）：</div>';
+  html += '<table class="check-table"><thead><tr><th>风险</th><th>编号</th><th>标题</th><th>正文摘要</th><th>原因</th><th>操作</th></tr></thead><tbody>';
+  items.forEach(n => {
+    const riskLabel = n.risk === 'high' ? '高' : '中';
+    const terms = (n.unmatched_terms || []).length ? '<div class="check-terms">未命中：' + esc((n.unmatched_terms || []).join('、')) + '</div>' : '';
+    html += '<tr>' +
+      '<td><span class="check-risk ' + esc(n.risk || 'medium') + '">' + riskLabel + '</span></td>' +
+      '<td><span class="dup-code">' + esc(n.code) + '</span></td>' +
+      '<td class="check-title-cell">' + esc(n.title) + '</td>' +
+      '<td class="check-excerpt">' + esc(n.content_excerpt || '') + '</td>' +
+      '<td class="check-reason">' + esc(n.reason || '') + terms + '</td>' +
+      '<td><button type="button" class="btn btn-sm btn-outline" onclick="openPreviewFromDup(' + n.id + ')">查看</button></td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  out.innerHTML = html;
 }
 
 // 从查重结果点开某条笔记：关闭设置弹窗再打开预览，避免遮挡

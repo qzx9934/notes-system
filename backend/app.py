@@ -1991,6 +1991,198 @@ def api_notes_duplicates():
         'clusters': clusters,
     })
 
+# --- 标题/正文一致性检查（本地规则，不调用 AI） ---
+_TITLE_CHECK_JOBS = {}
+_TITLE_CHECK_LOCK = threading.Lock()
+_TITLE_CHECK_ACTIVE_JOB_ID = None
+_TITLE_CHECK_STOPWORDS = {
+    '要点', '注意', '事项', '方法', '要求', '规定', '规范', '原则', '说明', '流程',
+    '步骤', '相关', '主要', '一般', '重点', '内容', '详情', '知识', '整理',
+}
+_TITLE_CHECK_TERMS = [
+    '磨煤机', '给水泵', '凝结水泵', '循环水泵', '送风机', '引风机', '一次风机',
+    '空预器', '汽轮机', '发电机', '锅炉', '汽包', '除氧器', '凝汽器', '高加', '低加',
+    'EH油', '密封油', '润滑油', '保护', '联锁', '跳闸', 'MFT', 'RB', '启动', '停运',
+    '投入', '退出', '切换', '检查', '处理', '报警', '定值', '参数', '工作票', '操作票',
+    '安措', '缺陷', '事故', '通报', '原因', '现象',
+]
+
+def _compact_for_check(text):
+    return re.sub(r'[\s　,，。.;；:：、!！?？()（）\[\]【】"\'`~·\-—_/\\]+',
+                  '', (text or '').lower())
+
+def _title_terms(title):
+    raw = title or ''
+    compact = _compact_for_check(raw)
+    terms = []
+    for term in _TITLE_CHECK_TERMS:
+        if _compact_for_check(term) in compact:
+            terms.append(_compact_for_check(term))
+    for token in re.findall(r'[A-Za-z][A-Za-z0-9_-]{1,}|[0-9]+(?:\.[0-9]+)?', raw):
+        terms.append(token.lower())
+    if not terms:
+        chunks = re.findall(r'[\u4e00-\u9fff]{2,}', raw)
+        for chunk in chunks:
+            c = _compact_for_check(chunk)
+            for n in (4, 3, 2):
+                for i in range(0, max(0, len(c) - n + 1)):
+                    part = c[i:i + n]
+                    if part and part not in _TITLE_CHECK_STOPWORDS:
+                        terms.append(part)
+                if terms:
+                    break
+    seen, out = set(), []
+    for term in terms:
+        if len(term) < 2 or term in seen or term in _TITLE_CHECK_STOPWORDS:
+            continue
+        seen.add(term)
+        out.append(term)
+    return out[:8]
+
+def _content_excerpt(content, limit=120):
+    text = re.sub(r'\s+', ' ', (content or '').strip())
+    return text[:limit] + ('…' if len(text) > limit else '')
+
+def _check_title_content_row(row):
+    title = (row['title'] or '').strip()
+    content = row['content'] or ''
+    compact_content = _compact_for_check(content)
+    if not title:
+        return None
+    if not compact_content:
+        return {
+            'risk': 'high',
+            'reason': '正文为空，无法支撑标题',
+            'terms': [],
+            'matched_terms': [],
+            'unmatched_terms': [],
+        }
+    if len(compact_content) < 20:
+        return {
+            'risk': 'medium',
+            'reason': '正文过短，可能无法准确对应标题',
+            'terms': [],
+            'matched_terms': [],
+            'unmatched_terms': [],
+        }
+    terms = _title_terms(title)
+    if not terms:
+        return None
+    matched = [t for t in terms if t in compact_content]
+    unmatched = [t for t in terms if t not in compact_content]
+    ratio = len(matched) / len(terms)
+    if len(terms) >= 2 and not matched:
+        risk = 'high'
+        reason = '标题关键词在正文中均未出现，疑似标题与内容不符'
+    elif len(terms) >= 3 and ratio < 0.34:
+        risk = 'medium'
+        reason = '标题关键词与正文命中比例较低，建议人工核对'
+    elif len(terms) == 1 and not matched:
+        risk = 'medium'
+        reason = '标题核心词未在正文中出现，建议人工核对'
+    else:
+        return None
+    return {
+        'risk': risk,
+        'reason': reason,
+        'terms': terms,
+        'matched_terms': matched,
+        'unmatched_terms': unmatched,
+    }
+
+def _title_check_public(job):
+    d = dict(job)
+    d['results'] = list(d.get('results') or [])
+    return d
+
+def _update_title_check_job(job_id, **changes):
+    with _TITLE_CHECK_LOCK:
+        job = _TITLE_CHECK_JOBS.get(job_id)
+        if not job:
+            return None
+        job.update(changes)
+        return job
+
+def _run_title_check_job(job_id):
+    global _TITLE_CHECK_ACTIVE_JOB_ID
+    db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA busy_timeout=5000")
+    try:
+        _update_title_check_job(job_id, status='running',
+                                started_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        rows = db.execute(
+            'SELECT id, code, section, title, content, note_date, updated_at FROM notes ORDER BY id'
+        ).fetchall()
+        results = []
+        total = len(rows)
+        _update_title_check_job(job_id, total=total)
+        for idx, row in enumerate(rows, 1):
+            hit = _check_title_content_row(row)
+            if hit:
+                results.append({
+                    'id': row['id'],
+                    'code': row['code'],
+                    'section': row['section'],
+                    'title': row['title'],
+                    'content_excerpt': _content_excerpt(row['content']),
+                    'note_date': row['note_date'],
+                    'updated_at': row['updated_at'],
+                    **hit,
+                })
+            if idx % 50 == 0 or idx == total:
+                _update_title_check_job(job_id, checked=idx, suspicious=len(results),
+                                        results=list(results))
+        results.sort(key=lambda x: (0 if x['risk'] == 'high' else 1, x['code']))
+        _update_title_check_job(job_id, status='done', checked=total,
+                                suspicious=len(results), results=results,
+                                finished_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    finally:
+        db.close()
+        with _TITLE_CHECK_LOCK:
+            if _TITLE_CHECK_ACTIVE_JOB_ID == job_id:
+                _TITLE_CHECK_ACTIVE_JOB_ID = None
+
+def _start_title_check_worker(job_id):
+    t = threading.Thread(target=_run_title_check_job, args=(job_id,), daemon=True)
+    t.start()
+    return t
+
+@app.route('/api/notes/title-content-check', methods=['POST'])
+@admin_required
+def api_title_content_check_start():
+    """创建全库标题/正文一致性检查任务（本地规则，不调用 AI）。"""
+    global _TITLE_CHECK_ACTIVE_JOB_ID
+    with _TITLE_CHECK_LOCK:
+        if _TITLE_CHECK_ACTIVE_JOB_ID:
+            return jsonify({'error': '已有标题核查任务正在运行，请稍后再试'}), 409
+        job_id = uuid.uuid4().hex
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        job = {
+            'id': job_id,
+            'status': 'queued',
+            'created_at': now,
+            'started_at': None,
+            'finished_at': None,
+            'total': 0,
+            'checked': 0,
+            'suspicious': 0,
+            'results': [],
+        }
+        _TITLE_CHECK_JOBS[job_id] = job
+        _TITLE_CHECK_ACTIVE_JOB_ID = job_id
+    _start_title_check_worker(job_id)
+    return jsonify({'ok': True, 'queued': True, 'job': _title_check_public(job)}), 202
+
+@app.route('/api/notes/title-content-check/<job_id>')
+@admin_required
+def api_title_content_check_job(job_id):
+    with _TITLE_CHECK_LOCK:
+        job = _TITLE_CHECK_JOBS.get(job_id)
+        if not job:
+            return jsonify({'error': 'not found'}), 404
+        return jsonify({'ok': True, 'job': _title_check_public(job)})
+
 # --- 批量操作 ---
 @app.route('/api/notes/batch', methods=['DELETE'])
 @admin_required

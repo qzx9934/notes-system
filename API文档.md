@@ -225,6 +225,14 @@ Authorization: Bearer <你的令牌>
 - `?scope=section`（默认，仅同章节内查重）或 `?scope=all`（跨章节全库查重）。
 - 响应：`{"ok": true, "threshold": 0.85, "scope": "section", "total_notes": 120, "cluster_count": 2, "duplicate_notes": 5, "clusters": [[{"id","code","section","title","note_date","updated_at"}, …], …]}`。
 
+### `POST /api/notes/title-content-check` —— 标题/正文一致性检查（admin）
+
+创建后台任务，用本地规则扫描全库，找出标题关键词与正文命中明显不一致、正文为空或正文过短的疑似笔记。此功能不调用 AI、不消耗 token，也不会自动修改数据。响应状态码 `202`：`{"ok": true, "queued": true, "job": {"id": "...", "status": "queued", ...}}`。
+
+### `GET /api/notes/title-content-check/<job_id>` —— 标题核查任务状态（admin）
+
+查询标题/正文一致性检查进度和结果。响应：`{"ok": true, "job": {"status": "queued|running|done", "total": N, "checked": N, "suspicious": N, "results": [{"id","code","title","content_excerpt","risk","reason","unmatched_terms"}]}}`。结果仅供人工核对，点击前端结果可打开笔记详情。
+
 ### `POST /api/notes/summarize-batch` —— 一键批量总结（admin）
 
 创建后台 AI 总结任务，对一批勾选的笔记按固定间隔逐条生成总结，避免长请求占住后端服务。body：`{"ids": [..], "force": false}`。默认跳过已有总结的，`force=true` 则全部重做；单次上限 30 条。响应状态码 `202`：`{"ok": true, "queued": true, "job": {"id": "...", "status": "queued", "total": 3, "done": 0, "skipped": 0, "failed": 0, ...}}`。
