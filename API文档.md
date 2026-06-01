@@ -231,7 +231,15 @@ Authorization: Bearer <你的令牌>
 
 ### `GET /api/notes/title-content-check/<job_id>` —— 标题核查任务状态（admin）
 
-查询标题/正文一致性检查进度和结果。响应：`{"ok": true, "job": {"status": "queued|running|done", "total": N, "checked": N, "suspicious": N, "results": [{"id","code","title","content_excerpt","risk","reason","unmatched_terms"}]}}`。结果仅供人工核对，点击前端结果可打开笔记详情。
+查询标题/正文一致性检查进度和结果。响应：`{"ok": true, "job": {"status": "queued|running|done", "total": N, "checked": N, "ignored": N, "suspicious": N, "results": [{"id","code","title","content_excerpt","risk","reason","unmatched_terms"}]}}`。结果仅供人工核对，点击前端结果可打开笔记详情。
+
+### `GET /api/notes/title-content-ignore` —— 标题核查忽略列表（admin）
+
+返回已忽略的标题核查项。被忽略的笔记后续不会进入标题/正文一致性检查结果。响应：`{"ok": true, "items": [{"note_id","code","title","ignored_by","ignored_at","reason"}]}`。
+
+### `POST/DELETE /api/notes/<id>/title-content-ignore` —— 忽略/恢复标题核查项（admin）
+
+`POST` 将某条笔记加入标题核查忽略列表；`DELETE` 从忽略列表移除，后续核查会重新扫描。
 
 ### `POST /api/notes/summarize-batch` —— 一键批量总结（admin）
 

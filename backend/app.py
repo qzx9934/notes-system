@@ -439,6 +439,13 @@ def init_db():
             handled_at  TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);
+
+        CREATE TABLE IF NOT EXISTS title_check_ignored (
+            note_id     INTEGER PRIMARY KEY,
+            ignored_by  TEXT    NOT NULL DEFAULT '',
+            ignored_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            reason      TEXT    NOT NULL DEFAULT ''
+        );
     ''')
     db.commit()
     db.close()
@@ -2112,11 +2119,13 @@ def _run_title_check_job(job_id):
         _update_title_check_job(job_id, status='running',
                                 started_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         rows = db.execute(
-            'SELECT id, code, section, title, content, note_date, updated_at FROM notes ORDER BY id'
+            'SELECT id, code, section, title, content, note_date, updated_at FROM notes '
+            'WHERE id NOT IN (SELECT note_id FROM title_check_ignored) ORDER BY id'
         ).fetchall()
+        ignored_count = db.execute('SELECT COUNT(*) FROM title_check_ignored').fetchone()[0]
         results = []
         total = len(rows)
-        _update_title_check_job(job_id, total=total)
+        _update_title_check_job(job_id, total=total, ignored=ignored_count)
         for idx, row in enumerate(rows, 1):
             hit = _check_title_content_row(row)
             if hit:
@@ -2161,14 +2170,15 @@ def api_title_content_check_start():
         job = {
             'id': job_id,
             'status': 'queued',
-            'created_at': now,
-            'started_at': None,
-            'finished_at': None,
-            'total': 0,
-            'checked': 0,
-            'suspicious': 0,
-            'results': [],
-        }
+        'created_at': now,
+        'started_at': None,
+        'finished_at': None,
+        'total': 0,
+        'checked': 0,
+        'ignored': 0,
+        'suspicious': 0,
+        'results': [],
+    }
         _TITLE_CHECK_JOBS[job_id] = job
         _TITLE_CHECK_ACTIVE_JOB_ID = job_id
     _start_title_check_worker(job_id)
@@ -2182,6 +2192,45 @@ def api_title_content_check_job(job_id):
         if not job:
             return jsonify({'error': 'not found'}), 404
         return jsonify({'ok': True, 'job': _title_check_public(job)})
+
+@app.route('/api/notes/title-content-ignore')
+@admin_required
+def api_title_content_ignore_list():
+    db = get_db()
+    rows = db.execute(
+        'SELECT i.note_id, i.ignored_by, i.ignored_at, i.reason, '
+        'n.code, n.section, n.title, n.note_date, n.updated_at '
+        'FROM title_check_ignored i '
+        'LEFT JOIN notes n ON n.id=i.note_id '
+        'ORDER BY i.ignored_at DESC'
+    ).fetchall()
+    return jsonify({'ok': True, 'items': [dict(r) for r in rows]})
+
+@app.route('/api/notes/<int:id>/title-content-ignore', methods=['POST'])
+@admin_required
+def api_title_content_ignore_add(id):
+    db = get_db()
+    row = db.execute('SELECT id FROM notes WHERE id=?', (id,)).fetchone()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    _, _, username = effective_actor()
+    reason = ((request.get_json(silent=True) or {}).get('reason') or '').strip()[:200]
+    db.execute(
+        'INSERT INTO title_check_ignored(note_id, ignored_by, reason) VALUES(?,?,?) '
+        'ON CONFLICT(note_id) DO UPDATE SET ignored_by=excluded.ignored_by, '
+        'ignored_at=datetime("now","localtime"), reason=excluded.reason',
+        (id, username or '', reason)
+    )
+    db.commit()
+    return jsonify({'ok': True, 'note_id': id})
+
+@app.route('/api/notes/<int:id>/title-content-ignore', methods=['DELETE'])
+@admin_required
+def api_title_content_ignore_delete(id):
+    db = get_db()
+    cur = db.execute('DELETE FROM title_check_ignored WHERE note_id=?', (id,))
+    db.commit()
+    return jsonify({'ok': True, 'removed': cur.rowcount})
 
 # --- 批量操作 ---
 @app.route('/api/notes/batch', methods=['DELETE'])
@@ -2197,6 +2246,7 @@ def api_notes_batch_delete():
         placeholders = ','.join(['?'] * len(ids))
         cursor = db.execute(f'DELETE FROM notes WHERE id IN ({placeholders})', ids)
         db.execute(f'DELETE FROM favorites WHERE note_id IN ({placeholders})', ids)
+        db.execute(f'DELETE FROM title_check_ignored WHERE note_id IN ({placeholders})', ids)
         db.commit()
     except sqlite3.Error:
         db.rollback()
@@ -2293,6 +2343,7 @@ def api_note_delete(id):
 
     db.execute('DELETE FROM notes WHERE id=?', (id,))
     db.execute('DELETE FROM favorites WHERE note_id=?', (id,))
+    db.execute('DELETE FROM title_check_ignored WHERE note_id=?', (id,))
     db.commit()
     _sweep_quietly()  # 顺手回收因删除而无人引用的图片
     return jsonify({'ok': True})
@@ -2382,6 +2433,7 @@ def _apply_proposal(db, prop):
             return False, '目标笔记已不存在'
         db.execute('DELETE FROM notes WHERE id=?', (prop['note_id'],))
         db.execute('DELETE FROM favorites WHERE note_id=?', (prop['note_id'],))
+        db.execute('DELETE FROM title_check_ignored WHERE note_id=?', (prop['note_id'],))
         return True, '已删除'
     return False, '未知的申请类型'
 

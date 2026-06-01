@@ -1195,9 +1195,13 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
             <div class="form-group flex-none">
               <button type="button" class="btn btn-primary btn-sm" onclick="startTitleContentCheck()">开始核查</button>
             </div>
+            <div class="form-group flex-none">
+              <button type="button" class="btn btn-sm btn-outline" onclick="loadTitleCheckIgnored()">查看已忽略</button>
+            </div>
             <div class="form-group"><label>&nbsp;</label><span id="titleCheckStatus" class="muted"></span></div>
           </div>
           <div id="titleCheckResult" class="dup-result"></div>
+          <div id="titleCheckIgnored" class="dup-result"></div>
         </section>
 
         <!-- 页：AI 总结提示词 -->
@@ -1950,6 +1954,7 @@ function openSettingsModal() {
   document.getElementById('dupResult').innerHTML = '';
   document.getElementById('titleCheckStatus').textContent = '';
   document.getElementById('titleCheckResult').innerHTML = '';
+  document.getElementById('titleCheckIgnored').innerHTML = '';
   document.getElementById('cleanupResult').textContent = '';
   switchSettingsPage('token');
   loadTokens();
@@ -2440,6 +2445,7 @@ async function startTitleContentCheck() {
   const out = document.getElementById('titleCheckResult');
   status.textContent = '任务提交中…';
   out.innerHTML = '';
+  document.getElementById('titleCheckIgnored').innerHTML = '';
   try {
     const r = await _origFetch('/api/notes/title-content-check', { method: 'POST' });
     const d = await r.json().catch(() => ({}));
@@ -2460,7 +2466,7 @@ async function pollTitleContentCheck(jobId) {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || '标题核查状态获取失败');
     const j = d.job;
-    status.textContent = `已检查 ${j.checked || 0} / ${j.total || 0} 条，发现疑似 ${j.suspicious || 0} 条`;
+    status.textContent = `已检查 ${j.checked || 0} / ${j.total || 0} 条，发现疑似 ${j.suspicious || 0} 条，已忽略 ${j.ignored || 0} 条`;
     if (j.status === 'queued' || j.status === 'running') {
       setTimeout(() => pollTitleContentCheck(jobId), 1200);
       return;
@@ -2477,10 +2483,10 @@ function renderTitleContentCheck(job) {
   const out = document.getElementById('titleCheckResult');
   const items = job.results || [];
   if (!items.length) {
-    out.innerHTML = '<div class="dup-none">✅ 未发现明显的标题/正文不一致问题（共扫描 ' + (job.total || 0) + ' 条）</div>';
+    out.innerHTML = '<div class="dup-none">✅ 未发现明显的标题/正文不一致问题（本次扫描 ' + (job.total || 0) + ' 条，已忽略 ' + (job.ignored || 0) + ' 条）</div>';
     return;
   }
-  let html = '<div class="dup-summary">发现 <b>' + items.length + '</b> 条疑似标题/正文不一致笔记（扫描 ' + (job.total || 0) + ' 条）：</div>';
+  let html = '<div class="dup-summary">发现 <b>' + items.length + '</b> 条疑似标题/正文不一致笔记（本次扫描 ' + (job.total || 0) + ' 条，已忽略 ' + (job.ignored || 0) + ' 条）：</div>';
   html += '<table class="check-table"><thead><tr><th>风险</th><th>编号</th><th>标题</th><th>正文摘要</th><th>原因</th><th>操作</th></tr></thead><tbody>';
   items.forEach(n => {
     const riskLabel = n.risk === 'high' ? '高' : '中';
@@ -2491,11 +2497,70 @@ function renderTitleContentCheck(job) {
       '<td class="check-title-cell">' + esc(n.title) + '</td>' +
       '<td class="check-excerpt">' + esc(n.content_excerpt || '') + '</td>' +
       '<td class="check-reason">' + esc(n.reason || '') + terms + '</td>' +
-      '<td><button type="button" class="btn btn-sm btn-outline" onclick="openPreviewFromDup(' + n.id + ')">查看</button></td>' +
+      '<td><button type="button" class="btn btn-sm btn-outline" onclick="openPreviewFromDup(' + n.id + ')">查看</button> ' +
+      '<button type="button" class="btn btn-sm btn-outline" onclick="ignoreTitleCheckItem(' + n.id + ')">忽略</button></td>' +
       '</tr>';
   });
   html += '</tbody></table>';
   out.innerHTML = html;
+}
+
+async function ignoreTitleCheckItem(id) {
+  if (!confirm('确认忽略这条标题核查结果？以后再次核查会跳过它。')) return;
+  try {
+    const r = await _origFetch('/api/notes/' + id + '/title-content-ignore', { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '忽略失败');
+    showToast('已忽略，后续核查会跳过', 'success');
+    const rowBtn = document.querySelector('button[onclick="ignoreTitleCheckItem(' + id + ')"]');
+    const tr = rowBtn ? rowBtn.closest('tr') : null;
+    if (tr) tr.remove();
+    loadTitleCheckIgnored();
+  } catch (err) {
+    showToast(err.message || '忽略失败', 'error');
+  }
+}
+
+async function loadTitleCheckIgnored() {
+  const box = document.getElementById('titleCheckIgnored');
+  box.innerHTML = '<span class="muted">加载已忽略列表…</span>';
+  try {
+    const r = await _origFetch('/api/notes/title-content-ignore');
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '加载已忽略列表失败');
+    const items = d.items || [];
+    if (!items.length) {
+      box.innerHTML = '<div class="dup-none">暂无已忽略的标题核查项</div>';
+      return;
+    }
+    let html = '<div class="dup-summary">已忽略 <b>' + items.length + '</b> 条：</div>';
+    html += '<table class="check-table"><thead><tr><th>编号</th><th>标题</th><th>忽略时间</th><th>操作</th></tr></thead><tbody>';
+    items.forEach(n => {
+      html += '<tr>' +
+        '<td><span class="dup-code">' + esc(n.code || ('#' + n.note_id)) + '</span></td>' +
+        '<td class="check-title-cell">' + esc(n.title || '笔记已删除') + '</td>' +
+        '<td class="muted">' + esc(n.ignored_at || '') + '</td>' +
+        '<td><button type="button" class="btn btn-sm btn-outline" onclick="restoreTitleCheckIgnored(' + n.note_id + ')">恢复核查</button></td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    box.innerHTML = html;
+  } catch (err) {
+    box.innerHTML = '';
+    showToast(err.message || '加载已忽略列表失败', 'error');
+  }
+}
+
+async function restoreTitleCheckIgnored(id) {
+  try {
+    const r = await _origFetch('/api/notes/' + id + '/title-content-ignore', { method: 'DELETE' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '恢复失败');
+    showToast('已恢复，下次核查会重新扫描', 'success');
+    loadTitleCheckIgnored();
+  } catch (err) {
+    showToast(err.message || '恢复失败', 'error');
+  }
 }
 
 // 从查重结果点开某条笔记：关闭设置弹窗再打开预览，避免遮挡

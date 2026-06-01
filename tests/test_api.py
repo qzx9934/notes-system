@@ -662,6 +662,33 @@ def test_title_content_check_background_job_flags_mismatch(admin, monkeypatch):
     assert job['suspicious'] == len(job['results'])
 
 
+def test_title_content_check_ignore_skips_future_jobs(admin, monkeypatch):
+    monkeypatch.setattr(_app, '_start_title_check_worker', lambda job_id: None)
+    bad = admin.post('/api/notes', json={
+        'section': 'A01',
+        'title': '给水泵停运条件',
+        'content': '凝结水泵运行中应关注凝汽器水位。'
+    }).get_json()['id']
+
+    r0 = admin.post('/api/notes/title-content-check')
+    job0 = r0.get_json()['job']['id']
+    _app._run_title_check_job(job0)
+    assert bad in {x['id'] for x in admin.get(f'/api/notes/title-content-check/{job0}').get_json()['job']['results']}
+
+    assert admin.post(f'/api/notes/{bad}/title-content-ignore').status_code == 200
+    ignored = admin.get('/api/notes/title-content-ignore').get_json()['items']
+    assert any(x['note_id'] == bad for x in ignored)
+
+    r1 = admin.post('/api/notes/title-content-check')
+    job1 = r1.get_json()['job']['id']
+    _app._run_title_check_job(job1)
+    job = admin.get(f'/api/notes/title-content-check/{job1}').get_json()['job']
+    assert bad not in {x['id'] for x in job['results']}
+    assert job['ignored'] >= 1
+
+    assert admin.delete(f'/api/notes/{bad}/title-content-ignore').get_json()['removed'] == 1
+
+
 # ---------------- AI 总结（DeepSeek，打桩） ----------------
 
 def test_summarize_requires_admin(client):
