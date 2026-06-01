@@ -243,6 +243,8 @@ tbody tr.selected { background: #EBF5FB; }
 .md-body img { max-width: 100%; }
 /* 漫游卡片中的 md 适配 */
 .roam-card-content.md-body { color: var(--text); font-size: 15px; }
+.roam-card-content.md-body ol { padding-left: 2.1em; margin-left: 0; list-style-position: outside; }
+.roam-card-content.md-body li { padding-left: .2em; }
 .roam-card-content.md-body pre { background: #1a1a2e; }
 .roam-card-content.md-body blockquote { background: rgba(0,0,0,.04); }
 .preview-footer {
@@ -1321,6 +1323,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
     <button class="btn btn-primary" onclick="openAddModal()">+ 新增笔记</button>
     <button class="btn btn-outline" id="importBtn" onclick="importExcel()">📥 导入Excel</button>
     <button class="btn btn-warning" onclick="startRoam()">🎴 笔记漫游</button>
+    <button class="btn btn-outline admin-only" id="summarizeAllBtn" onclick="summarizeAllNotes()" title="后台慢速处理全库未总结笔记">🤖 全库总结</button>
   </div>
 
   <div class="stats-bar" id="statsBar"></div>
@@ -2231,12 +2234,19 @@ async function doAiFill() {
 
 // ---- AI 整理：规整正文 + 顺带填充字段（一次调用），可撤回 ----
 let _tidyUndo = null;
+function _setIfBlank(id, value) {
+  const el = document.getElementById(id);
+  if (!el || !value) return false;
+  if (String(el.value || '').trim()) return false;
+  el.value = value;
+  return true;
+}
 function _applyFillFields(f) {
-  if (f.title) document.getElementById('editTitle').value = f.title;
-  if (f.tags) document.getElementById('editTags').value = f.tags;
-  if (f.section) document.getElementById('editSection').value = f.section;
-  if (f.level) document.getElementById('editLevel').value = f.level;
-  if (f.source) document.getElementById('editSource').value = f.source;
+  _setIfBlank('editTitle', f.title);
+  _setIfBlank('editTags', f.tags);
+  _setIfBlank('editSection', f.section);
+  _setIfBlank('editLevel', f.level);
+  _setIfBlank('editSource', f.source);
 }
 async function doAiTidy() {
   const ta = document.getElementById('editContent');
@@ -2281,22 +2291,67 @@ function resetTidyUndo() {
 async function batchSummarize() {
   const ids = Array.from(selectedIds);
   if (!ids.length) { showToast('请先勾选笔记', 'error'); return; }
-  if (ids.length > 15) { showToast('一次最多 15 条，请分批', 'error'); return; }
-  if (!confirm(`对选中的 ${ids.length} 条笔记生成 AI 总结？（已有总结的会自动跳过）`)) return;
-  showToast('正在生成总结，请稍候…', 'success');
+  if (ids.length > 30) { showToast('一次最多 30 条，请分批', 'error'); return; }
+  if (!confirm(`对选中的 ${ids.length} 条笔记创建后台 AI 总结任务？（已有总结的会自动跳过）`)) return;
+  showToast('已提交后台总结任务，将按间隔慢速处理…', 'success');
   try {
     const r = await fetch('/api/notes/summarize-batch', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids })
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { showToast(d.error || '批量总结失败', 'error'); return; }
-    let msg = `完成：成功 ${d.done}，跳过 ${d.skipped}，失败 ${d.failed}`;
-    showToast(msg, d.failed ? 'error' : 'success');
-    // 有失败时把首条失败原因弹出来，便于定位（如密钥/模型/限流）
-    if (d.failed && d.failed_list && d.failed_list.length) {
-      alert('部分总结失败，原因示例：\n' + d.failed_list.slice(0, 3).map(f => '· ' + (f.reason || '未知')).join('\n'));
+    clearSelection();
+    pollSummaryJob(d.job.id);
+  } catch (e) { showToast('批量总结任务提交失败', 'error'); }
+}
+
+async function summarizeAllNotes() {
+  if (!confirm('创建全库 AI 总结后台任务？已有 AI 总结内容的笔记会自动跳过，后台会慢速处理。')) return;
+  const btn = document.getElementById('summarizeAllBtn');
+  const old = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 已提交…'; }
+  let submitted = false;
+  try {
+    const r = await fetch('/api/notes/summarize-all', { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(d.error || '全库总结任务提交失败', 'error'); return; }
+    submitted = true;
+    showToast('已提交全库总结任务，后台将按间隔慢速处理', 'success');
+    pollSummaryJob(d.job.id, () => { if (btn) { btn.disabled = false; btn.textContent = old; } });
+  } catch (e) {
+    showToast('全库总结任务提交失败', 'error');
+  } finally {
+    if (btn && !submitted) { btn.disabled = false; btn.textContent = old; }
+  }
+}
+
+async function pollSummaryJob(jobId, onDone) {
+  if (!jobId) return;
+  try {
+    const r = await fetch('/api/notes/summarize-jobs/' + encodeURIComponent(jobId));
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.job) { showToast(d.error || '总结任务状态获取失败', 'error'); if (onDone) onDone(); return; }
+    const j = d.job;
+    const msg = `总结任务${j.status === 'done' ? '完成' : '运行中'}：成功 ${j.done}，跳过 ${j.skipped}，失败 ${j.failed} / 共 ${j.total}`;
+    showToast(msg, j.failed ? 'error' : 'success');
+    const allBtn = document.getElementById('summarizeAllBtn');
+    if (allBtn && (j.status === 'running' || j.status === 'queued')) {
+      allBtn.disabled = true;
+      allBtn.textContent = `⏳ 运行中 ${j.done + j.skipped + j.failed}/${j.total}`;
     }
-  } catch (e) { showToast('批量总结请求失败（可能是请求耗时过长被网关中断，请减少一次选择的数量）', 'error'); }
+    if (j.status === 'queued' || j.status === 'running') {
+      setTimeout(() => pollSummaryJob(jobId, onDone), 5000);
+      return;
+    }
+    if (allBtn) { allBtn.disabled = false; allBtn.textContent = '🤖 全库总结'; }
+    if (j.failed && j.failed_list && j.failed_list.length) {
+      alert('部分总结失败，原因示例：\n' + j.failed_list.slice(0, 3).map(f => '· ' + (f.reason || '未知')).join('\n'));
+    }
+    if (onDone) onDone();
+  } catch (e) {
+    showToast('总结任务状态获取失败', 'error');
+    if (onDone) onDone();
+  }
 }
 
 
@@ -3079,7 +3134,7 @@ async function batchUpdateLevel() {
       showToast(`已更新 ${data.updated} 条等级`, 'success');
       document.getElementById('batchLevel').value = '';
       clearSelection();
-      doSearch();
+      await Promise.all([doSearch(), loadStats()]);
     } else { showToast(data.error || '更新失败', 'error'); }
   } catch(e) { showToast('网络错误', 'error'); }
 }

@@ -227,7 +227,15 @@ Authorization: Bearer <你的令牌>
 
 ### `POST /api/notes/summarize-batch` —— 一键批量总结（admin）
 
-对一批勾选的笔记批量生成 AI 总结。body：`{"ids": [..], "force": false}`。默认跳过已有总结的，`force=true` 则全部重做；单次上限 50 条。响应：`{"ok": true, "done": N, "skipped": N, "failed": N, "failed_list": [..], "skipped_list": [..]}`。
+创建后台 AI 总结任务，对一批勾选的笔记按固定间隔逐条生成总结，避免长请求占住后端服务。body：`{"ids": [..], "force": false}`。默认跳过已有总结的，`force=true` 则全部重做；单次上限 30 条。响应状态码 `202`：`{"ok": true, "queued": true, "job": {"id": "...", "status": "queued", "total": 3, "done": 0, "skipped": 0, "failed": 0, ...}}`。
+
+### `POST /api/notes/summarize-all` —— 全库一键总结（admin）
+
+创建后台全库总结任务，按固定间隔慢速处理所有笔记，已有 AI 总结内容的笔记自动跳过。响应同上。任一总结任务运行期间再次提交会返回 `409`。
+
+### `GET /api/notes/summarize-jobs/<job_id>` —— 总结任务状态（admin）
+
+查询后台总结任务进度。响应：`{"ok": true, "job": {"status": "queued|running|done|failed", "total": N, "done": N, "skipped": N, "failed": N, "current_id": 123, "failed_list": [...], "skipped_list": [...]}}`。
 
 ### `POST /api/ai/fill` —— AI 填充结构化字段（admin / contributor）
 
@@ -239,10 +247,10 @@ Authorization: Bearer <你的令牌>
 
 ### `GET/PUT /api/config/ai-prompt` —— AI 提示词（admin）
 
-支持两类提示词，用 `kind` 区分：`summary`（默认，AI 总结）/ `tidy`（AI 整理）。
+支持三类提示词，用 `kind` 区分：`summary`（默认，AI 总结）/ `tidy`（AI 整理）/ `fill`（AI 填充）。
 
-- `GET /api/config/ai-prompt?kind=summary|tidy`：`{"prompt": "自定义或空", "default": "内置默认", "effective": "实际生效", "is_custom": bool, "kind": "…"}`。
-- `PUT`：body `{"prompt": "…", "kind": "summary|tidy"}` 设置自定义提示词；`prompt` 传**空字符串**则恢复内置默认。两类提示词互相独立。
+- `GET /api/config/ai-prompt?kind=summary|tidy|fill`：`{"prompt": "自定义或空", "default": "内置默认", "effective": "实际生效", "is_custom": bool, "kind": "…"}`。
+- `PUT`：body `{"prompt": "…", "kind": "summary|tidy|fill"}` 设置自定义提示词；`prompt` 传**空字符串**则恢复内置默认。三类提示词互相独立。
 
 ### `GET /api/login-log` —— 登录历史（admin）
 

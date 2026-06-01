@@ -843,19 +843,29 @@ def test_summarize_uses_custom_prompt(admin, monkeypatch):
 
 def test_summarize_batch(admin, monkeypatch):
     monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    monkeypatch.setattr(_app, 'SUMMARY_INTERVAL_SECONDS', 0)
+    monkeypatch.setattr(_app, '_start_summary_worker', lambda job_id: None)
     monkeypatch.setattr(_app, '_deepseek_summarize', lambda t, c, p=None, s=None: '## 批量总结')
     a = admin.post('/api/notes', json={'section': 'A01', 'title': '批1', 'content': '甲'}).get_json()['id']
     b = admin.post('/api/notes', json={'section': 'A01', 'title': '批2', 'content': '乙'}).get_json()['id']
     empty = admin.post('/api/notes', json={'section': 'A01', 'title': '批空'}).get_json()['id']
     r = admin.post('/api/notes/summarize-batch', json={'ids': [a, b, empty]})
-    body = r.get_json()
+    assert r.status_code == 202
+    job_id = r.get_json()['job']['id']
+    _app._run_summary_job(job_id)
+    body = admin.get(f'/api/notes/summarize-jobs/{job_id}').get_json()['job']
     assert body['done'] == 2 and body['skipped'] == 1
     # 默认跳过已有总结
     r2 = admin.post('/api/notes/summarize-batch', json={'ids': [a]})
-    assert r2.get_json()['skipped'] == 1 and r2.get_json()['done'] == 0
+    job_id2 = r2.get_json()['job']['id']
+    _app._run_summary_job(job_id2)
+    body2 = admin.get(f'/api/notes/summarize-jobs/{job_id2}').get_json()['job']
+    assert body2['skipped'] == 1 and body2['done'] == 0
     # force 重做
     r3 = admin.post('/api/notes/summarize-batch', json={'ids': [a], 'force': True})
-    assert r3.get_json()['done'] == 1
+    job_id3 = r3.get_json()['job']['id']
+    _app._run_summary_job(job_id3)
+    assert admin.get(f'/api/notes/summarize-jobs/{job_id3}').get_json()['job']['done'] == 1
 
 
 def test_summarize_batch_requires_admin(client):
@@ -863,11 +873,30 @@ def test_summarize_batch_requires_admin(client):
 
 
 def test_summarize_batch_over_limit_rejected(admin, monkeypatch):
-    # 单批上限 15 条：超过应被拒（避免串行调用大模型超过 gunicorn 超时）
+    # 单批上限 30 条：超过应被拒；实际调用在后台慢速执行
     monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
-    r = admin.post('/api/notes/summarize-batch', json={'ids': list(range(1, 17))})
+    r = admin.post('/api/notes/summarize-batch', json={'ids': list(range(1, 32))})
     assert r.status_code == 400
-    assert '15' in r.get_json()['error']
+    assert '30' in r.get_json()['error']
+
+
+def test_summarize_all_creates_background_job_and_skips_existing(admin, monkeypatch):
+    monkeypatch.setattr(_app, 'DEEPSEEK_API_KEY', 'k')
+    monkeypatch.setattr(_app, 'SUMMARY_INTERVAL_SECONDS', 0)
+    monkeypatch.setattr(_app, '_start_summary_worker', lambda job_id: None)
+    monkeypatch.setattr(_app, '_deepseek_summarize', lambda t, c, p=None, s=None: '## 全库总结')
+    a = admin.post('/api/notes', json={'section': 'A01', 'title': '全1', 'content': '甲'}).get_json()['id']
+    b = admin.post('/api/notes', json={'section': 'A01', 'title': '全2', 'content': '乙'}).get_json()['id']
+    admin.post(f'/api/notes/{a}/summarize')
+
+    r = admin.post('/api/notes/summarize-all')
+    assert r.status_code == 202
+    job_id = r.get_json()['job']['id']
+    _app._run_summary_job(job_id)
+    job = admin.get(f'/api/notes/summarize-jobs/{job_id}').get_json()['job']
+    assert job['done'] >= 1
+    assert any(x['id'] == a and x['reason'] == '已有总结' for x in job['skipped_list'])
+    assert admin.get(f'/api/notes/{b}').get_json()['ai_summary'] == '## 全库总结'
 
 
 # ---------------- AI 填充 ----------------

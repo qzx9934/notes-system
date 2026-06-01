@@ -27,6 +27,8 @@ def client():
 def _reset_login_throttle():
     """每个测试前清空登录失败计数，避免限流测试影响其它用例。"""
     app_module._LOGIN_FAILS.clear()
+    app_module._SUMMARY_JOBS.clear()
+    app_module._SUMMARY_ACTIVE_JOB_ID = None
     yield
 
 

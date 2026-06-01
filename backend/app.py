@@ -16,6 +16,8 @@ import subprocess
 import mimetypes
 import difflib
 import json
+import threading
+import uuid
 
 import requests
 
@@ -147,6 +149,8 @@ DEEPSEEK_API_KEY = os.environ.get('NOTES_DEEPSEEK_API_KEY', '').strip()
 DEEPSEEK_MODEL = os.environ.get('NOTES_DEEPSEEK_MODEL', 'deepseek-v4-flash').strip()
 DEEPSEEK_BASE_URL = os.environ.get('NOTES_DEEPSEEK_BASE_URL', 'https://api.deepseek.com').strip().rstrip('/')
 DEEPSEEK_TIMEOUT = int(os.environ.get('NOTES_DEEPSEEK_TIMEOUT', '60'))
+SUMMARY_BATCH_LIMIT = int(os.environ.get('NOTES_SUMMARY_BATCH_LIMIT', '30'))
+SUMMARY_INTERVAL_SECONDS = float(os.environ.get('NOTES_SUMMARY_INTERVAL_SECONDS', '5'))
 
 # 内置提示词：把笔记内容总结为电厂集控运行人员视角的 Markdown 要点
 AI_SUMMARY_SYSTEM_PROMPT = (
@@ -1514,44 +1518,195 @@ def api_note_summarize(id):
     db.commit()
     return jsonify({'ok': True, 'ai_summary': summary, 'ai_summary_at': now})
 
+_SUMMARY_JOBS = {}
+_SUMMARY_JOBS_LOCK = threading.Lock()
+_SUMMARY_ACTIVE_JOB_ID = None
+
+def _new_summary_job(ids, scope='selected', force=False, created_by=''):
+    global _SUMMARY_ACTIVE_JOB_ID
+    ids = [int(x) for x in ids]
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    job_id = uuid.uuid4().hex
+    job = {
+        'id': job_id,
+        'scope': scope,
+        'ids': ids,
+        'force': bool(force),
+        'status': 'queued',
+        'created_by': created_by or '',
+        'created_at': now,
+        'started_at': None,
+        'finished_at': None,
+        'total': len(ids),
+        'done': 0,
+        'skipped': 0,
+        'failed': 0,
+        'current_id': None,
+        'done_list': [],
+        'skipped_list': [],
+        'failed_list': [],
+        'message': '',
+    }
+    with _SUMMARY_JOBS_LOCK:
+        _SUMMARY_ACTIVE_JOB_ID = job_id
+        _SUMMARY_JOBS[job_id] = job
+    return job
+
+def _summary_job_public(job):
+    public = dict(job)
+    public.pop('ids', None)
+    public['done_list'] = list(public.get('done_list') or [])
+    public['skipped_list'] = list(public.get('skipped_list') or [])
+    public['failed_list'] = list(public.get('failed_list') or [])
+    return public
+
+def _get_summary_job(job_id):
+    with _SUMMARY_JOBS_LOCK:
+        job = _SUMMARY_JOBS.get(job_id)
+        return _summary_job_public(job) if job else None
+
+def _connect_job_db():
+    db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA foreign_keys=ON")
+    db.execute("PRAGMA busy_timeout=5000")
+    return db
+
+def _update_summary_job(job_id, **changes):
+    with _SUMMARY_JOBS_LOCK:
+        job = _SUMMARY_JOBS.get(job_id)
+        if not job:
+            return None
+        job.update(changes)
+        return job
+
+def _append_summary_job(job_id, key, item):
+    with _SUMMARY_JOBS_LOCK:
+        job = _SUMMARY_JOBS.get(job_id)
+        if not job:
+            return None
+        job.setdefault(key, []).append(item)
+        if key == 'done_list':
+            job['done'] = len(job[key])
+        elif key == 'skipped_list':
+            job['skipped'] = len(job[key])
+        elif key == 'failed_list':
+            job['failed'] = len(job[key])
+        return job
+
+def _run_summary_job(job_id):
+    global _SUMMARY_ACTIVE_JOB_ID
+    with _SUMMARY_JOBS_LOCK:
+        job = _SUMMARY_JOBS.get(job_id)
+        if not job:
+            return
+        if _SUMMARY_ACTIVE_JOB_ID and _SUMMARY_ACTIVE_JOB_ID != job_id:
+            job['status'] = 'failed'
+            job['message'] = '已有其他总结任务正在运行'
+            job['finished_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            return
+        _SUMMARY_ACTIVE_JOB_ID = job_id
+        job['status'] = 'running'
+        job['started_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    db = _connect_job_db()
+    try:
+        prompt = effective_summary_prompt(db)
+        ids = list(job.get('ids') or [])
+        force = bool(job.get('force'))
+        for idx, nid in enumerate(ids):
+            _update_summary_job(job_id, current_id=nid)
+            try:
+                row = db.execute('SELECT * FROM notes WHERE id=?', (nid,)).fetchone()
+                if not row:
+                    _append_summary_job(job_id, 'failed_list', {'id': nid, 'reason': '笔记不存在'})
+                    continue
+                if not (row['content'] or '').strip():
+                    _append_summary_job(job_id, 'skipped_list', {'id': nid, 'reason': '内容为空'})
+                    continue
+                if row['ai_summary'] and not force:
+                    _append_summary_job(job_id, 'skipped_list', {'id': nid, 'reason': '已有总结'})
+                    continue
+                summary = _deepseek_summarize(row['title'], row['content'], prompt, row['source'])
+                now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                db.execute('UPDATE notes SET ai_summary=?, ai_summary_at=? WHERE id=?', (summary, now, nid))
+                db.commit()
+                _append_summary_job(job_id, 'done_list', nid)
+            except RuntimeError as e:
+                _append_summary_job(job_id, 'failed_list', {'id': nid, 'reason': str(e)[:120]})
+            except sqlite3.Error as e:
+                db.rollback()
+                _append_summary_job(job_id, 'failed_list', {'id': nid, 'reason': str(e)[:120]})
+            if idx < len(ids) - 1 and SUMMARY_INTERVAL_SECONDS > 0:
+                time.sleep(SUMMARY_INTERVAL_SECONDS)
+        _update_summary_job(job_id, status='done', current_id=None,
+                            finished_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            message='任务完成')
+    finally:
+        db.close()
+        with _SUMMARY_JOBS_LOCK:
+            if _SUMMARY_ACTIVE_JOB_ID == job_id:
+                _SUMMARY_ACTIVE_JOB_ID = None
+
+def _start_summary_worker(job_id):
+    t = threading.Thread(target=_run_summary_job, args=(job_id,), daemon=True)
+    t.start()
+    return t
+
+def _has_running_summary_job():
+    with _SUMMARY_JOBS_LOCK:
+        return bool(_SUMMARY_ACTIVE_JOB_ID)
+
 @app.route('/api/notes/summarize-batch', methods=['POST'])
 @admin_required
 def api_notes_summarize_batch():
-    """一键总结：对一批勾选的笔记生成总结。
+    """一键总结：创建后台任务，对一批勾选的笔记生成总结。
     body: {ids: [...], force: false}
-    默认跳过已有总结的；force=true 则全部重做。单次上限 15 条
-    （串行调用大模型、每条最长 60s，限 15 条以免超过 gunicorn 120s 超时被 worker 杀）。"""
+    默认跳过已有总结的；force=true 则全部重做。单次上限 30 条。"""
     data = request.get_json() or {}
     ids = data.get('ids') or []
     force = bool(data.get('force', False))
     if not isinstance(ids, list) or not ids:
         return jsonify({'error': '需要非空的 ids 数组'}), 400
-    if len(ids) > 15:
-        return jsonify({'error': '一次最多总结 15 条，请分批'}), 400
+    if len(ids) > SUMMARY_BATCH_LIMIT:
+        return jsonify({'error': f'一次最多总结 {SUMMARY_BATCH_LIMIT} 条，请分批'}), 400
     if not DEEPSEEK_API_KEY:
         return jsonify({'error': '未配置 DeepSeek 密钥，无法使用 AI 总结'}), 503
+    if _has_running_summary_job():
+        return jsonify({'error': '已有总结任务正在运行，请稍后再试'}), 409
+
+    _, _, username = effective_actor()
+    job = _new_summary_job(ids, scope='selected', force=force, created_by=username)
+    _start_summary_worker(job['id'])
+    return jsonify({'ok': True, 'queued': True, 'job': _summary_job_public(job)}), 202
+
+@app.route('/api/notes/summarize-all', methods=['POST'])
+@admin_required
+def api_notes_summarize_all():
+    """全库一键总结：创建后台任务，已有 AI 总结的笔记自动跳过。"""
+    if not DEEPSEEK_API_KEY:
+        return jsonify({'error': '未配置 DeepSeek 密钥，无法使用 AI 总结'}), 503
+    if _has_running_summary_job():
+        return jsonify({'error': '已有总结任务正在运行，请稍后再试'}), 409
 
     db = get_db()
-    prompt = effective_summary_prompt(db)
-    done, skipped, failed = [], [], []
-    for nid in ids:
-        row = db.execute('SELECT * FROM notes WHERE id=?', (nid,)).fetchone()
-        if not row:
-            failed.append({'id': nid, 'reason': '笔记不存在'}); continue
-        if not (row['content'] or '').strip():
-            skipped.append({'id': nid, 'reason': '内容为空'}); continue
-        if row['ai_summary'] and not force:
-            skipped.append({'id': nid, 'reason': '已有总结'}); continue
-        try:
-            summary = _deepseek_summarize(row['title'], row['content'], prompt, row['source'])
-        except RuntimeError as e:
-            failed.append({'id': nid, 'reason': str(e)[:60]}); continue
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        db.execute('UPDATE notes SET ai_summary=?, ai_summary_at=? WHERE id=?', (summary, now, nid))
-        db.commit()
-        done.append(nid)
-    return jsonify({'ok': True, 'done': len(done), 'skipped': len(skipped),
-                    'failed': len(failed), 'failed_list': failed, 'skipped_list': skipped})
+    rows = db.execute('SELECT id FROM notes ORDER BY id').fetchall()
+    ids = [r['id'] for r in rows]
+    if not ids:
+        return jsonify({'error': '当前没有可总结的笔记'}), 400
+    _, _, username = effective_actor()
+    job = _new_summary_job(ids, scope='all', force=False, created_by=username)
+    _start_summary_worker(job['id'])
+    return jsonify({'ok': True, 'queued': True, 'job': _summary_job_public(job)}), 202
+
+@app.route('/api/notes/summarize-jobs/<job_id>')
+@admin_required
+def api_notes_summarize_job(job_id):
+    job = _get_summary_job(job_id)
+    if not job:
+        return jsonify({'error': 'not found'}), 404
+    return jsonify({'ok': True, 'job': job})
 
 # --- AI 提示词配置（管理员可随时修改；支持 summary / tidy 两类） ---
 def _prompt_kind(kind):
