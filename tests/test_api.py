@@ -249,6 +249,22 @@ def test_batch_append_uses_exact_title_dedup(admin):
     assert item['content'] == 'c2'  # 子串条目内容未被覆盖
 
 
+def test_batch_append_reports_malformed_entries_as_skipped(admin):
+    r = admin.post('/api/notes/batch', json={'section': 'A09', 'entries': [
+        {'title': '批量跳过-有效', 'content': 'ok'},
+        '不是对象',
+        {'title': '   ', 'content': 'no title'},
+    ]})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body['added'] == 1
+    assert body['skipped'] == 2
+    assert [item['reason'] for item in body['skipped_list']] == ['条目不是对象', 'title 为空']
+
+    items = admin.get('/api/notes?section=A09&q=批量跳过-有效').get_json()['items']
+    assert len(items) == 1 and items[0]['content'] == 'ok'
+
+
 # ---------------- 令牌管理员删除用户（回归：session KeyError → 500） ----------------
 
 def test_token_admin_can_delete_user(admin, client):

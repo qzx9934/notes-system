@@ -164,7 +164,7 @@ Authorization: Bearer <你的令牌>
 
 ### `POST /api/notes/batch` —— 单章节批量追加（admin，旧接口）
 
-需要顶层 `section` + `entries` 数组，**所有条目写入同一章节**；按标题相似（子串）去重。新项目建议优先用 `/api/notes/ingest`。
+需要顶层 `section` + `entries` 数组，**所有条目写入同一章节**；按同章节内的标题精确相等去重并更新，空标题或非对象条目会计入 `skipped`。新项目建议优先用 `/api/notes/ingest`。
 
 ### `GET /api/notes` —— 查询/搜索笔记
 

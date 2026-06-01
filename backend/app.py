@@ -2262,7 +2262,7 @@ def api_stats():
 @app.route('/api/notes/batch', methods=['POST'])
 @admin_required
 def api_note_batch():
-    """Agent批量追加接口，格式同Word文档JSON模板"""
+    """Agent 批量追加接口，使用 Word 文档 JSON 模板格式。"""
     data = request.get_json()
     if not data or 'entries' not in data:
         return jsonify({'error': '需要 entries 数组'}), 400
@@ -2299,9 +2299,14 @@ def api_note_batch():
         'SELECT title FROM notes WHERE section=?', (section,)).fetchall()}
 
     try:
-        for entry in entries:
-            title = entry.get('title', '').strip()
+        for idx, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                skipped.append({'index': idx, 'reason': '条目不是对象'})
+                continue
+
+            title = (entry.get('title') or '').strip()
             if not title:
+                skipped.append({'index': idx, 'reason': 'title 为空'})
                 continue
 
             if title in existing_titles:
@@ -2351,7 +2356,7 @@ def api_note_batch():
         return jsonify({'error': '批量追加失败，请稍后重试'}), 500
 
     return jsonify({'added': len(added), 'merged': len(merged), 'skipped': len(skipped),
-                    'added_list': added, 'merged_list': merged})
+                    'added_list': added, 'merged_list': merged, 'skipped_list': skipped})
 
 # --- 通用批量录入（推荐：命令行 / 大模型整理后上传） ---
 @app.route('/api/notes/ingest', methods=['POST'])
