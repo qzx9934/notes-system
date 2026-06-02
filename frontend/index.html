@@ -68,7 +68,21 @@ body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; background: va
 @keyframes skel-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
 
 /* 表格行键盘可达 */
-table tbody tr[tabindex]:focus-visible { outline: 2px solid var(--primary-light); outline-offset: -2px; }
+table tbody tr[tabindex]:focus-visible { outline: none; }
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, select, textarea, a, [tabindex] {
+  -webkit-tap-highlight-color: transparent;
+}
+button:focus, button:focus-visible,
+input:focus, input:focus-visible,
+select:focus, select:focus-visible,
+textarea:focus, textarea:focus-visible,
+a:focus, a:focus-visible,
+[tabindex]:focus, [tabindex]:focus-visible {
+  outline: none !important;
+}
 
 /* Sidebar */
 .sidebar {
@@ -448,8 +462,22 @@ tbody tr.selected { background: #EBF5FB; }
   .modal-footer { padding: 10px 14px; }
   .modal-footer .btn { flex: 1; }
   /* 表头区域 */
-  .table-header { flex-direction: column; align-items: flex-start; }
+  .table-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .table-header .flex-row-md {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
   .table-header h2 { font-size: 14px; }
+  #resultCount {
+    margin-left: auto;
+    white-space: nowrap;
+    font-size: 11px !important;
+  }
   .sort-select { font-size: 11px; padding: 5px 8px; }
   /* Toast */
   .toast { right: 10px; left: 10px; top: auto; bottom: 10px; text-align: center; font-size: 13px; }
@@ -1111,6 +1139,11 @@ body::before {
   color: var(--text-secondary);
   background: rgba(17,24,39,.06);
   opacity: 1;
+  border-radius: 999px !important;
+  padding: 2px 7px !important;
+  min-width: 22px;
+  text-align: center;
+  box-shadow: 0 6px 16px rgba(17,24,39,.06), 0 1px 0 rgba(255,255,255,.78) inset;
 }
 .current-user { color: var(--text); }
 .icon-btn {
@@ -1184,6 +1217,11 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
   .main { background: transparent; }
   .hamburger {
     color: var(--text) !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
   .table-wrap > .table-scroll,
   .table-wrap > .table-scroll > table,
@@ -1826,6 +1864,87 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
     margin-top: 12px !important;
   }
 }
+@media (max-width: 768px) {
+  .modal-overlay.open,
+  .pwd-modal-overlay.open {
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    padding: 0 !important;
+    background:
+      radial-gradient(54% 42% at 12% 10%, rgba(132,192,255,.24), transparent 66%),
+      radial-gradient(42% 36% at 92% 8%, rgba(190,180,255,.18), transparent 66%),
+      radial-gradient(48% 42% at 88% 92%, rgba(150,230,218,.18), transparent 68%),
+      linear-gradient(180deg, rgba(255,255,255,.94), rgba(247,247,248,.92)) !important;
+    -webkit-backdrop-filter: blur(10px) saturate(125%) !important;
+    backdrop-filter: blur(10px) saturate(125%) !important;
+  }
+  .pwd-modal,
+  .user-mgmt-modal {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    min-height: 100vh !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+    overflow: auto !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .pwd-modal > h3,
+  .pwd-modal > .form-group,
+  .pwd-modal > .actions,
+  .user-mgmt-modal > .modal-header,
+  .user-mgmt-modal > .modal-body,
+  .settings-modal .settings-body {
+    background: rgba(255,255,255,.68) !important;
+    border: none !important;
+    border-radius: 24px !important;
+    box-shadow: 0 18px 42px rgba(17,24,39,.12), 0 1px 0 rgba(255,255,255,.88) inset !important;
+    -webkit-backdrop-filter: blur(20px) saturate(135%) !important;
+    backdrop-filter: blur(20px) saturate(135%) !important;
+  }
+  .pwd-modal > h3,
+  .user-mgmt-modal > .modal-header {
+    padding: 12px 14px !important;
+    margin: 0 0 10px !important;
+  }
+  .pwd-modal > .form-group,
+  .user-mgmt-modal > .modal-body,
+  .settings-modal .settings-body {
+    padding: 14px !important;
+    margin: 0 0 10px !important;
+  }
+  .pwd-modal > .actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .pwd-modal > .actions .btn,
+  .modal-footer .btn,
+  .user-mgmt-modal .btn {
+    border-radius: 999px !important;
+    background: rgba(255,255,255,.72) !important;
+    color: var(--text) !important;
+    border: none !important;
+    box-shadow: 0 14px 30px rgba(17,24,39,.12), 0 1px 0 rgba(255,255,255,.88) inset !important;
+  }
+  #modalOverlay .modal-footer {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  #modalOverlay .modal-footer .btn {
+    background: rgba(255,255,255,.72) !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -2189,12 +2308,12 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
     <div class="footer-bar">
       <span class="footer-actions">
         <span id="currentUser" class="current-user"></span>
-        <button type="button" class="icon-btn proposal-entry" id="proposalEntry" style="display:none" onclick="openProposalModal()" title="变更申请审批" aria-label="变更申请">📥<span class="proposal-badge" id="proposalBadge" style="display:none">0</span></button>
-        <button type="button" class="icon-btn proposal-entry" id="feedbackInboxBtn" style="display:none" onclick="openFeedbackInbox()" title="反馈箱（用户建议）" aria-label="反馈箱">💬<span class="proposal-badge" id="feedbackBadge" style="display:none">0</span></button>
-        <button type="button" class="icon-btn" id="userMgmtBtn" style="display:none" onclick="openUserModal()" title="用户管理" aria-label="用户管理">👥</button>
-        <button type="button" class="icon-btn" id="settingsBtn" style="display:none" onclick="openSettingsModal()" title="系统设置" aria-label="系统设置">⚙️</button>
-        <button type="button" class="icon-btn" onclick="openFeedbackModal()" title="反馈建议" aria-label="反馈建议">✉️</button>
-        <button type="button" class="icon-btn" onclick="openPwdModal()" title="修改密码" aria-label="修改密码">🔑</button>
+        <button type="button" class="icon-btn proposal-entry" id="proposalEntry" style="display:none" onclick="closeSidebar(); openProposalModal()" title="变更申请审批" aria-label="变更申请">📥<span class="proposal-badge" id="proposalBadge" style="display:none">0</span></button>
+        <button type="button" class="icon-btn proposal-entry" id="feedbackInboxBtn" style="display:none" onclick="closeSidebar(); openFeedbackInbox()" title="反馈箱（用户建议）" aria-label="反馈箱">💬<span class="proposal-badge" id="feedbackBadge" style="display:none">0</span></button>
+        <button type="button" class="icon-btn" id="userMgmtBtn" style="display:none" onclick="closeSidebar(); openUserModal()" title="用户管理" aria-label="用户管理">👥</button>
+        <button type="button" class="icon-btn" id="settingsBtn" style="display:none" onclick="closeSidebar(); openSettingsModal()" title="系统设置" aria-label="系统设置">⚙️</button>
+        <button type="button" class="icon-btn" onclick="closeSidebar(); openFeedbackModal()" title="反馈建议" aria-label="反馈建议">✉️</button>
+        <button type="button" class="icon-btn" onclick="closeSidebar(); openPwdModal()" title="修改密码" aria-label="修改密码">🔑</button>
         <button type="button" class="icon-btn" onclick="doLogout()" title="退出登录" aria-label="退出登录">🚪</button>
       </span>
     </div>
@@ -2409,7 +2528,7 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
         </div>
         <div class="form-group">
           <label>等级</label>
-          <select id="editLevel"><option value="★">★ 了解参考</option><option value="★★">★★ 重要掌握</option><option value="★★★" selected>★★★ 核心必会</option></select>
+          <select id="editLevel"><option value=""></option><option value="★">★ 了解参考</option><option value="★★">★★ 重要掌握</option><option value="★★★">★★★ 核心必会</option></select>
         </div>
       </div>
       <div class="form-group">
@@ -3569,7 +3688,7 @@ async function loadSections() {
   sections = await fetchJSON('/api/sections');
   // 填充编辑弹窗的章节下拉
   const sel = document.getElementById('editSection');
-  sel.innerHTML = sections.map(s => `<option value="${s.code}">${s.code} ${s.name}</option>`).join('');
+  sel.innerHTML = '<option value=""></option>' + sections.map(s => `<option value="${s.code}">${s.code} ${s.name}</option>`).join('');
 }
 async function loadStats() {
   const s = await fetchJSON('/api/stats');
@@ -3875,6 +3994,7 @@ function mdGetTA() { return document.getElementById('editContent'); }
 function mdInsert(text) {
   const ta = mdGetTA();
   ta.focus();
+  if (['##', '###', '-', '>', '1.'].includes(text)) text += ' ';
   // execCommand 写入可被 Ctrl+Z 撤回；失败时回退 setRangeText
   if (!document.execCommand('insertText', false, text)) {
     const s = ta.selectionStart, e = ta.selectionEnd;
@@ -4606,17 +4726,26 @@ async function deleteFromPreview() {
 }
 
 // ==================== CRUD ====================
+function prepareMobileSourceInput() {
+  const sourceInput = document.getElementById('editSource');
+  if (!sourceInput) return;
+  const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  if (isMobile) sourceInput.removeAttribute('list');
+  else sourceInput.setAttribute('list', 'sourceOptions');
+}
+
 function openAddModal() {
   document.getElementById('modalTitle').textContent = '新增笔记';
   document.getElementById('editId').value = '';
+  prepareMobileSourceInput();
   document.getElementById('editTitle').value = '';
   document.getElementById('editContent').value = '';
   document.getElementById('editTags').value = '';
-  document.getElementById('editSource').value = '个人总结';
+  document.getElementById('editSource').value = '';
   _editOrigSource = '';
-  document.getElementById('editLevel').value = '★★★';
-  document.getElementById('editDate').value = new Date().toISOString().split('T')[0];
-  if (currentSection) document.getElementById('editSection').value = currentSection;
+  document.getElementById('editLevel').value = '';
+  document.getElementById('editDate').value = '';
+  document.getElementById('editSection').value = '';
   resetMdEditor(); resetTidyUndo();
   document.getElementById('modalOverlay').classList.add('open');
 }
@@ -4639,6 +4768,7 @@ async function openEditModal(id) {
     showToast('加载笔记失败：' + (e.message || '网络错误'), 'error');
     return;
   }
+  prepareMobileSourceInput();
   document.getElementById('modalTitle').textContent = '编辑笔记 - ' + n.code;
   document.getElementById('editId').value = n.id;
   document.getElementById('editSection').value = n.section;
@@ -4666,6 +4796,7 @@ async function saveNote() {
     level: document.getElementById('editLevel').value,
     note_date: document.getElementById('editDate').value,
   };
+  if (!data.note_date) data.note_date = new Date().toISOString().split('T')[0];
   if (!data.section || !data.title) { showToast('章节和标题为必填', 'error'); return; }
   // 来源须为预设之一；编辑时若未改动则放行历史遗留的自定义来源
   if (!SOURCE_OPTS.includes(data.source) && data.source !== _editOrigSource) {
