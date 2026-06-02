@@ -683,21 +683,41 @@ body.roam-immersive .batch-bar { display: none; }
 /* 来源文件 + 总结时间小标注 */
 .back-srcfile { font-size: 12px; color: var(--text-secondary); background: rgba(0,0,0,.04); border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; word-break: break-all; }
 .back-srcfile b { color: var(--text); font-weight: 600; }
-.summary-meta { font-size: 12px; color: var(--text-secondary); margin: 4px 0 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.summary-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 6px 0 14px;
+  padding: 2px 2px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  overflow: visible;
+}
 .summary-stale { color: #C0392B; }
 .summary-empty { color: var(--text-secondary); text-align: center; padding: 24px 0; }
 .summary-spin { color: var(--primary-light); }
 
 /* 漫游卡片翻面：用「转到 90°  换面  转回」的两段动画，不用 preserve-3d
    （preserve-3d 会让其内部的 overflow 滚动失效，导致长笔记无法下滑） */
-.roam-flip { display: flex; flex-direction: column; width: 100%; flex: 1; min-height: 0; transition: transform .18s ease; transform: perspective(1200px) rotateY(0deg); }
-.roam-flip.flip-half { transform: perspective(1200px) rotateY(90deg); }
+.roam-flip {
+  display: flex; flex-direction: column; width: 100%; flex: 1; min-height: 0;
+  transition: transform .26s cubic-bezier(.22, .61, .36, 1), opacity .18s ease, filter .18s ease;
+  transform: perspective(1300px) rotateY(0deg) scale(1);
+  transform-origin: center center;
+  will-change: transform, opacity, filter;
+}
+.roam-flip.flip-half {
+  opacity: .82;
+  filter: saturate(.96) blur(.2px);
+  transform: perspective(1300px) rotateY(88deg) scale(.985);
+}
 .roam-face { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.roam-face.roam-back { overflow-y: auto; }
+.roam-face.roam-back { overflow-y: auto; overflow-x: visible; padding-bottom: 6px; }
 .roam-flip-btn { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--text-secondary); transition: all .15s; }
 .roam-flip-btn:hover { background: rgba(0,0,0,.06); color: var(--text); }
 .roam-back-title { font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; }
-.roam-back-summary { flex: 1; min-height: 0; overflow-y: auto; font-size: 15px; line-height: 1.8; }
+.roam-back-summary { flex: 1; min-height: 0; overflow-y: auto; overflow-x: visible; font-size: 15px; line-height: 1.8; }
 .ai-btn { background: var(--primary-light); color: #fff; border: none; border-radius: var(--radius); padding: 6px 14px; font-size: 13px; cursor: pointer; }
 .ai-btn:hover { background: var(--primary); }
 .ai-btn:disabled { opacity: .5; cursor: default; }
@@ -1073,6 +1093,9 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
     transition-duration: .001ms !important; scroll-behavior: auto !important;
   }
   .stat-card:hover, .btn-primary:hover, .btn-warning:hover, .btn-outline:hover { transform: none !important; }
+  .roam-flip {
+    transition: transform .26s cubic-bezier(.22, .61, .36, 1), opacity .18s ease, filter .18s ease !important;
+  }
 }
 
 /* ===== Pure White App Theme (mobile only) ===== */
@@ -1402,12 +1425,12 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
   }
   .preview-meta {
     display: grid !important;
-    grid-template-columns: 64px minmax(0, 1fr) 108px 26px !important;
+    grid-template-columns: 64px minmax(0, 1fr) 104px 26px !important;
     align-items: center !important;
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
-    padding: 5px 8px 7px !important;
+    padding: 5px 12px 7px !important;
     gap: 4px !important;
     overflow: hidden !important;
     border-top: 1px solid rgba(17,24,39,.07) !important;
@@ -1828,6 +1851,14 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
     backdrop-filter: blur(20px) saturate(135%) !important;
     padding: 18px !important;
     height: 78vh !important;
+    touch-action: pan-y !important;
+    overflow: visible !important;
+  }
+  .roam-card #roamCardInner,
+  .roam-flip,
+  .roam-face.roam-back,
+  .summary-meta {
+    overflow-x: visible !important;
   }
   .roam-topbar,
   .roam-controls {
@@ -1853,6 +1884,9 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
     font-size: 14px !important;
     line-height: 1.72 !important;
     margin-bottom: 12px !important;
+  }
+  .roam-back-summary {
+    overflow-x: visible !important;
   }
   .roam-card-meta {
     gap: 8px !important;
@@ -1943,6 +1977,149 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
   }
   #modalOverlay .modal-footer .btn {
     background: rgba(255,255,255,.72) !important;
+  }
+  #modalOverlay .modal {
+    gap: 6px !important;
+    padding: calc(6px + env(safe-area-inset-top, 0px)) 10px calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  #modalOverlay .modal-header {
+    min-height: 34px !important;
+  }
+  #modalOverlay .modal-header h3 {
+    font-size: 14px !important;
+  }
+  #modalOverlay .modal-close,
+  .user-mgmt-modal .modal-close,
+  .pwd-modal .modal-close {
+    width: 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 !important;
+    border-radius: 999px !important;
+    background: rgba(255,255,255,.76) !important;
+    border: none !important;
+    box-shadow: 0 12px 28px rgba(17,24,39,.13), 0 1px 0 rgba(255,255,255,.9) inset !important;
+    -webkit-backdrop-filter: blur(18px) saturate(135%) !important;
+    backdrop-filter: blur(18px) saturate(135%) !important;
+  }
+  #modalOverlay .modal-body {
+    gap: 6px !important;
+  }
+  #modalOverlay .edit-top-card {
+    grid-template-columns: minmax(0, 1fr) 126px !important;
+    gap: 4px 8px !important;
+  }
+  #modalOverlay .edit-top-card .edit-date-card {
+    grid-column: 1 !important;
+    grid-row: 4 !important;
+  }
+  #modalOverlay .edit-extra-row .form-group:first-child {
+    grid-column: 1 / -1 !important;
+  }
+  #modalOverlay .edit-extra-row .form-group:nth-child(2) {
+    grid-column: 2 !important;
+    grid-row: 4 !important;
+  }
+  #modalOverlay .edit-top-card label,
+  #modalOverlay .edit-extra-row label,
+  #modalOverlay .edit-date-card label {
+    font-size: 9px !important;
+    margin-bottom: 2px !important;
+  }
+  #modalOverlay .edit-top-card input,
+  #modalOverlay .edit-top-card select {
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 5px 10px !important;
+    font-size: 12px !important;
+  }
+  #modalOverlay .form-group label {
+    font-size: 11px !important;
+    margin-bottom: 4px !important;
+  }
+  #modalOverlay .field-head {
+    margin-bottom: 4px !important;
+  }
+  #modalOverlay .ai-fill-btn {
+    padding: 4px 8px !important;
+    font-size: 10px !important;
+  }
+  #modalOverlay .md-toolbar {
+    gap: 3px !important;
+    padding: 4px !important;
+    margin-bottom: 6px !important;
+    border-radius: 18px !important;
+  }
+  #modalOverlay .md-toolbar button {
+    width: 27px !important;
+    height: 24px !important;
+  }
+  #modalOverlay #editContent {
+    border-radius: 22px !important;
+    scrollbar-width: none !important;
+  }
+  #modalOverlay #editContent::-webkit-scrollbar {
+    display: none !important;
+  }
+  #modalOverlay .modal-footer {
+    gap: 8px !important;
+  }
+  #modalOverlay .modal-footer .btn {
+    min-height: 42px !important;
+    box-shadow: 0 10px 22px rgba(17,24,39,.10), 0 1px 0 rgba(255,255,255,.88) inset !important;
+  }
+  .table-wrap,
+  .table-scroll,
+  #notesTable,
+  html,
+  body,
+  .main {
+    scrollbar-width: none !important;
+  }
+  .table-wrap::-webkit-scrollbar,
+  .table-scroll::-webkit-scrollbar,
+  #notesTable::-webkit-scrollbar,
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar,
+  .main::-webkit-scrollbar {
+    display: none !important;
+  }
+  .table-wrap,
+  .stat-card,
+  .filter-group,
+  .mobile-more-list {
+    border-radius: 18px !important;
+  }
+  #notesTable tr {
+    border-radius: 18px !important;
+  }
+  #notesTable td.col-check {
+    top: 11px !important;
+    right: 11px !important;
+  }
+  #notesTable td.col-check input[type="checkbox"] {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    width: 18px !important;
+    height: 18px !important;
+    border-radius: 6px !important;
+    border: 1px solid rgba(17,24,39,.22) !important;
+    background: rgba(255,255,255,.78) !important;
+    box-shadow: 0 6px 14px rgba(17,24,39,.08), 0 1px 0 rgba(255,255,255,.86) inset !important;
+    display: grid !important;
+    place-content: center !important;
+  }
+  #notesTable td.col-check input[type="checkbox"]::after {
+    content: "" !important;
+    width: 9px !important;
+    height: 5px !important;
+    border-left: 2px solid #111827 !important;
+    border-bottom: 2px solid #111827 !important;
+    transform: rotate(-45deg) scale(0) !important;
+    transform-origin: center !important;
+  }
+  #notesTable td.col-check input[type="checkbox"]:checked::after {
+    transform: rotate(-45deg) scale(1) !important;
   }
 }
 </style>
@@ -2605,6 +2782,8 @@ let roamNotes = [];
 let roamIndex = 0;
 let isRoamMode = false;
 let roamFlipped = false;       // 漫游卡片是否翻到背面
+let roamTouch = null;
+let roamLastTouchActionAt = 0;
 let selectedIds = new Set();
 let previewNoteId = null;
 let previewNote = null;        // 当前预览抽屉的完整笔记对象（供内联编辑/背面用）
@@ -4673,6 +4852,71 @@ function renderRoamBack(n) {
   renderBackContent(n, 'roamBackSrcFile', 'roamBackSummary', 'roamSummaryMeta', 'roamSummarizeBtn');
 }
 
+function initRoamGestures() {
+  const card = document.getElementById('roamCard');
+  if (!card || card.dataset.gestureBound === '1') return;
+  card.dataset.gestureBound = '1';
+  card.addEventListener('touchstart', onRoamTouchStart, { passive: true });
+  card.addEventListener('touchmove', onRoamTouchMove, { passive: true });
+  card.addEventListener('touchend', onRoamTouchEnd, { passive: true });
+  card.addEventListener('click', onRoamCardClick);
+}
+
+function isRoamGestureIgnored(target) {
+  return !!(target && target.closest('button, input, select, textarea, a, .clickable, .fav-star, .roam-card-level, .roam-card-title'));
+}
+
+function onRoamTouchStart(e) {
+  if (!isRoamMode || !roamNotes.length || isRoamGestureIgnored(e.target) || e.touches.length !== 1) {
+    roamTouch = null;
+    return;
+  }
+  const t = e.touches[0];
+  roamTouch = { x: t.clientX, y: t.clientY, dx: 0, dy: 0, t: Date.now(), blocked: false };
+}
+
+function onRoamTouchMove(e) {
+  if (!roamTouch || e.touches.length !== 1) return;
+  const t = e.touches[0];
+  roamTouch.dx = t.clientX - roamTouch.x;
+  roamTouch.dy = t.clientY - roamTouch.y;
+  if (Math.abs(roamTouch.dy) > 28 && Math.abs(roamTouch.dy) > Math.abs(roamTouch.dx) * 1.15) {
+    roamTouch.blocked = true;
+  }
+}
+
+function onRoamTouchEnd(e) {
+  if (!roamTouch || roamTouch.blocked) {
+    roamTouch = null;
+    return;
+  }
+  if (e.changedTouches && e.changedTouches.length) {
+    const t = e.changedTouches[0];
+    roamTouch.dx = t.clientX - roamTouch.x;
+    roamTouch.dy = t.clientY - roamTouch.y;
+  }
+  const dx = roamTouch.dx;
+  const dy = roamTouch.dy;
+  const dt = Date.now() - roamTouch.t;
+  roamTouch = null;
+  if (Math.abs(dx) >= 56 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+    roamLastTouchActionAt = Date.now();
+    if (dx < 0) roamNext();
+    else roamPrev();
+    return;
+  }
+  if (Math.abs(dx) <= 12 && Math.abs(dy) <= 12 && dt < 420) {
+    roamLastTouchActionAt = Date.now();
+    flipRoam();
+  }
+}
+
+function onRoamCardClick(e) {
+  if (!isRoamMode || !roamNotes.length || isRoamGestureIgnored(e.target)) return;
+  if (Date.now() - roamLastTouchActionAt < 450) return;
+  flipRoam();
+}
+
 function copyToClipboard(text) {
   // 优先用 Clipboard API（需 HTTPS 或 localhost）
   if (navigator.clipboard && window.isSecureContext) {
@@ -4936,6 +5180,7 @@ async function startRoam() {
       document.getElementById('roamControls').style.display = 'flex';
       roamIndex = 0;
       renderRoamCard();
+      initRoamGestures();
       document.getElementById('roamFilterHint').textContent = '共 ' + roamNotes.length + ' 张笔记卡片';
     }
 
