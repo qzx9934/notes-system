@@ -258,6 +258,7 @@ tbody tr.selected { background: #EBF5FB; }
   padding: 12px 20px; border-top: 1px solid var(--border);
   display: flex; gap: 8px; justify-content: flex-end;
 }
+.preview-info-card { display: contents; }
 
 /* Modal */
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.4); z-index: 200; justify-content: center; align-items: flex-start; padding-top: 40px; }
@@ -427,17 +428,12 @@ tbody tr.selected { background: #EBF5FB; }
   .preview-header { padding: 12px 14px; }
   .preview-header .title { font-size: 16px; }
   .preview-footer {
-    display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px;
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
   }
   .preview-footer .btn {
     width: 100%; padding: 9px 8px; min-height: 42px;
   }
-  .preview-footer .btn-danger {
-    width: 42px; padding: 0; font-size: 0; border-radius: 12px;
-    background: #fff; color: #C0392B; border: 1px solid rgba(192,57,43,.25);
-  }
-  .preview-footer .btn-danger::before { content: "删"; font-size: 13px; }
   /* 模态框 */
   .modal { width: 100vw; max-width: 100vw; max-height: 90vh; border-radius: 0; }
   .modal-body { padding: 14px; }
@@ -636,7 +632,7 @@ body.roam-immersive .batch-bar { display: none; }
 /* ---- 详情页可点编辑 + 卡片背面 + AI 总结 ---- */
 .preview-meta .editable { cursor: pointer; border-radius: 6px; padding: 2px 6px; margin: -2px -2px; transition: background .15s; }
 .preview-meta .editable:hover { background: rgba(0,0,0,.06); outline: 1px dashed var(--border); }
-.preview-meta .editable .meta-label::after { content: ' ✎'; opacity: .35; font-size: 10px; }
+.preview-meta .editable .meta-label::after { content: '✎'; opacity: .35; font-size: 10px; }
 .inline-edit { font-size: 13px; padding: 2px 5px; border: 1px solid var(--primary-light); border-radius: 4px; outline: none; background: var(--card); color: var(--text); animation: inlineEditIn .12s ease; }
 .inline-edit.tags-edit { min-width: 220px; }
 @keyframes inlineEditIn { from { opacity: .4; } to { opacity: 1; } }
@@ -664,7 +660,7 @@ body.roam-immersive .batch-bar { display: none; }
 .summary-empty { color: var(--text-secondary); text-align: center; padding: 24px 0; }
 .summary-spin { color: var(--primary-light); }
 
-/* 漫游卡片翻面：用「转到 90° → 换面 → 转回」的两段动画，不用 preserve-3d
+/* 漫游卡片翻面：用「转到 90°  换面  转回」的两段动画，不用 preserve-3d
    （preserve-3d 会让其内部的 overflow 滚动失效，导致长笔记无法下滑） */
 .roam-flip { display: flex; flex-direction: column; width: 100%; flex: 1; min-height: 0; transition: transform .18s ease; transform: perspective(1200px) rotateY(0deg); }
 .roam-flip.flip-half { transform: perspective(1200px) rotateY(90deg); }
@@ -1038,7 +1034,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
 }
 
 /* ===== 无障碍降级 =====
-   注：此前的「移动端去折射」「减少透明度→纯不透明」两段降级，会在桌面端误伤——
+   注：此前的「移动端去折射」「减少透明度纯不透明」两段降级，会在桌面端误伤——
    浏览器高倍缩放/窄窗口使视口 CSS 宽度跌破 768px，或系统关闭「透明效果」时，
    会把液态玻璃折射整段关掉。为保证各端一致的玻璃观感，已移除这两段；
    仅保留不影响外观的「减少动效」，以及上方对完全不支持 backdrop-filter 浏览器的 @supports 兜底。 */
@@ -1050,6 +1046,786 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
   }
   .stat-card:hover, .btn-primary:hover, .btn-warning:hover, .btn-outline:hover { transform: none !important; }
 }
+
+/* ===== Pure White App Theme (mobile only) ===== */
+@media (max-width: 768px) {
+:root {
+  --bg: #f7f7f8;
+  --card: rgba(255,255,255,.86);
+  --primary: #111827;
+  --primary-light: #111827;
+  --accent-C: #111827;
+  --text: #1f2328;
+  --text-secondary: #6b7280;
+  --border: rgba(17,24,39,.10);
+  --glass-bg: rgba(255,255,255,.70);
+  --glass-bg-solid: rgba(255,255,255,.88);
+  --glass-brd: rgba(17,24,39,.10);
+  --glass-blur: blur(18px) saturate(125%);
+  --glass-refract: blur(18px) saturate(125%);
+  --glass-hi: 0 1px 0 rgba(255,255,255,.80) inset;
+  --glass-sh: 0 1px 2px rgba(17,24,39,.04), 0 8px 24px rgba(17,24,39,.06);
+  --glass-sh-lg: 0 12px 36px rgba(17,24,39,.10);
+}
+body {
+  background: var(--bg) !important;
+  color: var(--text);
+}
+body::before {
+  background: linear-gradient(180deg, #fff 0%, #f7f7f8 42%, #f3f4f6 100%) !important;
+  filter: none !important;
+}
+.table-wrap, .stat-card, .batch-bar, .modal, .pwd-modal,
+.user-mgmt-modal, .preview-drawer, .roam-card, .login-card {
+  background: var(--glass-bg-solid) !important;
+  border: 1px solid var(--glass-brd) !important;
+  box-shadow: var(--glass-sh), var(--glass-hi) !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  backdrop-filter: var(--glass-blur) !important;
+}
+.sidebar, .mobile-topbar {
+  background: rgba(255,255,255,.82) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 1px 0 rgba(17,24,39,.06), 0 10px 30px rgba(17,24,39,.06) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(140%) !important;
+  backdrop-filter: blur(22px) saturate(140%) !important;
+}
+.sidebar { border-right: 1px solid var(--border) !important; }
+.mobile-topbar { border-bottom: 1px solid var(--border) !important; }
+.sidebar-header,
+.sidebar-footer {
+  border-color: var(--border) !important;
+}
+.sidebar-header .sub { color: var(--text-secondary); opacity: 1; }
+.nav-domain:hover,
+.nav-domain.active-all,
+.nav-domain.active-domain,
+.nav-item:hover,
+.nav-item.active {
+  background: rgba(17,24,39,.055) !important;
+}
+.nav-item.active { box-shadow: inset 3px 0 0 var(--text) !important; }
+.nav-domain .count,
+.nav-item .badge {
+  color: var(--text-secondary);
+  background: rgba(17,24,39,.06);
+  opacity: 1;
+}
+.current-user { color: var(--text); }
+.icon-btn {
+  color: var(--text) !important;
+  background: rgba(17,24,39,.055) !important;
+}
+.icon-btn:hover { background: rgba(17,24,39,.09) !important; }
+.btn {
+  border-radius: 12px;
+  box-shadow: none !important;
+}
+.btn-primary,
+.btn-warning,
+.btn-outline,
+.search-wrap input,
+.filter-group select,
+.filter-group button,
+.batch-bar select,
+.pagination button,
+.batch-date-input {
+  background: rgba(255,255,255,.78) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: blur(16px) saturate(120%) !important;
+  backdrop-filter: blur(16px) saturate(120%) !important;
+}
+.btn-outline:hover,
+.btn-primary:hover,
+.btn-warning:hover,
+.pagination button:not(:disabled):hover {
+  background: #fff !important;
+  transform: none;
+}
+.search-wrap input:focus,
+.filter-group select:focus,
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  border-color: rgba(17,24,39,.34) !important;
+  box-shadow: 0 0 0 3px rgba(17,24,39,.08) !important;
+}
+.stat-card:hover { transform: none; box-shadow: var(--glass-sh), var(--glass-hi) !important; }
+.stat-card .num { color: var(--text); }
+.c-star3, .c-star2, .c-star1 { color: var(--text) !important; }
+.tag {
+  background: rgba(17,24,39,.055) !important;
+  border: 1px solid rgba(17,24,39,.08) !important;
+  color: var(--text-secondary) !important;
+}
+.preview-meta .meta-item {
+  background: rgba(255,255,255,.72) !important;
+  border: 1px solid var(--border) !important;
+}
+thead th {
+  background: rgba(249,250,251,.84) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+tbody td { border-bottom: 1px solid rgba(17,24,39,.07) !important; }
+tbody tr:hover { background: rgba(17,24,39,.035) !important; }
+tbody tr.selected { background: rgba(17,24,39,.045) !important; }
+.modal-overlay, .preview-overlay, .pwd-modal-overlay {
+  background: rgba(17,24,39,.18) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  backdrop-filter: blur(10px) !important;
+}
+.toast { box-shadow: 0 10px 30px rgba(17,24,39,.14); }
+.login-overlay {
+  background: linear-gradient(180deg, #fff 0%, #f4f4f5 100%) !important;
+}
+  .main { background: transparent; }
+  .hamburger {
+    color: var(--text) !important;
+  }
+  .table-wrap > .table-scroll,
+  .table-wrap > .table-scroll > table,
+  #notesTable {
+    display: block !important;
+    width: 100% !important;
+  }
+  .stats-bar {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    overflow: visible !important;
+  }
+  .stat-card {
+    min-width: 0 !important;
+    width: auto;
+    padding: 8px 7px !important;
+  }
+  .stat-card .num {
+    font-size: 16px !important;
+    line-height: 1.1;
+  }
+  .stat-card .label {
+    font-size: 10px !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #notesTable tr {
+    width: 100% !important;
+    box-sizing: border-box;
+    background: rgba(255,255,255,.76) !important;
+    border-color: var(--border) !important;
+    box-shadow: 0 1px 0 rgba(255,255,255,.86) inset, 0 6px 14px rgba(17,24,39,.045) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(125%) !important;
+    backdrop-filter: blur(18px) saturate(125%) !important;
+  }
+  #notesTable tr:active { background: rgba(255,255,255,.84) !important; }
+  #notesTable tr.selected,
+  #notesTable tr.selected:hover {
+    background: rgba(255,255,255,.76) !important;
+    border-color: var(--border) !important;
+    box-shadow: 0 1px 0 rgba(255,255,255,.86) inset, 0 6px 14px rgba(17,24,39,.045) !important;
+  }
+  #notesTable td.col-code,
+  #notesTable td.col-content,
+  #notesTable td.col-tags,
+  #notesTable td.col-source,
+  #notesTable td.col-level,
+  #notesTable td.col-date {
+    display: none !important;
+  }
+  #notesTable td.col-title {
+    width: calc(100% - 42px);
+    margin: 0 0 7px;
+    padding-right: 0;
+    line-height: 1.45;
+    font-size: 14px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    -webkit-mask-image: linear-gradient(90deg, #000 78%, transparent);
+    mask-image: linear-gradient(90deg, #000 78%, transparent);
+  }
+  #notesTable td.col-mobile-meta {
+    border-top: none !important;
+    padding-top: 7px;
+    margin-top: 0;
+  }
+  .btn-primary,
+  .btn-warning,
+  .btn-outline,
+  .mobile-filter-toggle,
+  .mobile-more-toggle {
+    background: rgba(255,255,255,.64) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 8px 24px rgba(17,24,39,.07), 0 1px 0 rgba(255,255,255,.78) inset !important;
+    -webkit-backdrop-filter: blur(18px) saturate(125%) !important;
+    backdrop-filter: blur(18px) saturate(125%) !important;
+  }
+  .btn-primary:hover,
+  .btn-warning:hover,
+  .btn-outline:hover {
+    background: rgba(255,255,255,.80) !important;
+  }
+  .filter-group,
+  .mobile-more-list {
+    background: rgba(255,255,255,.92) !important;
+    border-color: var(--border) !important;
+    box-shadow: 0 12px 32px rgba(17,24,39,.10) !important;
+  }
+  .table-wrap {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .table-header {
+    background: rgba(255,255,255,.62) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 8px 24px rgba(17,24,39,.06), 0 1px 0 rgba(255,255,255,.78) inset !important;
+    -webkit-backdrop-filter: blur(18px) saturate(125%) !important;
+    backdrop-filter: blur(18px) saturate(125%) !important;
+    margin-bottom: 10px;
+  }
+  #notesTable td,
+  #notesTable tbody td {
+    border: none !important;
+  }
+  #notesTable tr + tr {
+    margin-top: 10px;
+  }
+  .pagination {
+    background: transparent !important;
+  }
+  .preview-overlay.open {
+    align-items: stretch !important;
+    background:
+      radial-gradient(54% 42% at 12% 10%, rgba(132,192,255,.24), transparent 66%),
+      radial-gradient(42% 36% at 92% 8%, rgba(190,180,255,.18), transparent 66%),
+      radial-gradient(48% 42% at 88% 92%, rgba(150,230,218,.18), transparent 68%),
+      linear-gradient(180deg, rgba(255,255,255,.94), rgba(247,247,248,.92)) !important;
+    -webkit-backdrop-filter: blur(10px) saturate(125%) !important;
+    backdrop-filter: blur(10px) saturate(125%) !important;
+  }
+  .preview-drawer {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    gap: 8px !important;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 12px calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  .preview-info-card {
+    background: rgba(255,255,255,.72) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 14px 36px rgba(17,24,39,.11), 0 1px 0 rgba(255,255,255,.88) inset !important;
+    -webkit-backdrop-filter: blur(20px) saturate(135%) !important;
+    backdrop-filter: blur(20px) saturate(135%) !important;
+  }
+  .preview-info-card {
+    display: block !important;
+    flex: 0 0 auto !important;
+    border-radius: 20px !important;
+    overflow: hidden !important;
+  }
+  .preview-header {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 8px 12px 6px !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .preview-header .code {
+    font-size: 9px !important;
+    line-height: 1.15 !important;
+  }
+  .preview-header .title {
+    font-size: 14px !important;
+    line-height: 1.22 !important;
+    margin-top: 2px !important;
+  }
+  .preview-close {
+    width: 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 !important;
+    border-radius: 999px !important;
+  }
+  .preview-meta {
+    display: grid !important;
+    grid-template-columns: 64px minmax(0, 1fr) 108px 26px !important;
+    align-items: center !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 5px 8px 7px !important;
+    gap: 4px !important;
+    overflow: hidden !important;
+    border-top: 1px solid rgba(17,24,39,.07) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .preview-meta .meta-item {
+    display: flex !important;
+    min-width: 0 !important;
+    min-height: 18px !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 10.5px !important;
+    line-height: 1.2 !important;
+    gap: 4px !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+  }
+  .preview-meta .meta-label {
+    display: inline-flex !important;
+    align-items: center !important;
+    height: auto !important;
+    line-height: 1.2 !important;
+    font-size: 10.5px !important;
+    flex: 0 0 auto !important;
+  }
+  .preview-meta .pm-val {
+    display: inline-flex !important;
+    align-items: center !important;
+    height: auto !important;
+    max-width: 58px !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 10.5px !important;
+    line-height: 1.2 !important;
+  }
+  .preview-meta .pm-stars {
+    letter-spacing: -1px !important;
+    transform: translateY(-.5px) !important;
+  }
+  .preview-meta #pmLevel,
+  .preview-meta #pmSource,
+  .preview-meta #pmDate {
+    width: 100% !important;
+  }
+  .preview-meta #pmLevel .pm-val {
+    max-width: 36px !important;
+    min-width: 26px !important;
+    text-overflow: clip !important;
+  }
+  .preview-meta #pmSource .pm-val { max-width: calc(100% - 24px) !important; }
+  .preview-meta #pmDate .pm-val {
+    max-width: 72px !important;
+    text-overflow: clip !important;
+  }
+  .preview-meta .meta-tags {
+    display: none !important;
+  }
+  .preview-meta #previewFavStar {
+    width: 26px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    padding: 0 !important;
+    border-radius: 999px !important;
+  }
+  .preview-body {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 16px !important;
+    border-radius: 26px !important;
+    background: rgba(255,255,255,.78) !important;
+    border: none !important;
+    background-clip: padding-box !important;
+    overflow: auto !important;
+    box-shadow: 0 18px 42px rgba(17,24,39,.12), 0 1px 0 rgba(255,255,255,.88) inset !important;
+    -webkit-backdrop-filter: blur(20px) saturate(135%) !important;
+    backdrop-filter: blur(20px) saturate(135%) !important;
+  }
+  .preview-footer {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    flex: 0 0 auto !important;
+    padding: 2px 0 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .preview-footer .btn,
+  .preview-footer .btn-danger {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 46px !important;
+    padding: 0 8px !important;
+    border-radius: 999px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
+    color: var(--text) !important;
+    background: rgba(255,255,255,.72) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 14px 30px rgba(17,24,39,.13), 0 1px 0 rgba(255,255,255,.88) inset, 0 -1px 0 rgba(17,24,39,.04) inset !important;
+    -webkit-backdrop-filter: blur(18px) saturate(125%) !important;
+    backdrop-filter: blur(18px) saturate(125%) !important;
+  }
+  .preview-footer .btn-danger::before { content: none !important; }
+  button,
+  .btn,
+  .btn-primary,
+  .btn-warning,
+  .btn-danger,
+  .ai-btn,
+  .ai-fill-btn,
+  .settings-tab,
+  .dpw-btn,
+  .dpw-close,
+  .roam-btn,
+  .roam-btn.primary,
+  .roam-flip-btn,
+  .mobile-filter-toggle,
+  .mobile-more-toggle,
+  .pagination button {
+    color: var(--text) !important;
+    background: rgba(255,255,255,.70) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 12px 28px rgba(17,24,39,.10), 0 1px 0 rgba(255,255,255,.86) inset !important;
+    -webkit-backdrop-filter: blur(18px) saturate(125%) !important;
+    backdrop-filter: blur(18px) saturate(125%) !important;
+  }
+  button:hover,
+  .btn:hover,
+  .ai-btn:hover,
+  .ai-fill-btn:hover,
+  .settings-tab:hover,
+  .roam-btn:hover,
+  .roam-flip-btn:hover {
+    color: var(--text) !important;
+    background: rgba(255,255,255,.84) !important;
+    transform: none !important;
+  }
+  .toast,
+  .toast-success,
+  .toast-error {
+    color: var(--text) !important;
+    background: rgba(255,255,255,.88) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 12px 30px rgba(17,24,39,.10), 0 1px 0 rgba(255,255,255,.84) inset !important;
+    -webkit-backdrop-filter: blur(18px) saturate(125%) !important;
+    backdrop-filter: blur(18px) saturate(125%) !important;
+  }
+  .login-form .btn,
+  #loginBtn {
+    min-height: 48px !important;
+    border-radius: 999px !important;
+    color: var(--text) !important;
+    background: rgba(255,255,255,.76) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 12px 30px rgba(17,24,39,.10), 0 1px 0 rgba(255,255,255,.88) inset !important;
+    -webkit-backdrop-filter: blur(20px) saturate(135%) !important;
+    backdrop-filter: blur(20px) saturate(135%) !important;
+  }
+  .login-form .btn:hover,
+  #loginBtn:hover {
+    background: rgba(255,255,255,.90) !important;
+    transform: translateY(-1px) !important;
+  }
+  .login-form .btn:active,
+  #loginBtn:active {
+    transform: translateY(0) scale(.99) !important;
+  }
+  #modalOverlay.open {
+    align-items: stretch !important;
+    padding: 0 !important;
+    background:
+      radial-gradient(54% 42% at 12% 10%, rgba(132,192,255,.24), transparent 66%),
+      radial-gradient(42% 36% at 92% 8%, rgba(190,180,255,.18), transparent 66%),
+      radial-gradient(48% 42% at 88% 92%, rgba(150,230,218,.18), transparent 68%),
+      linear-gradient(180deg, rgba(255,255,255,.94), rgba(247,247,248,.92)) !important;
+    -webkit-backdrop-filter: blur(10px) saturate(125%) !important;
+    backdrop-filter: blur(10px) saturate(125%) !important;
+  }
+  #modalOverlay .modal {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 10px calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  #modalOverlay .modal-body > .form-row,
+  #modalOverlay .modal-body > .form-group {
+    background: rgba(255,255,255,.66) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 22px !important;
+    box-shadow: 0 18px 40px rgba(17,24,39,.13), 0 1px 0 rgba(255,255,255,.9) inset !important;
+    -webkit-backdrop-filter: blur(20px) saturate(135%) !important;
+    backdrop-filter: blur(20px) saturate(135%) !important;
+  }
+  #modalOverlay .modal-header {
+    flex: 0 0 auto !important;
+    min-height: 42px !important;
+    padding: 0 2px 0 8px !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  #modalOverlay .modal-header h3 {
+    font-size: 15px !important;
+    line-height: 1.2 !important;
+  }
+  #modalOverlay .modal-close {
+    width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 !important;
+    border-radius: 999px !important;
+    background: rgba(255,255,255,.76) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 12px 28px rgba(17,24,39,.13), 0 1px 0 rgba(255,255,255,.9) inset !important;
+    -webkit-backdrop-filter: blur(18px) saturate(135%) !important;
+    backdrop-filter: blur(18px) saturate(135%) !important;
+  }
+  #modalOverlay .modal-body {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: transparent !important;
+  }
+  #modalOverlay .edit-top-card {
+    flex: 0 0 auto !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 128px !important;
+    gap: 7px 8px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  #modalOverlay .edit-top-card > .form-row {
+    display: contents !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  #modalOverlay .edit-top-card > .form-group {
+    grid-column: 1 / -1 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  #modalOverlay .edit-top-card .edit-date-card {
+    grid-column: 1 / -1 !important;
+  }
+  #modalOverlay .edit-top-card label {
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+    margin: 0 0 3px !important;
+    color: var(--muted) !important;
+  }
+  #modalOverlay .edit-top-card input,
+  #modalOverlay .edit-top-card select {
+    height: 34px !important;
+    min-height: 34px !important;
+    border-radius: 14px !important;
+    padding: 6px 10px !important;
+    font-size: 13px !important;
+    box-shadow: 0 10px 24px rgba(17,24,39,.08), 0 1px 0 rgba(255,255,255,.9) inset !important;
+  }
+  #modalOverlay .modal-body > .form-row {
+    flex: 0 0 auto !important;
+    flex-direction: row !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+  #modalOverlay .modal-body > .form-group {
+    flex: 0 0 auto !important;
+    margin: 0 !important;
+    padding: 10px !important;
+  }
+  #modalOverlay .modal-body > .form-group:has(#editContent) {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+  #modalOverlay .modal-body > .form-group.edit-content-card {
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  #modalOverlay .form-group {
+    margin-bottom: 0 !important;
+  }
+  #modalOverlay .form-group label {
+    font-size: 12px !important;
+    margin-bottom: 6px !important;
+  }
+  #modalOverlay .field-head {
+    align-items: center !important;
+    gap: 8px !important;
+    margin-bottom: 6px !important;
+  }
+  #modalOverlay .ai-btns {
+    margin-left: auto !important;
+    gap: 6px !important;
+  }
+  #modalOverlay .ai-fill-btn {
+    border-radius: 999px !important;
+    padding: 5px 9px !important;
+    font-size: 11px !important;
+  }
+  #modalOverlay .md-toolbar {
+    flex: 0 0 auto !important;
+    gap: 4px !important;
+    padding: 5px !important;
+    margin-bottom: 0 !important;
+    border-radius: 16px 16px 0 0 !important;
+    background: rgba(255,255,255,.68) !important;
+    border: none !important;
+    background-clip: padding-box !important;
+    box-shadow: 0 10px 24px rgba(17,24,39,.08), 0 1px 0 rgba(255,255,255,.9) inset !important;
+  }
+  #modalOverlay .md-toolbar button {
+    border-radius: 999px !important;
+    background: rgba(255,255,255,.64) !important;
+    border: 1px solid rgba(17,24,39,.08) !important;
+    box-shadow: none !important;
+  }
+  #modalOverlay .form-group input,
+  #modalOverlay .form-group select,
+  #modalOverlay .form-group textarea {
+    border-radius: 16px !important;
+    background: rgba(255,255,255,.72) !important;
+    border: 1px solid var(--border) !important;
+  }
+  #modalOverlay .md-toolbar + textarea,
+  #modalOverlay #editContent {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    border: none !important;
+    border-radius: 0 0 18px 18px !important;
+    background-clip: padding-box !important;
+    line-height: 1.65 !important;
+    overflow: auto !important;
+    resize: none !important;
+    box-shadow: 0 16px 34px rgba(17,24,39,.10) !important;
+  }
+  #modalOverlay .edit-extra-row,
+  #modalOverlay .edit-date-card {
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  #modalOverlay .edit-extra-row .form-group,
+  #modalOverlay .edit-date-card {
+    min-width: 0 !important;
+  }
+  #modalOverlay .edit-extra-row label,
+  #modalOverlay .edit-date-card label {
+    font-size: 10px !important;
+    margin-bottom: 4px !important;
+  }
+  #modalOverlay .modal-footer {
+    flex: 0 0 auto !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+  }
+  #modalOverlay .modal-footer .btn {
+    width: 100% !important;
+    min-height: 48px !important;
+    border-radius: 999px !important;
+    box-shadow: 0 14px 30px rgba(17,24,39,.13), 0 1px 0 rgba(255,255,255,.88) inset !important;
+  }
+  .roam-card {
+    background: rgba(255,255,255,.74) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 18px 46px rgba(17,24,39,.13), 0 1px 0 rgba(255,255,255,.88) inset !important;
+    -webkit-backdrop-filter: blur(20px) saturate(135%) !important;
+    backdrop-filter: blur(20px) saturate(135%) !important;
+    padding: 18px !important;
+    height: 78vh !important;
+  }
+  .roam-topbar,
+  .roam-controls {
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .roam-btn,
+  .roam-flip-btn,
+  .ai-btn {
+    border-radius: 999px !important;
+    box-shadow: 0 14px 30px rgba(17,24,39,.12), 0 1px 0 rgba(255,255,255,.88) inset !important;
+  }
+  .roam-topbar { margin-bottom: 8px !important; }
+  .roam-card-header { margin-bottom: 10px !important; }
+  .roam-title-row .roam-card-title,
+  .roam-card-title {
+    font-size: 20px !important;
+    line-height: 1.3 !important;
+    margin: 10px 0 12px !important;
+  }
+  .roam-card-content {
+    font-size: 14px !important;
+    line-height: 1.72 !important;
+    margin-bottom: 12px !important;
+  }
+  .roam-card-meta {
+    gap: 8px !important;
+    padding-top: 10px !important;
+    font-size: 12px !important;
+  }
+  .roam-controls {
+    gap: 10px !important;
+    margin-top: 12px !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -1059,7 +1835,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
   <filter id="lg-distortion" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
     <feTurbulence type="fractalNoise" baseFrequency="0.006 0.010" numOctaves="2" seed="42" result="noise"/>
     <feGaussianBlur in="noise" stdDeviation="2.2" result="map"/>
-    <!-- 色差(chromatic aberration)：R/G/B 用不同位移量分别折射，再以 screen 合成 → 边缘彩色镶边 -->
+    <!-- 色差(chromatic aberration)：R/G/B 用不同位移量分别折射，再以 screen 合成  边缘彩色镶边 -->
     <feDisplacementMap in="SourceGraphic" in2="map" scale="38" xChannelSelector="R" yChannelSelector="G" result="dR"/>
     <feColorMatrix in="dR" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cR"/>
     <feDisplacementMap in="SourceGraphic" in2="map" scale="30" xChannelSelector="R" yChannelSelector="G" result="dG"/>
@@ -1074,7 +1850,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
 <!-- ===== 默认口令安全提醒横幅 ===== -->
 <div id="defaultPwBanner" class="default-pw-banner" style="display:none">
   <span class="dpw-text">⚠️ 你正在使用默认管理员口令（admin123），存在安全风险，建议尽快修改。</span>
-  <button class="dpw-btn" onclick="closeDefaultPwBanner(); openPwdModal();">立即修改</button>
+  <button class="dpw-btn" onclick="closeDefaultPwBanner();openPwdModal();">立即修改</button>
   <button class="dpw-close" onclick="closeDefaultPwBanner()" title="本次会话不再提醒">×</button>
 </div>
 
@@ -1095,7 +1871,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         <input type="password" id="loginPassword" placeholder="请输入密码" autocomplete="current-password" required>
       </div>
       <div class="login-error" id="loginError"></div>
-      <button type="submit" class="btn btn-primary" id="loginBtn">登 录</button>
+      <button type="submit" class="btn btn-primary" id="loginBtn">登录</button>
     </form>
     <div class="login-footer">
       <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">苏ICP备2026032253号-1</a>
@@ -1182,13 +1958,13 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
     </div>
     <div class="modal-body settings-body">
       <nav class="settings-menu" id="settingsMenu">
-        <button type="button" class="settings-tab active" data-page="token" onclick="switchSettingsPage('token')">🎫 API 令牌</button>
-        <button type="button" class="settings-tab" data-page="uploads" onclick="switchSettingsPage('uploads')">🧹 图片存储维护</button>
-        <button type="button" class="settings-tab" data-page="dup" onclick="switchSettingsPage('dup')">🔁 笔记查重</button>
-        <button type="button" class="settings-tab" data-page="titlecheck" onclick="switchSettingsPage('titlecheck')">🔎 标题核查</button>
-        <button type="button" class="settings-tab" data-page="summary" onclick="switchSettingsPage('summary')">🤖 AI 总结提示词</button>
-        <button type="button" class="settings-tab" data-page="tidy" onclick="switchSettingsPage('tidy')">📝 AI 整理提示词</button>
-        <button type="button" class="settings-tab" data-page="fill" onclick="switchSettingsPage('fill')">✏️ AI 填充提示词</button>
+        <button type="button" class="settings-tab active" data-page="token" onclick="switchSettingsPage('token')">API令牌</button>
+        <button type="button" class="settings-tab" data-page="uploads" onclick="switchSettingsPage('uploads')">图片存储维护</button>
+        <button type="button" class="settings-tab" data-page="dup" onclick="switchSettingsPage('dup')">笔记查重</button>
+        <button type="button" class="settings-tab" data-page="titlecheck" onclick="switchSettingsPage('titlecheck')">标题核查</button>
+        <button type="button" class="settings-tab" data-page="summary" onclick="switchSettingsPage('summary')">AI总结提示词</button>
+        <button type="button" class="settings-tab" data-page="tidy" onclick="switchSettingsPage('tidy')">AI整理提示词</button>
+        <button type="button" class="settings-tab" data-page="fill" onclick="switchSettingsPage('fill')">AI填充提示词</button>
       </nav>
       <div class="settings-pages">
         <!-- 页：API 令牌 -->
@@ -1297,7 +2073,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
 
         <!-- 页：AI 总结提示词 -->
         <section class="settings-page" id="settingsPage-summary">
-          <h4 class="settings-page-title">🤖 AI 总结提示词</h4>
+          <h4 class="settings-page-title"> AI 总结提示词</h4>
           <div class="token-hint">AI 总结时发给大模型的系统提示词，打开即显示当前生效内容（已保存的自定义优先，否则为内置默认），可直接编辑。修改保存后立即对后续「AI 总结 / 一键总结」生效。</div>
           <textarea id="aiPromptText" class="ai-prompt-text" placeholder="加载中…"></textarea>
           <div class="form-row">
@@ -1339,7 +2115,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
 <div class="modal-overlay" id="proposalModalOverlay">
   <div class="user-mgmt-modal" role="dialog" aria-modal="true" aria-labelledby="proposalTitle">
     <div class="modal-header">
-      <h3 id="proposalTitle">📥 变更申请</h3>
+      <h3 id="proposalTitle"> 变更申请</h3>
       <button class="modal-close" onclick="closeProposalModal()">×</button>
     </div>
     <div class="modal-body">
@@ -1349,7 +2125,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         <div id="proposalPager" class="prop-pager"></div>
       </div>
       <div id="proposalDetailView" style="display:none">
-        <button class="btn btn-sm btn-outline" onclick="backToProposalList()">← 返回列表</button>
+        <button class="btn btn-sm btn-outline" onclick="backToProposalList()">返回列表</button>
         <div id="proposalDetail"></div>
       </div>
     </div>
@@ -1414,10 +2190,10 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <span class="footer-actions">
         <span id="currentUser" class="current-user"></span>
         <button type="button" class="icon-btn proposal-entry" id="proposalEntry" style="display:none" onclick="openProposalModal()" title="变更申请审批" aria-label="变更申请">📥<span class="proposal-badge" id="proposalBadge" style="display:none">0</span></button>
-        <button type="button" class="icon-btn proposal-entry" id="feedbackInboxBtn" style="display:none" onclick="openFeedbackInbox()" title="反馈箱（用户建议）" aria-label="反馈箱">📨<span class="proposal-badge" id="feedbackBadge" style="display:none">0</span></button>
+        <button type="button" class="icon-btn proposal-entry" id="feedbackInboxBtn" style="display:none" onclick="openFeedbackInbox()" title="反馈箱（用户建议）" aria-label="反馈箱">💬<span class="proposal-badge" id="feedbackBadge" style="display:none">0</span></button>
         <button type="button" class="icon-btn" id="userMgmtBtn" style="display:none" onclick="openUserModal()" title="用户管理" aria-label="用户管理">👥</button>
         <button type="button" class="icon-btn" id="settingsBtn" style="display:none" onclick="openSettingsModal()" title="系统设置" aria-label="系统设置">⚙️</button>
-        <button type="button" class="icon-btn" onclick="openFeedbackModal()" title="反馈建议" aria-label="反馈建议">💬</button>
+        <button type="button" class="icon-btn" onclick="openFeedbackModal()" title="反馈建议" aria-label="反馈建议">✉️</button>
         <button type="button" class="icon-btn" onclick="openPwdModal()" title="修改密码" aria-label="修改密码">🔑</button>
         <button type="button" class="icon-btn" onclick="doLogout()" title="退出登录" aria-label="退出登录">🚪</button>
       </span>
@@ -1437,17 +2213,17 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <select id="filterLevel" onchange="doSearch()"><option value="">全部等级</option><option value="★★★">★★★ 核心</option><option value="★★">★★ 重要</option><option value="★">★ 参考</option></select>
       <select id="filterSource" onchange="doSearch()"><option value="">全部来源</option></select>
       <select id="filterDomain" onchange="onDomainFilter()"><option value="">全部领域</option><option value="A">A 系统设备</option><option value="B">B 运行操作</option><option value="C">C 安全管理</option><option value="D">D 技术标准</option><option value="E">E 综合管理</option></select>
-      <button class="btn btn-outline" id="favFilterBtn" onclick="toggleFavFilter()" title="只看我收藏的笔记">☆ 我的收藏</button>
+      <button class="btn btn-outline" id="favFilterBtn" onclick="toggleFavFilter()" title="只看我收藏的笔记">我的收藏</button>
       <button class="btn btn-outline" onclick="resetFilters()">重置</button>
     </div>
     <div class="topbar-actions">
-      <button class="btn btn-primary" onclick="openAddModal()"><span class="desktop-label">+ 新增笔记</span><span class="mobile-label">+ 新增</span></button>
-      <button class="btn btn-warning" onclick="startRoam()"><span class="desktop-label">🎴 笔记漫游</span><span class="mobile-label">🎴 漫游</span></button>
+      <button class="btn btn-primary" onclick="openAddModal()"><span class="desktop-label">+新增笔记</span><span class="mobile-label">+新增</span></button>
+      <button class="btn btn-warning" onclick="startRoam()"><span class="desktop-label">笔记漫游</span><span class="mobile-label">漫游</span></button>
       <div class="mobile-more-actions">
         <button type="button" class="btn btn-outline mobile-more-toggle" onclick="toggleMobileMoreActions(event)">更多</button>
         <div class="mobile-more-list">
-          <button class="btn btn-outline" id="importBtn" onclick="importExcel()">📥 导入Excel</button>
-          <button class="btn btn-outline admin-only" id="summarizeAllBtn" onclick="summarizeAllNotes()" title="后台慢速处理全库未总结笔记">🤖 全库总结</button>
+          <button class="btn btn-outline" id="importBtn" onclick="importExcel()">导入Excel</button>
+          <button class="btn btn-outline admin-only" id="summarizeAllBtn" onclick="summarizeAllNotes()" title="后台慢速处理全库未总结笔记">全库总结</button>
         </div>
       </div>
     </div>
@@ -1478,7 +2254,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <button class="btn btn-sm btn-outline" onclick="batchUpdateSource()">应用来源</button>
       <input type="date" id="batchDate" title="批量修改日期" class="batch-date-input">
       <button class="btn btn-sm btn-outline" onclick="batchUpdateDate()">应用日期</button>
-      <button class="btn btn-sm btn-outline" onclick="batchSummarize()" title="对选中且尚无总结的笔记一键生成 AI 总结">🤖 一键总结</button>
+      <button class="btn btn-sm btn-outline" onclick="batchSummarize()" title="对选中且尚无总结的笔记一键生成AI总结">一键总结</button>
       <button class="btn btn-sm btn-danger" onclick="batchDelete()">删除选中</button>
       <button class="btn btn-sm btn-outline" onclick="clearSelection()">取消选择</button>
     </div>
@@ -1518,15 +2294,10 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <div class="icon">📝</div>
       <p>暂无符合条件的笔记</p>
       <p class="empty-sub">换个筛选条件试试，或新增第一条知识条目</p>
-      <button class="btn btn-primary" id="emptyAddBtn" style="display:none;margin-top:14px" onclick="openAddModal()">+ 新增笔记</button>
+      <button class="btn btn-primary" id="emptyAddBtn" style="display:none;margin-top:14px" onclick="openAddModal()">+新增笔记</button>
     </div>
   </div>
   <!-- 备案信息 -->
-  <footer class="site-footer">
-    <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">苏ICP备2026032253号-1</a>
-    <span class="footer-sep">|</span>
-    <a href="https://beian.mps.gov.cn/#/query/webSearch?code=32092402000464" rel="noreferrer" target="_blank"><img class="beian-icon" src="备案图标.png" alt="公安备案">苏公网安备32092402000464号</a>
-  </footer>
 </main>
 
 <!-- Roam Card View -->
@@ -1534,13 +2305,13 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
   <div class="roam-topbar">
     <span class="roam-hint" id="roamFilterHint"></span>
     <div class="flex-row-sm">
-      <button class="btn btn-outline" onclick="reshuffleRoam()">🔄 换一批</button>
-      <button class="btn btn-outline" onclick="exitRoam()">📋 返回列表</button>
+      <button class="btn btn-outline" onclick="reshuffleRoam()">换一批</button>
+      <button class="btn btn-outline" onclick="exitRoam()">返回列表</button>
     </div>
   </div>
   <div class="roam-card" id="roamCard">
     <div class="roam-empty" id="roamEmpty" style="display:none">
-      <div class="roam-emoji">🎴</div>
+      <div class="roam-emoji"></div>
       <p>当前筛选条件下暂无笔记</p>
     </div>
     <div id="roamCardInner" style="display:none">
@@ -1551,7 +2322,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
             <span class="roam-card-code" id="roamCode"></span>
             <span style="display:flex;align-items:center;gap:8px">
               <span id="roamLevel" class="roam-card-level" onclick="cycleRoamLevel()" title="点击切换重要程度"></span>
-              <button class="roam-flip-btn" onclick="flipRoam()" title="查看背面（来源文件 / AI 总结）">🔄 翻面</button>
+              <button class="roam-flip-btn" onclick="flipRoam()" title="查看背面（来源文件/AI总结）">🔄 翻面</button>
             </span>
           </div>
           <div class="roam-title-row">
@@ -1562,7 +2333,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
           <div class="roam-card-meta">
             <div class="roam-card-tags" id="roamTags"></div>
             <span class="meta-item">📅 <span id="roamNoteDate"></span></span>
-            <span class="meta-item">🔄 <span id="roamUpdatedAt"></span></span>
+            <span class="meta-item">🕒 <span id="roamUpdatedAt"></span></span>
             <span class="meta-item">📂 <span id="roamSource"></span></span>
           </div>
         </div>
@@ -1576,7 +2347,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
           <div class="roam-back-summary md-body" id="roamBackSummary"></div>
           <div class="summary-meta">
             <span id="roamSummaryMeta"></span>
-            <button class="ai-btn admin-only" id="roamSummarizeBtn" onclick="summarizeRoam()">🤖 AI 总结</button>
+            <button class="ai-btn admin-only" id="roamSummarizeBtn" onclick="summarizeRoam()">🤖 AI总结</button>
           </div>
         </div>
       </div>
@@ -1592,14 +2363,16 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
 <!-- Preview Modal -->
 <div class="preview-overlay" id="previewOverlay" onclick="closePreview()">
   <div class="preview-drawer" id="previewDrawer" role="dialog" aria-modal="true" aria-labelledby="previewTitle" onclick="event.stopPropagation()">
-    <div class="preview-header">
-      <div class="title-area">
-        <div class="code" id="previewCode"></div>
-        <div class="title" id="previewTitle"></div>
+    <div class="preview-info-card">
+      <div class="preview-header">
+        <div class="title-area">
+          <div class="code" id="previewCode"></div>
+          <div class="title" id="previewTitle"></div>
+        </div>
+        <button class="preview-close" onclick="closePreview()">×</button>
       </div>
-      <button class="preview-close" onclick="closePreview()">×</button>
+      <div class="preview-meta" id="previewMeta"></div>
     </div>
-    <div class="preview-meta" id="previewMeta"></div>
     <!-- 正面：笔记内容 -->
     <div class="preview-body" id="previewBody"></div>
     <!-- 背面：来源文件 + AI 总结 -->
@@ -1608,14 +2381,14 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <div class="md-body" id="previewBackSummary"></div>
       <div class="summary-meta">
         <span id="previewSummaryMeta"></span>
-        <button class="ai-btn admin-only" id="previewSummarizeBtn" onclick="summarizeFromPreview()">🤖 AI 总结</button>
+        <button class="ai-btn admin-only" id="previewSummarizeBtn" onclick="summarizeFromPreview()">🤖 AI总结</button>
       </div>
     </div>
     <div class="preview-footer">
-      <button class="btn btn-outline" id="previewFlipBtn" onclick="flipPreview()">🔄 翻面</button>
-      <button class="btn btn-outline" onclick="copyFromPreview()">📋 复制内容</button>
-      <button class="btn btn-outline writer-only" onclick="editFromPreview()">✎ 编辑</button>
-      <button class="btn btn-danger writer-only" onclick="deleteFromPreview()">✕ 删除</button>
+      <button class="btn btn-danger writer-only" onclick="deleteFromPreview()">删除</button>
+      <button class="btn btn-outline writer-only" onclick="editFromPreview()">编辑</button>
+      <button class="btn btn-outline" onclick="copyFromPreview()">复制</button>
+      <button class="btn btn-outline" id="previewFlipBtn" onclick="flipPreview()">翻面</button>
     </div>
   </div>
 </div>
@@ -1628,6 +2401,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <button class="modal-close" onclick="closeModal()">×</button>
     </div>
     <div class="modal-body">
+      <div class="edit-top-card">
       <div class="form-row">
         <div class="form-group">
           <label>所属章节 *</label>
@@ -1642,38 +2416,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
         <label>要点标题 *</label>
         <input type="text" id="editTitle" placeholder="简洁概括，不超过20字">
       </div>
-      <div class="form-group">
-        <div class="field-head">
-          <label for="editContent">内容详情</label>
-          <span class="ai-btns">
-            <button type="button" class="ai-fill-btn" id="aiFillBtn" onclick="doAiFill()" title="根据正文用 AI 推断并填充：标题/标签/章节/等级/来源">🪄 AI 填充</button>
-            <button type="button" class="ai-fill-btn" id="aiTidyBtn" onclick="doAiTidy()" title="AI 整理：清理排班/通知等非知识内容、规范小序号，并顺带填充字段（一次调用）">🧹 AI 整理</button>
-            <button type="button" class="ai-fill-btn" id="aiTidyUndoBtn" onclick="undoTidy()" style="display:none" title="恢复整理前的正文">↩ 撤回整理</button>
-          </span>
-        </div>
-        <div class="md-toolbar">
-          <button title="标题2" onclick="mdInsert('## ')">H2</button>
-          <button title="标题3" onclick="mdInsert('### ')">H3</button>
-          <span class="sep"></span>
-          <button title="加粗" onclick="mdWrap('**')"><b>B</b></button>
-          <button title="斜体" onclick="mdWrap('*')"><i>I</i></button>
-          <button title="行内代码" onclick="mdWrap('`')">&lt;/&gt;</button>
-          <span class="sep"></span>
-          <button title="无序列表" onclick="mdInsert('- ')">•</button>
-          <button title="有序列表" onclick="mdInsert('1. ')">1.</button>
-          <button title="引用" onclick="mdInsert('> ')">❝</button>
-          <span class="sep"></span>
-          <button title="链接" onclick="mdLink()">🔗</button>
-          <button title="表格" onclick="mdInsert('| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n| | | |\n')">⊞</button>
-          <button title="插入图片（也可直接粘贴截图或拖拽）" onclick="mdPickImage()">🖼</button>
-          <span class="sep"></span>
-          <button title="预览" id="mdPreviewToggle" onclick="toggleMdPreview()">👁</button>
-        </div>
-        <input type="file" id="mdImageInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">
-        <textarea id="editContent" placeholder="完整知识内容，可含数值/步骤/要点…（可直接粘贴截图或拖入图片）"></textarea>
-        <div class="md-preview md-body" id="mdPreview" style="display:none"></div>
-      </div>
-      <div class="form-row">
+      <div class="form-row edit-extra-row">
         <div class="form-group">
           <label>关键词标签</label>
           <input type="text" id="editTags" placeholder="逗号分隔，如：MFT,炉膛保护">
@@ -1684,9 +2427,41 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
           <datalist id="sourceOptions"></datalist>
         </div>
       </div>
-      <div class="form-group">
+      <div class="form-group edit-date-card">
         <label>日期</label>
         <input type="date" id="editDate">
+      </div>
+      </div>
+      <div class="form-group edit-content-card">
+        <div class="field-head">
+          <label for="editContent">内容详情</label>
+          <span class="ai-btns">
+            <button type="button" class="ai-fill-btn" id="aiFillBtn" onclick="doAiFill()" title="根据正文用AI推断并填充：标题/标签/章节/等级/来源">AI填充</button>
+            <button type="button" class="ai-fill-btn" id="aiTidyBtn" onclick="doAiTidy()" title="AI整理：清理排班/通知等非知识内容、规范小序号，并顺带填充字段（一次调用）">AI整理</button>
+            <button type="button" class="ai-fill-btn" id="aiTidyUndoBtn" onclick="undoTidy()" style="display:none" title="恢复整理前的正文">撤回整理</button>
+          </span>
+        </div>
+        <div class="md-toolbar">
+          <button title="标题2" onclick="mdInsert('##')">H2</button>
+          <button title="标题3" onclick="mdInsert('###')">H3</button>
+          <span class="sep"></span>
+          <button title="加粗" onclick="mdWrap('**')"><b>B</b></button>
+          <button title="斜体" onclick="mdWrap('*')"><i>I</i></button>
+          <button title="行内代码" onclick="mdWrap('`')">&lt;/&gt;</button>
+          <span class="sep"></span>
+          <button title="无序列表" onclick="mdInsert('-')">•</button>
+          <button title="有序列表" onclick="mdInsert('1.')">1.</button>
+          <button title="引用" onclick="mdInsert('>')">❝</button>
+          <span class="sep"></span>
+          <button title="链接" onclick="mdLink()">🔗</button>
+          <button title="表格" onclick="mdInsert('|列1|列2|列3|\n|---|---|---|\n||||\n')">⊞</button>
+          <button title="插入图片（也可直接粘贴截图或拖拽）" onclick="mdPickImage()">🖼️</button>
+          <span class="sep"></span>
+          <button title="预览" id="mdPreviewToggle" onclick="toggleMdPreview()">👁️</button>
+        </div>
+        <input type="file" id="mdImageInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">
+        <textarea id="editContent" placeholder="完整知识内容，可含数值/步骤/要点…（可直接粘贴截图或拖入图片）"></textarea>
+        <div class="md-preview md-body" id="mdPreview" style="display:none"></div>
       </div>
       <input type="hidden" id="editId">
     </div>
@@ -1765,7 +2540,7 @@ async function checkAuth() {
       currentRole = data.role || 'viewer';
       document.getElementById('loginOverlay').classList.add('hidden');
       currentUsername = data.username;
-      document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : currentRole === 'contributor' ? ' (共建)' : ' (只读)');
+      document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : currentRole === 'contributor' ? '(共建)' : '(只读)');
       document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
       document.getElementById('settingsBtn').style.display = currentRole === 'admin' ? '' : 'none';
       maybeShowDefaultPwBanner(data.default_password);
@@ -1809,12 +2584,12 @@ async function doLogin(e) {
       currentRole = data.role || 'viewer';
       document.getElementById('loginOverlay').classList.add('hidden');
       currentUsername = data.username;
-      document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : currentRole === 'contributor' ? ' (共建)' : ' (只读)');
+      document.getElementById('currentUser').textContent = data.username + (currentRole === 'admin' ? '' : currentRole === 'contributor' ? '(共建)' : '(只读)');
       document.getElementById('userMgmtBtn').style.display = currentRole === 'admin' ? '' : 'none';
       document.getElementById('settingsBtn').style.display = currentRole === 'admin' ? '' : 'none';
       maybeShowDefaultPwBanner(data.default_password);
       applyRoleUI();
-      init(); // 登录成功 → 初始化主应用
+      init(); // 登录成功  初始化主应用
     } else {
       errorEl.textContent = data.error || '登录失败';
     }
@@ -1969,11 +2744,11 @@ async function loadUsers() {
     const me = currentUsername;
     tbody.innerHTML = users.map(u => `
       <tr>
-        <td>${esc(u.username)}${u.username === me ? ' <span class="muted fs-xs">(当前)</span>' : ''}</td>
+        <td>${esc(u.username)}${u.username === me ? '<span class="muted fs-xs">(当前)</span>' : ''}</td>
         <td><span class="role-badge ${roleBadgeClass(u.role)}">${roleLabel(u.role)}</span></td>
         <td class="muted fs-xs">${u.last_login_at ? esc(u.last_login_at) + ` <a href="#" class="loglink" onclick="showLoginLog(${u.id},'${esc(u.username)}');return false">历史</a>` : '从未登录'}</td>
         <td class="muted fs-xs">${esc(u.created_at)}</td>
-        <td>${u.role !== 'admin' ? `<button class="btn-del" onclick="doDeleteUser(${u.id}, '${esc(u.username)}')">删除</button>` : '<span class="muted fs-xs">-</span>'}</td>
+        <td>${u.role !== 'admin' ? `<button class="btn-del" onclick="doDeleteUser(${u.id},'${esc(u.username)}')">删除</button>` : '<span class="muted fs-xs">-</span>'}</td>
       </tr>
     `).join('');
   } catch(e) {
@@ -2184,9 +2959,9 @@ function _renderPropPager(d) {
   const pg = document.getElementById('proposalPager');
   if (!d.pages || d.pages <= 1) { pg.innerHTML = `<span class="muted fs-xs">共 ${d.total || 0} 条</span>`; return; }
   pg.innerHTML = `
-    <button class="btn btn-sm btn-outline" ${d.page <= 1 ? 'disabled' : ''} onclick="loadProposals(${d.page - 1})">‹ 上一页</button>
+    <button class="btn btn-sm btn-outline"${d.page <= 1 ? 'disabled' : ''} onclick="loadProposals(${d.page-1})">‹上一页</button>
     <span class="muted fs-xs">第 ${d.page} / ${d.pages} 页 · 共 ${d.total} 条</span>
-    <button class="btn btn-sm btn-outline" ${d.page >= d.pages ? 'disabled' : ''} onclick="loadProposals(${d.page + 1})">下一页 ›</button>`;
+    <button class="btn btn-sm btn-outline"${d.page >= d.pages ? 'disabled' : ''} onclick="loadProposals(${d.page+1})">下一页›</button>`;
 }
 function _showProposalList() {
   document.getElementById('proposalListView').style.display = '';
@@ -2210,7 +2985,7 @@ function _diffField(label, oldV, newV, isContent, mode) {
   else cols = `<div class="diff-col"><div class="diff-coltag old">原值</div>${cell(oldV, 'old')}</div>`
             + `<div class="diff-col"><div class="diff-coltag new">新值</div>${cell(newV, 'new')}</div>`;
   return `<div class="diff-field${changed ? ' changed' : ''}">
-    <div class="diff-flabel">${label}${(mode === 'update' && !changed) ? ' <span class="muted fs-xs">（未变）</span>' : ''}</div>
+    <div class="diff-flabel">${label}${(mode === 'update' && !changed) ? '<span class="muted fs-xs">（未变）</span>' : ''}</div>
     <div class="diff-cols">${cols}</div></div>`;
 }
 function _proposalDetailHtml(p) {
@@ -2322,7 +3097,7 @@ async function loadFeedback() {
            <button class="btn btn-sm btn-outline" onclick="deleteFeedback(${it.id})">删除</button>`
         : `<button class="btn btn-sm btn-primary" onclick="setFeedbackStatus(${it.id},'done')">标记已处理</button>
            <button class="btn btn-sm btn-outline" onclick="deleteFeedback(${it.id})">删除</button>`;
-      return `<div class="prop-card${done ? ' prop-done' : ''}">
+      return `<div class="prop-card${done ? 'prop-done' : ''}">
         <div class="prop-head"><span class="muted fs-xs">${meta}</span></div>
         <div class="prop-body"><pre class="diff-content">${esc(it.content)}</pre></div>
         <div class="prop-actions">${actions}</div></div>`;
@@ -2349,7 +3124,7 @@ async function doAiFill() {
   if (!content) { showToast('请先填写内容正文', 'error'); return; }
   const btn = document.getElementById('aiFillBtn');
   const old = btn.textContent;
-  btn.disabled = true; btn.textContent = '⏳ 分析中…';
+  btn.disabled = true; btn.textContent = '分析中…';
   try {
     const r = await fetch('/api/ai/fill', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content })
@@ -2384,7 +3159,7 @@ async function doAiTidy() {
   if (!content) { showToast('请先填写内容正文', 'error'); return; }
   const btn = document.getElementById('aiTidyBtn');
   const old = btn.textContent;
-  btn.disabled = true; btn.textContent = '⏳ 整理中…';
+  btn.disabled = true; btn.textContent = '整理中…';
   try {
     const r = await fetch('/api/ai/tidy', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content })
@@ -2439,7 +3214,7 @@ async function summarizeAllNotes() {
   if (!confirm('创建全库 AI 总结后台任务？已有 AI 总结内容的笔记会自动跳过，后台会慢速处理。')) return;
   const btn = document.getElementById('summarizeAllBtn');
   const old = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ 已提交…'; }
+  if (btn) { btn.disabled = true; btn.textContent = '已提交…'; }
   let submitted = false;
   try {
     const r = await fetch('/api/notes/summarize-all', { method: 'POST' });
@@ -2467,13 +3242,13 @@ async function pollSummaryJob(jobId, onDone) {
     const allBtn = document.getElementById('summarizeAllBtn');
     if (allBtn && (j.status === 'running' || j.status === 'queued')) {
       allBtn.disabled = true;
-      allBtn.textContent = `⏳ 运行中 ${j.done + j.skipped + j.failed}/${j.total}`;
+      allBtn.textContent = `运行中 ${j.done + j.skipped + j.failed}/${j.total}`;
     }
     if (j.status === 'queued' || j.status === 'running') {
       setTimeout(() => pollSummaryJob(jobId, onDone), 5000);
       return;
     }
-    if (allBtn) { allBtn.disabled = false; allBtn.textContent = '🤖 全库总结'; }
+    if (allBtn) { allBtn.disabled = false; allBtn.textContent = '全库总结'; }
     if (j.failed && j.failed_list && j.failed_list.length) {
       alert('部分总结失败，原因示例：\n' + j.failed_list.slice(0, 3).map(f => '· ' + (f.reason || '未知')).join('\n'));
     }
@@ -2596,8 +3371,8 @@ function renderTitleContentCheck(job) {
       '<td class="check-title-cell">' + esc(n.title) + '</td>' +
       '<td class="check-excerpt">' + esc(n.content_excerpt || '') + '</td>' +
       '<td class="check-reason">' + esc(n.reason || '') + terms + '</td>' +
-      '<td><button type="button" class="btn btn-sm btn-outline" onclick="openPreviewFromDup(' + n.id + ')">查看</button> ' +
-      '<button type="button" class="btn btn-sm btn-outline" onclick="ignoreTitleCheckItem(' + n.id + ')">忽略</button></td>' +
+      '<td><button type="button" class="btn btn-sm btn-outline" onclick="openPreviewFromDup('+n.id+')">查看</button> ' +
+      '<button type="button" class="btn btn-sm btn-outline" onclick="ignoreTitleCheckItem('+n.id+')">忽略</button></td>' +
       '</tr>';
   });
   html += '</tbody></table>';
@@ -2639,7 +3414,7 @@ async function loadTitleCheckIgnored() {
         '<td><span class="dup-code">' + esc(n.code || ('#' + n.note_id)) + '</span></td>' +
         '<td class="check-title-cell">' + esc(n.title || '笔记已删除') + '</td>' +
         '<td class="muted">' + esc(n.ignored_at || '') + '</td>' +
-        '<td><button type="button" class="btn btn-sm btn-outline" onclick="restoreTitleCheckIgnored(' + n.note_id + ')">恢复核查</button></td>' +
+        '<td><button type="button" class="btn btn-sm btn-outline" onclick="restoreTitleCheckIgnored('+n.note_id+')">恢复核查</button></td>' +
         '</tr>';
     });
     html += '</tbody></table>';
@@ -2683,7 +3458,7 @@ async function loadTokens() {
         <td><span class="role-badge ${roleBadgeClass(t.role)}">${roleLabel(t.role)}</span></td>
         <td class="muted">${t.created_at}</td>
         <td class="muted">${t.last_used_at || '<span class="token-empty">从未</span>'}</td>
-        <td><button class="btn-del" onclick="doDeleteToken(${t.id}, '${esc(t.label) || '该令牌'}')">删除</button></td>
+        <td><button class="btn-del" onclick="doDeleteToken(${t.id},'${esc(t.label)||'该令牌'}')">删除</button></td>
       </tr>
     `).join('');
   } catch(e) {
@@ -3193,11 +3968,11 @@ function toggleMdPreview() {
     preview.innerHTML = mdSafe(ta.value);
     preview.style.display = 'block';
     ta.style.display = 'none';
-    btn.textContent = '✏';
+    btn.textContent = '✏️';
   } else {
     preview.style.display = 'none';
     ta.style.display = '';
-    btn.textContent = '👁';
+    btn.textContent = '👁️';
   }
 }
 
@@ -3207,7 +3982,7 @@ function resetMdEditor() {
   const btn = document.getElementById('mdPreviewToggle');
   preview.style.display = 'none';
   ta.style.display = '';
-  btn.textContent = '👁';
+  btn.textContent = '👁️';
 }
 
 // Tab 键插入缩进
@@ -3222,7 +3997,7 @@ function renderPagination(data) {
   // 窗口化：仅显示 首页 / 末页 / 当前页±2，其余折叠为省略号，避免页数多时铺满几百个按钮
   const want = new Set([1, last, cur, cur - 1, cur + 1, cur - 2, cur + 2]);
   const pages = [...want].filter(n => n >= 1 && n <= last).sort((a, b) => a - b);
-  let html = `<button ${cur <= 1 ? 'disabled' : ''} onclick="goPage(${cur - 1})">上一页</button>`;
+  let html = `<button ${cur <= 1 ? 'disabled' : ''} onclick="goPage(${cur-1})">上一页</button>`;
   let prev = 0;
   for (const n of pages) {
     if (n - prev > 1) html += `<span class="page-ellipsis">…</span>`;
@@ -3231,7 +4006,7 @@ function renderPagination(data) {
       : `<button onclick="goPage(${n})">${n}</button>`;
     prev = n;
   }
-  html += `<button ${cur >= last ? 'disabled' : ''} onclick="goPage(${cur + 1})">下一页</button>`;
+  html += `<button ${cur >= last ? 'disabled' : ''} onclick="goPage(${cur+1})">下一页</button>`;
   html += `<span class="page-info">第 ${cur}/${last} 页</span>`;
   pg.innerHTML = html;
 }
@@ -3674,7 +4449,7 @@ function setPreviewFace(toBack) {
   previewFlipped = !!toBack;
   document.getElementById('previewBody').style.display = toBack ? 'none' : '';
   document.getElementById('previewBack').style.display = toBack ? '' : 'none';
-  document.getElementById('previewFlipBtn').textContent = toBack ? '↩ 正面' : '🔄 翻面';
+  document.getElementById('previewFlipBtn').textContent = toBack ? '正面' : '翻面';
 }
 function flipPreview() { setPreviewFace(!previewFlipped); }
 
@@ -3705,14 +4480,14 @@ function renderBackContent(n, srcFileId, summaryId, metaId, btnId) {
     sumEl.innerHTML = mdSafe(n.ai_summary);
     const stale = n.ai_summary_at && n.updated_at && n.updated_at > n.ai_summary_at;
     metaEl.innerHTML = '🕒 总结于 ' + esc(n.ai_summary_at || '') +
-      (stale ? ' <span class="summary-stale">⚠ 笔记此后已更新，总结可能过时</span>' : '');
+      (stale ? '<span class="summary-stale">⚠ 笔记此后已更新，总结可能过时</span>' : '');
   } else {
     sumEl.innerHTML = '<div class="summary-empty">尚无 AI 总结' +
       (currentRole === 'admin' ? '，点击下方按钮生成' : '') + '</div>';
     metaEl.innerHTML = '';
   }
   const btn = document.getElementById(btnId);
-  if (btn) btn.textContent = n.ai_summary ? '🔄 重新总结' : '🤖 AI 总结';
+  if (btn) btn.textContent = n.ai_summary ? '重新总结' : 'AI 总结';
 }
 
 // 调用后端 AI 总结接口（管理员）；onDone(updatedNote) 回调用于刷新对应界面
@@ -3720,7 +4495,7 @@ async function summarizeNote(id, btnId, onDone) {
   if (currentRole !== 'admin') return;
   const btn = document.getElementById(btnId);
   const old = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ 总结中…'; }
+  if (btn) { btn.disabled = true; btn.textContent = '总结中…'; }
   try {
     const r = await fetch('/api/notes/' + id + '/summarize', { method: 'POST' });
     const data = await r.json().catch(() => ({}));
@@ -4127,7 +4902,7 @@ function cycleRoamLevel() {
   .catch(function(e) {
     n.level = oldLevel;
     renderRoamCard();
-    showToast('请求失败: ' + (e.message || '网络错误'), 'error');
+    showToast('请求失败: '+ (e.message || '网络错误'), 'error');
   });
 }
 
@@ -4206,7 +4981,7 @@ document.addEventListener('keydown', e => {
     return open.length ? open[open.length - 1] : null;
   }
 
-  // 监听每个弹窗 .open 的变化：打开→记录来源并聚焦首个控件；关闭→把焦点还给来源
+  // 监听每个弹窗 .open 的变化：打开记录来源并聚焦首个控件；关闭把焦点还给来源
   overlayIds.forEach(id => {
     const ov = document.getElementById(id);
     if (!ov) return;
