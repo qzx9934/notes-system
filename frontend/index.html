@@ -124,6 +124,12 @@ body.roam-immersive .site-footer { display: none; }
   padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius);
   font-size: 13px; background: var(--card); cursor: pointer; outline: none;
 }
+.mobile-filter-toggle { display: none; }
+.topbar-actions { display: contents; }
+.mobile-more-actions { display: contents; }
+.mobile-more-toggle { display: none; }
+.mobile-more-list { display: contents; }
+.mobile-label { display: none; }
 .btn { padding: 8px 16px; border: none; border-radius: var(--radius); cursor: pointer; font-size: 13px; font-weight: 500; transition: all .15s; }
 .btn-primary { background: var(--primary-light); color: #fff; }
 .btn-primary:hover { background: var(--primary); }
@@ -178,6 +184,7 @@ tbody tr.selected { background: #EBF5FB; }
 .col-source { width: 92px; text-align: center; white-space: nowrap; }
 .col-level { width: 60px; text-align: center; }
 .col-date { width: 104px; text-align: center; white-space: nowrap; }
+.col-mobile-meta { display: none; }
 .tag { display: inline-block; padding: 2px 8px; margin: 1px 3px; border-radius: 12px; font-size: 11px; background: #EBF5FB; color: var(--primary-light); }
 .star3 { color: var(--star3); font-weight: bold; }
 .star2 { color: var(--star2); font-weight: bold; }
@@ -319,43 +326,87 @@ tbody tr.selected { background: #EBF5FB; }
   .sidebar-overlay { z-index: 1350; }
   .sidebar-overlay.show { display: block; }
   /* 让出顶栏高度，内容从 App Bar 下方开始 */
-  .main { margin-left: 0; padding: 12px; padding-top: calc(48px + env(safe-area-inset-top, 0px) + 12px); }
+  .main {
+    width: 100%; max-width: 100vw; overflow-x: hidden;
+    margin-left: 0; padding: 12px; padding-top: calc(48px + env(safe-area-inset-top, 0px) + 12px);
+  }
   /* ===== 笔记列表：移动端改为卡片式（不再横向滚动）===== */
-  .table-wrap { overflow: visible; }
+  .table-wrap { overflow: visible; width: 100%; max-width: 100%; }
   .table-wrap > .table-scroll > table { min-width: 0; width: 100%; }
   .table-wrap > .table-scroll > table > thead { display: none; } /* 只隐藏笔记列表表头，避免影响 Markdown 表格 */
   #notesTable tr {                                  /* 每行变一张卡片 */
     display: block; position: relative;
     background: var(--card); border: 1px solid var(--border);
     border-radius: 8px; margin-bottom: 10px; padding: 12px 14px;
+    -webkit-tap-highlight-color: transparent;
   }
-  #notesTable tr.selected { background: var(--card); border-color: var(--primary-light); box-shadow: 0 0 0 1px var(--primary-light); }
+  #notesTable tr:focus, #notesTable tr:focus-visible { outline: none; }
+  #notesTable tr:active { background: #F7FAFC; }
+  #notesTable tr.selected { background: var(--card); border-color: var(--border); box-shadow: none; }
   #notesTable td { display: block; border: none; padding: 2px 0; white-space: normal; }
   /* 卡片里把表格中被省略的列重新显示出来 */
-  .col-content, .col-tags, .col-source { display: block; }
+  .col-content, .col-tags { display: block; }
   td.col-check { position: absolute; top: 10px; right: 10px; width: auto; padding: 0; }
   td.col-title { font-size: 15px; font-weight: 600; padding-right: 28px; margin-bottom: 2px; }
   td.col-code { font-size: 11px; color: var(--text-secondary); font-family: Consolas, monospace; margin-bottom: 6px; }
   td.col-content { font-size: 13px; color: var(--text); margin: 2px 0; }
   td.col-content .expand-hint { font-size: 11px; }
-  td.col-tags { margin: 4px 0; }
+  td.col-tags { margin: 4px 0; max-height: 48px; overflow: hidden; }
   /* 来源/等级/日期：带中文标签的小字 meta（同一行排列）*/
-  td.col-source, td.col-level, td.col-date { display: inline-block; width: auto; text-align: left; font-size: 12px; margin: 4px 12px 0 0; }
-  td.col-source, td.col-date { color: var(--text-secondary); }
-  td.col-source::before { content: "来源："; color: var(--text-secondary); }
-  td.col-level::before  { content: "等级："; color: var(--text-secondary); font-weight: normal; }
-  td.col-date::before   { content: "日期："; color: var(--text-secondary); }
+  td.col-source, td.col-level, td.col-date { display: none; }
+  td.col-mobile-meta {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    margin-top: 4px; color: var(--text-secondary); font-size: 11px; line-height: 1.4;
+  }
+  .mobile-meta-sep { color: rgba(91,103,112,.45); }
+  .mobile-meta-level { font-weight: 600; }
   /* 顶栏堆叠 */
-  .topbar { flex-direction: column; gap: 6px; }
-  .topbar .btn { width: 100%; }
+  .topbar {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+    align-items: stretch; margin-bottom: 10px; max-width: 100%; overflow: visible;
+  }
   .search-wrap { min-width: 0; }
-  .filter-group { flex-wrap: wrap; gap: 4px; }
-  .filter-group select { flex: 1; min-width: 80px; font-size: 11px; padding: 6px 8px; }
-  .filter-group .btn { font-size: 11px; padding: 6px 10px; }
+  .topbar .search-wrap { grid-column: 1 / -1; }
+  .search-wrap input { height: 42px; border-radius: 12px; }
+  .mobile-filter-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 40px; min-width: 0; padding: 8px 6px;
+  }
+  .desktop-label { display: none; }
+  .mobile-label { display: inline; }
+  .filter-group {
+    display: none; grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px;
+    padding: 8px; border: 1px solid var(--border); border-radius: 12px;
+    background: rgba(255,255,255,.74);
+  }
+  .filter-group.open { display: grid; }
+  .filter-group select { min-width: 0; font-size: 12px; padding: 7px 8px; }
+  .filter-group .btn { width: auto; font-size: 12px; padding: 7px 8px; }
+  .filter-group #favFilterBtn { grid-column: span 2; }
+  .topbar-actions { display: contents; }
+  .topbar-actions > .btn { width: 100%; min-height: 40px; padding: 8px 6px; white-space: nowrap; }
+  .mobile-more-actions { display: block; position: relative; }
+  .mobile-more-toggle {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 40px; width: 100%; padding: 8px 6px; list-style: none; user-select: none; white-space: nowrap;
+  }
+  .mobile-more-list {
+    display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 20;
+    min-width: 132px; padding: 8px; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--card); box-shadow: 0 10px 28px rgba(31,78,121,.18);
+  }
+  .mobile-more-actions.open .mobile-more-list { display: grid; gap: 6px; }
+  .mobile-more-list .btn { width: 100%; white-space: nowrap; }
   /* 统计栏 */
-  .stats-bar { flex-wrap: wrap; gap: 6px; }
-  .stat-card { flex: 1 1 45%; min-width: 0; padding: 10px 12px; }
-  .stat-card .num { font-size: 22px; }
+  .stats-bar {
+    display: flex; gap: 6px; overflow-x: auto; margin-bottom: 10px;
+    padding-bottom: 2px; scrollbar-width: none;
+  }
+  .stats-bar::-webkit-scrollbar { display: none; }
+  .stat-card { flex: 0 0 auto; min-width: 78px; padding: 8px 10px; border-radius: 12px; }
+  .stat-card .num { font-size: 18px; line-height: 1.15; }
+  .stat-card .label { font-size: 11px; white-space: nowrap; }
   /* 批量栏 */
   .batch-bar { flex-wrap: wrap; gap: 6px; }
   .batch-bar .actions { flex-wrap: wrap; gap: 4px; }
@@ -375,6 +426,18 @@ tbody tr.selected { background: #EBF5FB; }
   .preview-body { padding: 14px; font-size: 13px; }
   .preview-header { padding: 12px 14px; }
   .preview-header .title { font-size: 16px; }
+  .preview-footer {
+    display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  .preview-footer .btn {
+    width: 100%; padding: 9px 8px; min-height: 42px;
+  }
+  .preview-footer .btn-danger {
+    width: 42px; padding: 0; font-size: 0; border-radius: 12px;
+    background: #fff; color: #C0392B; border: 1px solid rgba(192,57,43,.25);
+  }
+  .preview-footer .btn-danger::before { content: "删"; font-size: 13px; }
   /* 模态框 */
   .modal { width: 100vw; max-width: 100vw; max-height: 90vh; border-radius: 0; }
   .modal-body { padding: 14px; }
@@ -913,6 +976,34 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
 .icon-btn:active { transform: scale(.94); }
 .icon-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
+@media (max-width: 768px) {
+  #notesTable tr.selected,
+  #notesTable tr.selected:hover {
+    background: var(--card) !important;
+    border-color: var(--border) !important;
+    box-shadow: none !important;
+  }
+  #notesTable tr:focus,
+  #notesTable tr:focus-visible {
+    outline: none !important;
+  }
+  #notesTable td.col-source,
+  #notesTable td.col-level,
+  #notesTable td.col-date {
+    display: none !important;
+  }
+  #notesTable td.col-mobile-meta {
+    display: flex !important;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.4;
+    margin-top: 4px;
+  }
+}
+
 /* ===== 列表 / 概览可读性（桌面端放大；移动端卡片保持原紧凑布局） ===== */
 @media (min-width: 769px) {
   .stat-card { padding: 16px 20px; }
@@ -1341,6 +1432,7 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <input type="text" id="searchInput" placeholder="搜索标题、内容、标签…" oninput="onSearchInput()">
       <button class="clear" id="clearSearch" onclick="clearSearch()" style="display:none">×</button>
     </div>
+    <button type="button" class="btn btn-outline mobile-filter-toggle" onclick="toggleMobileFilters()">筛选</button>
     <div class="filter-group">
       <select id="filterLevel" onchange="doSearch()"><option value="">全部等级</option><option value="★★★">★★★ 核心</option><option value="★★">★★ 重要</option><option value="★">★ 参考</option></select>
       <select id="filterSource" onchange="doSearch()"><option value="">全部来源</option></select>
@@ -1348,10 +1440,17 @@ tbody tr.selected { background: rgba(46,117,182,.16) !important; }
       <button class="btn btn-outline" id="favFilterBtn" onclick="toggleFavFilter()" title="只看我收藏的笔记">☆ 我的收藏</button>
       <button class="btn btn-outline" onclick="resetFilters()">重置</button>
     </div>
-    <button class="btn btn-primary" onclick="openAddModal()">+ 新增笔记</button>
-    <button class="btn btn-outline" id="importBtn" onclick="importExcel()">📥 导入Excel</button>
-    <button class="btn btn-warning" onclick="startRoam()">🎴 笔记漫游</button>
-    <button class="btn btn-outline admin-only" id="summarizeAllBtn" onclick="summarizeAllNotes()" title="后台慢速处理全库未总结笔记">🤖 全库总结</button>
+    <div class="topbar-actions">
+      <button class="btn btn-primary" onclick="openAddModal()"><span class="desktop-label">+ 新增笔记</span><span class="mobile-label">+ 新增</span></button>
+      <button class="btn btn-warning" onclick="startRoam()"><span class="desktop-label">🎴 笔记漫游</span><span class="mobile-label">🎴 漫游</span></button>
+      <div class="mobile-more-actions">
+        <button type="button" class="btn btn-outline mobile-more-toggle" onclick="toggleMobileMoreActions(event)">更多</button>
+        <div class="mobile-more-list">
+          <button class="btn btn-outline" id="importBtn" onclick="importExcel()">📥 导入Excel</button>
+          <button class="btn btn-outline admin-only" id="summarizeAllBtn" onclick="summarizeAllNotes()" title="后台慢速处理全库未总结笔记">🤖 全库总结</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="stats-bar" id="statsBar"></div>
@@ -2706,7 +2805,6 @@ async function loadStats() {
     <div class="stat-card"><div class="num c-star3">${byLevel['★★★'] || 0}</div><div class="label">★★★ 核心</div></div>
     <div class="stat-card"><div class="num c-star2">${byLevel['★★'] || 0}</div><div class="label">★★ 重要</div></div>
     <div class="stat-card"><div class="num c-star1">${byLevel['★'] || 0}</div><div class="label">★ 参考</div></div>
-    <div class="stat-card"><div class="num">${s.by_section.filter(x=>x.cnt>0).length}</div><div class="label">涉及章节</div></div>
   `;
   // 缓存各章节条目数 + 总数，刷新侧栏徽章（领域/章节条数一目了然）
   totalCount = s.total;
@@ -2783,6 +2881,7 @@ function selectSection(code) {
   currentPage = 1;
   selectedIds.clear();
   updateBatchBar();
+  document.querySelector('.filter-group')?.classList.remove('open');
   document.getElementById('filterDomain').value = '';
   renderSidebar();
   doSearch();
@@ -2902,6 +3001,11 @@ function renderTable(items) {
         ${needTruncate ? '<div class="expand-hint">点击查看全文 ›</div>' : ''}
       </td>
       <td class="col-tags">${(n.tags || '').split(',').filter(Boolean).map(t => `<span class="tag">${esc(t.trim())}</span>`).join('')}</td>
+      <td class="col-mobile-meta">
+        <span>${esc(n.source)}</span><span class="mobile-meta-sep">·</span>
+        <span class="mobile-meta-level ${levelClass(n.level)}">${esc(n.level)}</span><span class="mobile-meta-sep">·</span>
+        <span>${esc(n.note_date)}</span>
+      </td>
       <td class="col-source">${esc(n.source)}</td>
       <td class="col-level ${levelClass(n.level)}">${esc(n.level)}</td>
       <td class="col-date">${esc(n.note_date)}</td>
@@ -3134,6 +3238,15 @@ function renderPagination(data) {
 function goPage(p) { currentPage = p; doSearch(); window.scrollTo({top: 400, behavior: 'smooth'}); }
 
 function clearSearch() { document.getElementById('searchInput').value = ''; doSearch(); }
+function toggleMobileFilters() {
+  document.querySelector('.mobile-more-actions')?.classList.remove('open');
+  document.querySelector('.filter-group')?.classList.toggle('open');
+}
+function toggleMobileMoreActions(e) {
+  e?.stopPropagation();
+  document.querySelector('.filter-group')?.classList.remove('open');
+  document.querySelector('.mobile-more-actions')?.classList.toggle('open');
+}
 function resetFilters() {
   document.getElementById('searchInput').value = '';
   document.getElementById('filterLevel').value = '';
