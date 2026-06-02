@@ -2,6 +2,8 @@
 flask>=3.1,<4.0
 flask-cors>=6.0,<7.0
 openpyxl>=3.1,<4.0
+# Word 试卷导出
+python-docx>=1.1,<2.0
 # AI 总结：调用 DeepSeek HTTP 接口
 requests>=2.31,<3.0
 # 生产部署用 WSGI 服务器（gunicorn wsgi:app）；便携启动脚本不依赖它

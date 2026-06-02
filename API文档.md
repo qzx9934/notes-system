@@ -86,7 +86,7 @@ Authorization: Bearer <你的令牌>
 | `ai_summary` | string | 只读 | AI 总结正文（Markdown），由 `POST /api/notes/<id>/summarize` 生成并保存，显示在卡片背面 |
 | `ai_summary_at` | string | 只读 | AI 总结生成时间；若笔记此后又被更新，前端会提示总结可能已过时 |
 
-> **字段校验：** 单条接口（`POST /api/notes`、`PUT /api/notes/<id>`、`PUT /api/notes/batch`）会严格校验 `section`（须存在）、`level`、`note_date`、`source`，非法时返回 `400`（`PUT /api/notes/<id>` 对 `source` 仅在本次实际改动时校验，以兼容历史遗留的自定义来源）。
+> **字段校验：** 单条接口（`POST /api/notes`、`PUT /api/notes/<id>`、`PUT /api/notes/batch`）会严格校验 `section`（须存在）、`level`、`note_date`、`source`，非法时返回 `400`。`source` 支持预设值和手动输入，不能为空、不能超过 50 字符、不能包含控制字符。
 > 批量接口（`POST /api/notes/ingest`、`POST /api/notes/batch`）更宽容：非法的 `level`/`date`/`source` 会**自动回退**为默认值（`★` / 今天 / `个人总结`），便于大模型批量上传；但 `section` 非法仍会被跳过。
 
 ---
@@ -179,6 +179,10 @@ Authorization: Bearer <你的令牌>
 ### `PUT /api/notes/batch` —— 批量改字段（admin，`{ids, updates}`，仅允许 `level`/`section`/`source`）
 > 当 `updates` 含 `section`（移动章节）时，被移动笔记的编号 `code` 会按新章节自动重新生成，保持编号前缀与所在章节一致。
 ### `DELETE /api/notes/batch` —— 批量删除（admin，`{ids}`）
+
+### `POST /api/notes/export-exam` —— 已选笔记生成 Word 试卷（admin）
+
+请求：`{"ids":[1,2,3]}`。返回 `运行工作笔记试卷.zip`，内含两份 Word：`运行工作笔记试卷-无答案.docx` 和 `运行工作笔记试卷-含答案.docx`。Word 使用宋体，题目四号，正文小四；无答案版本会按笔记内容预留答题空位。
 
 ### 收藏（每个用户独立）
 

@@ -18,13 +18,18 @@ import difflib
 import json
 import threading
 import uuid
+import io
+import zipfile
 
 import requests
+from docx import Document
+from docx.shared import Pt
+from docx.oxml.ns import qn
 
 # 确保 PWA 清单以正确 MIME 类型下发（开启了 nosniff，类型错误会被浏览器拒绝）
 mimetypes.add_type('application/manifest+json', '.webmanifest')
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, g, session, send_from_directory
+from flask import Flask, request, jsonify, g, session, send_from_directory, send_file
 from flask_cors import CORS
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -1052,10 +1057,17 @@ def valid_level(v):
     return v in VALID_LEVELS
 
 def valid_source(v):
-    return v in VALID_SOURCES_SET
+    if not isinstance(v, str):
+        return False
+    v = v.strip()
+    if not v or len(v) > 50:
+        return False
+    return not any(ord(ch) < 32 for ch in v)
 
 def norm_source(v):
     """宽容路径（ingest / batch 追加）：非法来源回退默认，不报错、不入库任意值。"""
+    if isinstance(v, str):
+        v = v.strip()
     return v if v in VALID_SOURCES_SET else DEFAULT_SOURCE
 
 def valid_date(v):
@@ -1357,7 +1369,7 @@ def api_note_create():
 
     level   = data.get('level', '★')
     note_date = data.get('note_date', datetime.now().strftime('%Y-%m-%d'))
-    source  = data.get('source', DEFAULT_SOURCE)
+    source  = (data.get('source', DEFAULT_SOURCE) or '').strip()
     if not valid_level(level):
         return jsonify({'error': 'level 只能为 ★ / ★★ / ★★★'}), 400
     if not valid_date(note_date):
@@ -1403,7 +1415,7 @@ def api_note_update(id):
     title   = data.get('title', existing['title'])
     content = data.get('content', existing['content'])
     tags    = data.get('tags', existing['tags'])
-    source  = data.get('source', existing['source'])
+    source  = (data.get('source', existing['source']) or '').strip()
     level   = data.get('level', existing['level'])
     note_date = data.get('note_date', existing['note_date'])
 
@@ -1414,6 +1426,8 @@ def api_note_update(id):
     # 来源：仅当本次真的改了来源才校验，保留历史遗留的自定义来源（未改动不拦截）
     if source != existing['source'] and not valid_source(source):
         return jsonify({'error': '来源不在允许列表内：' + ' / '.join(VALID_SOURCES)}), 400
+    if 'source' in data:
+        data['source'] = source
     if 'section' in data and not section_exists(db, data['section']):
         return jsonify({'error': f'未知的章节编码: {data["section"]}'}), 400
 
@@ -2232,6 +2246,104 @@ def api_title_content_ignore_delete(id):
     db.commit()
     return jsonify({'ok': True, 'removed': cur.rowcount})
 
+def _plain_text_from_markdown(text):
+    text = text or ''
+    text = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'\1', text)
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    text = re.sub(r'`{1,3}([^`]+)`{1,3}', r'\1', text)
+    text = re.sub(r'^[ \t]*#{1,6}[ \t]*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[ \t]*[-*_]{3,}[ \t]*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[ \t]*>\s?', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+    text = re.sub(r'\*([^*]+)\*', r'\1', text)
+    return text.strip()
+
+def _set_run_font(run, size_pt=12, bold=False):
+    run.font.name = '宋体'
+    run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+    run.font.size = Pt(size_pt)
+    run.bold = bold
+
+def _add_doc_paragraph(doc, text='', size_pt=12, bold=False):
+    p = doc.add_paragraph()
+    run = p.add_run(text)
+    _set_run_font(run, size_pt=size_pt, bold=bold)
+    return p
+
+def _build_exam_doc(notes, with_answers):
+    doc = Document()
+    style = doc.styles['Normal']
+    style.font.name = '宋体'
+    style._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+    style.font.size = Pt(12)
+
+    title = '运行工作笔记试卷（含答案）' if with_answers else '运行工作笔记试卷'
+    title_p = doc.add_paragraph()
+    title_p.alignment = 1
+    title_run = title_p.add_run(title)
+    _set_run_font(title_run, size_pt=14, bold=True)
+
+    for idx, row in enumerate(notes, 1):
+        _add_doc_paragraph(doc, f'{idx}. {row["title"]}', size_pt=14, bold=True)
+        meta = f'编号：{row["code"]}    来源：{row["source"]}    等级：{row["level"]}    日期：{row["note_date"]}'
+        _add_doc_paragraph(doc, meta, size_pt=12)
+        if with_answers:
+            _add_doc_paragraph(doc, '参考答案：', size_pt=12, bold=True)
+            content = _plain_text_from_markdown(row['content'])
+            for line in content.splitlines() or ['']:
+                _add_doc_paragraph(doc, line.strip(), size_pt=12)
+        else:
+            _add_doc_paragraph(doc, '答：', size_pt=12, bold=True)
+            line_count = max(5, min(12, len(_plain_text_from_markdown(row['content'])) // 90 + 4))
+            for _ in range(line_count):
+                _add_doc_paragraph(doc, '', size_pt=12)
+        if idx != len(notes):
+            doc.add_paragraph()
+
+    out = io.BytesIO()
+    doc.save(out)
+    out.seek(0)
+    return out
+
+@app.route('/api/notes/export-exam', methods=['POST'])
+@admin_required
+def api_notes_export_exam():
+    data = request.get_json() or {}
+    ids = data.get('ids') or []
+    if not isinstance(ids, list):
+        return jsonify({'error': 'ids 必须是数组'}), 400
+    try:
+        ids = [int(x) for x in ids]
+    except (TypeError, ValueError):
+        return jsonify({'error': 'ids 必须为数字'}), 400
+    ids = list(dict.fromkeys(ids))
+    if not ids:
+        return jsonify({'error': '请先选择笔记'}), 400
+    if len(ids) > 500:
+        return jsonify({'error': '一次最多导出 500 条笔记'}), 400
+
+    placeholders = ','.join(['?'] * len(ids))
+    order_case = 'CASE id ' + ' '.join([f'WHEN ? THEN {i}' for i, _ in enumerate(ids)]) + ' END'
+    db = get_db()
+    rows = db.execute(
+        f'SELECT * FROM notes WHERE id IN ({placeholders}) ORDER BY {order_case}',
+        ids + ids
+    ).fetchall()
+    if not rows:
+        return jsonify({'error': '未找到可导出的笔记'}), 404
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('运行工作笔记试卷-无答案.docx', _build_exam_doc(rows, with_answers=False).getvalue())
+        zf.writestr('运行工作笔记试卷-含答案.docx', _build_exam_doc(rows, with_answers=True).getvalue())
+    zip_buf.seek(0)
+    return send_file(
+        zip_buf,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name='运行工作笔记试卷.zip'
+    )
+
 # --- 批量操作 ---
 @app.route('/api/notes/batch', methods=['DELETE'])
 @admin_required
@@ -2278,6 +2390,8 @@ def api_notes_batch_update():
                 return jsonify({'error': 'level 只能为 ★ / ★★ / ★★★'}), 400
             extra['level'] = v
         elif k == 'source':
+            if isinstance(v, str):
+                v = v.strip()
             if not valid_source(v):
                 return jsonify({'error': '来源不在允许列表内：' + ' / '.join(VALID_SOURCES)}), 400
             extra['source'] = v
@@ -2416,6 +2530,8 @@ def _apply_proposal(db, prop):
         content = payload.get('content', existing['content'])
         tags = payload.get('tags', existing['tags'])
         source = payload.get('source', existing['source'])
+        if isinstance(source, str):
+            source = source.strip()
         level = payload.get('level', existing['level'])
         nd = payload.get('note_date', existing['note_date'])
         if not valid_level(level) or not valid_date(nd):

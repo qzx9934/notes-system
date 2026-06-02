@@ -80,34 +80,55 @@ def test_create_note_new_source_accepted(admin):
     assert r.status_code == 201 and r.get_json()['source'] == '技术通知'
 
 
-def test_create_note_bad_source(admin):
-    r = admin.post('/api/notes', json={'section': 'A01', 'title': 't', 'source': '随便乱填'})
-    assert r.status_code == 400
+def test_create_note_custom_source_accepted(admin):
+    custom_source = '随便乱填'
+    r = admin.post('/api/notes', json={'section': 'A01', 'title': 't', 'source': custom_source})
+    assert r.status_code == 201 and r.get_json()['source'] == custom_source
 
+def test_create_note_invalid_source_rejected(admin):
+    assert admin.post('/api/notes', json={'section': 'A01', 'title': '空来源', 'source': ''}).status_code == 400
+    assert admin.post('/api/notes', json={'section': 'A01', 'title': '过长来源', 'source': 'X' * 51}).status_code == 400
+    assert admin.post('/api/notes', json={'section': 'A01', 'title': '控制字符来源', 'source': '异常\x01来源'}).status_code == 400
 
-def test_update_invalid_source_rejected(admin):
+def test_update_custom_source_accepted(admin):
     nid = admin.post('/api/notes', json={'section': 'A01', 'title': '改来源'}).get_json()['id']
-    assert admin.put(f'/api/notes/{nid}', json={'source': '瞎写'}).status_code == 400
+    assert admin.put(f'/api/notes/{nid}', json={'source': '现场自定义来源'}).status_code == 200
     assert admin.put(f'/api/notes/{nid}', json={'source': '技术通知'}).status_code == 200
 
-
 def test_update_unchanged_legacy_source_allowed(admin):
-    # 历史遗留的自定义来源：直接改库注入非法来源，未改动来源时编辑应放行
+    # Legacy custom source is allowed when unchanged; newly invalid source is still rejected.
     import os, sqlite3
     nid = admin.post('/api/notes', json={'section': 'A01', 'title': '遗留来源'}).get_json()['id']
     db = sqlite3.connect(os.environ['NOTES_DB_PATH'])
     db.execute('UPDATE notes SET source=? WHERE id=?', ('工作票(旧)', nid)); db.commit(); db.close()
-    # 只改标题、不动来源 -> 允许（兼容历史数据）
     assert admin.put(f'/api/notes/{nid}', json={'title': '遗留来源-改名'}).status_code == 200
-    # 但若把来源改成另一个非法值 -> 拦截
-    assert admin.put(f'/api/notes/{nid}', json={'source': '又一个乱来'}).status_code == 400
+    assert admin.put(f'/api/notes/{nid}', json={'source': 'X' * 51}).status_code == 400
 
-
-def test_batch_update_bad_source(admin):
+def test_batch_update_custom_source_accepted(admin):
     nid = admin.post('/api/notes', json={'section': 'A01', 'title': '批改来源'}).get_json()['id']
-    assert admin.put('/api/notes/batch', json={'ids': [nid], 'updates': {'source': 'XX'}}).status_code == 400
+    assert admin.put('/api/notes/batch', json={'ids': [nid], 'updates': {'source': '自定义批量来源'}}).status_code == 200
     assert admin.put('/api/notes/batch', json={'ids': [nid], 'updates': {'source': '缺陷异常'}}).status_code == 200
 
+def test_batch_update_invalid_source_rejected(admin):
+    nid = admin.post('/api/notes', json={'section': 'A01', 'title': '批改非法来源'}).get_json()['id']
+    assert admin.put('/api/notes/batch', json={'ids': [nid], 'updates': {'source': 'X' * 51}}).status_code == 400
+
+def test_export_exam_word_zip(admin):
+    import io, zipfile
+    n1 = admin.post('/api/notes', json={
+        'section': 'A01', 'title': '试卷题一', 'content': '答案内容一', 'source': '自定义来源'
+    }).get_json()
+    n2 = admin.post('/api/notes', json={
+        'section': 'A01', 'title': '试卷题二', 'content': '**答案内容二**', 'source': '技术文件'
+    }).get_json()
+    r = admin.post('/api/notes/export-exam', json={'ids': [n2['id'], n1['id']]})
+    assert r.status_code == 200
+    assert r.mimetype == 'application/zip'
+    with zipfile.ZipFile(io.BytesIO(r.data)) as zf:
+        names = set(zf.namelist())
+        assert '运行工作笔记试卷-无答案.docx' in names
+        assert '运行工作笔记试卷-含答案.docx' in names
+        assert zf.read('运行工作笔记试卷-含答案.docx')[:2] == b'PK'
 
 def test_ingest_coerces_bad_source(admin):
     admin.post('/api/notes/ingest', json={'notes': [
@@ -840,7 +861,7 @@ def test_proposal_create_illegal_source_coerced_on_approve(admin):
            if p['payload'].get('title') == '非法来源提议'][0]['id']
     # 绕过前端，直接把非法 source 写进 payload，模拟伪造请求
     db = sqlite3.connect(os.environ['NOTES_DB_PATH'])
-    db.execute("UPDATE proposals SET payload=json_set(payload,'$.source','黑名单来源') WHERE id=?", (pid,))
+    db.execute("UPDATE proposals SET payload=json_set(payload,'$.source',?) WHERE id=?", ('X' * 51, pid))
     db.commit(); db.close()
     assert admin.post(f'/api/proposals/{pid}/approve').status_code == 200
     item = admin.get('/api/notes?q=非法来源提议').get_json()['items'][0]
@@ -855,7 +876,7 @@ def test_proposal_update_illegal_source_rejected_on_approve(admin):
     co.put(f'/api/notes/{nid}', json={'title': '改来源提议2'})
     pid = admin.get('/api/proposals?status=pending').get_json()['items'][0]['id']
     db = sqlite3.connect(os.environ['NOTES_DB_PATH'])
-    db.execute("UPDATE proposals SET payload=json_set(payload,'$.source','非法X') WHERE id=?", (pid,))
+    db.execute("UPDATE proposals SET payload=json_set(payload,'$.source',?) WHERE id=?", ('X' * 51, pid))
     db.commit(); db.close()
     # 非法来源 -> 自动驳回 409，原笔记来源不变
     assert admin.post(f'/api/proposals/{pid}/approve').status_code == 409
