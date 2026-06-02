@@ -322,15 +322,15 @@ tbody tr.selected { background: #EBF5FB; }
   .main { margin-left: 0; padding: 12px; padding-top: calc(48px + env(safe-area-inset-top, 0px) + 12px); }
   /* ===== 笔记列表：移动端改为卡片式（不再横向滚动）===== */
   .table-wrap { overflow: visible; }
-  table { min-width: 0; width: 100%; }
-  thead { display: none; }                         /* 隐藏表头 */
-  tbody tr {                                        /* 每行变一张卡片 */
+  .table-wrap > .table-scroll > table { min-width: 0; width: 100%; }
+  .table-wrap > .table-scroll > table > thead { display: none; } /* 只隐藏笔记列表表头，避免影响 Markdown 表格 */
+  #notesTable tr {                                  /* 每行变一张卡片 */
     display: block; position: relative;
     background: var(--card); border: 1px solid var(--border);
     border-radius: 8px; margin-bottom: 10px; padding: 12px 14px;
   }
-  tbody tr.selected { background: var(--card); border-color: var(--primary-light); box-shadow: 0 0 0 1px var(--primary-light); }
-  tbody td { display: block; border: none; padding: 2px 0; white-space: normal; }
+  #notesTable tr.selected { background: var(--card); border-color: var(--primary-light); box-shadow: 0 0 0 1px var(--primary-light); }
+  #notesTable td { display: block; border: none; padding: 2px 0; white-space: normal; }
   /* 卡片里把表格中被省略的列重新显示出来 */
   .col-content, .col-tags, .col-source { display: block; }
   td.col-check { position: absolute; top: 10px; right: 10px; width: auto; padding: 0; }
