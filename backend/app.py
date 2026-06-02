@@ -1201,6 +1201,10 @@ def api_notes_list():
 
     # count
     total = db.execute(f'SELECT COUNT(*) FROM notes n WHERE {where_clause}', params).fetchone()[0]
+    by_level = [dict(r) for r in db.execute(
+        f'SELECT n.level, COUNT(*) AS cnt FROM notes n WHERE {where_clause} GROUP BY n.level',
+        params
+    ).fetchall()]
 
     # 跨页全选：仅返回当前筛选下的全部 id（忽略分页，设上限防滥用）
     if request.args.get('ids_only', '').strip() in ('1', 'true'):
@@ -1243,6 +1247,7 @@ def api_notes_list():
     return jsonify({
         'items': items,
         'total': total,
+        'by_level': by_level,
         'page': page,
         'per': per,
         'pages': (total + per - 1) // per if total > 0 else 0

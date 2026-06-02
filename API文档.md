@@ -169,7 +169,7 @@ Authorization: Bearer <你的令牌>
 ### `GET /api/notes` —— 查询/搜索笔记
 
 查询参数：`q`（关键词，匹配标题/内容/标签/编号）、`section`、`level`、`source`、`domain`、`sort`（`code`/`updated`/`created`/`random`）、`page`、`per`。
-响应：`{ "items": [...], "total", "page", "per", "pages" }`。
+响应：`{ "items": [...], "total", "by_level", "page", "per", "pages" }`，其中 `by_level` 为当前筛选结果的等级统计。
 
 > **全文搜索：** `q` 默认走 SQLite FTS5 倒排索引（trigram 分词器，支持中文子串、大小写不敏感），数据量大时显著快于全表扫描。查询不足 3 个字符（trigram 下限）或运行环境不支持 FTS5 时，自动回退到 `LIKE` 模糊匹配，行为一致。索引由触发器与笔记表自动同步，无需维护。
 

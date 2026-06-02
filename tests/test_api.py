@@ -160,6 +160,17 @@ def test_pagination_per_capped(admin):
     assert r.get_json()['per'] == app_per_cap()
 
 
+
+def test_notes_list_returns_filtered_level_counts(admin):
+    query = '筛选统计'
+    admin.post('/api/notes', json={'section': 'A01', 'title': query + '核心', 'level': '★★★'})
+    admin.post('/api/notes', json={'section': 'A01', 'title': query + '参考', 'level': '★'})
+    admin.post('/api/notes', json={'section': 'A02', 'title': query + '外部', 'level': '★★'})
+    data = admin.get('/api/notes?section=A01&q=' + query).get_json()
+    by_level = {row['level']: row['cnt'] for row in data['by_level']}
+    assert data['total'] == 2
+    assert by_level == {'★': 1, '★★★': 1}
+
 def app_per_cap():
     import app as app_module
     return app_module.MAX_PER

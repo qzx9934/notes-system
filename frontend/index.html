@@ -2158,6 +2158,111 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
   #notesTable td.col-check input[type="checkbox"]:checked::after {
     transform: rotate(-45deg) scale(1) !important;
   }
+  .topbar .search-wrap input,
+  .mobile-filter-toggle,
+  .filter-group,
+  .filter-group select,
+  .filter-group button,
+  .topbar-actions > .btn,
+  .topbar-actions .btn,
+  .mobile-more-toggle,
+  .mobile-more-list,
+  .mobile-more-list .btn {
+    border-radius: 18px !important;
+  }
+  .search-wrap .clear {
+    width: 28px !important;
+    height: 28px !important;
+    right: 7px !important;
+    padding: 0 !important;
+    border-radius: 999px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 17px !important;
+    line-height: 1 !important;
+    color: var(--text-secondary) !important;
+    background: rgba(255,255,255,.72) !important;
+    border: 1px solid rgba(17,24,39,.08) !important;
+    box-shadow: 0 6px 16px rgba(17,24,39,.08), 0 1px 0 rgba(255,255,255,.86) inset !important;
+    -webkit-backdrop-filter: blur(16px) saturate(125%) !important;
+    backdrop-filter: blur(16px) saturate(125%) !important;
+  }
+  .stat-card {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+  .stat-card .num,
+  .stat-card .label {
+    width: 100% !important;
+    text-align: center !important;
+  }
+  .summary-meta {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .summary-meta .ai-btn {
+    margin-left: auto !important;
+    flex: 0 0 auto !important;
+  }
+  .preview-body.preview-face-enter {
+    opacity: 0 !important;
+    transform: translateY(6px) scale(.995) !important;
+  }
+  .preview-body.preview-face-enter.preview-face-enter-active {
+    opacity: 1 !important;
+    transform: translateY(0) scale(1) !important;
+    transition: opacity .16s ease, transform .16s ease !important;
+  }
+  .preview-body.preview-face-exit {
+    opacity: 1 !important;
+    transform: translateY(0) scale(1) !important;
+  }
+  .preview-body.preview-face-exit.preview-face-exit-active {
+    opacity: 0 !important;
+    transform: translateY(-4px) scale(.995) !important;
+    transition: opacity .14s ease, transform .14s ease !important;
+  }
+  .fav-star.on,
+  .fav-star-lg.on,
+  .preview-meta #previewFavStar.on,
+  #previewFavStar.on,
+  #roamFavStar.on {
+    color: #F1C40F !important;
+  }
+  .fav-star:not(.on),
+  .preview-meta #previewFavStar:not(.on),
+  #previewFavStar:not(.on),
+  #roamFavStar:not(.on) {
+    color: rgba(17,24,39,.38) !important;
+  }
+  .toast,
+  .toast-success,
+  .toast-error {
+    top: calc(12px + env(safe-area-inset-top, 0px)) !important;
+    bottom: auto !important;
+    left: 14px !important;
+    right: 14px !important;
+    width: auto !important;
+    border-radius: 18px !important;
+    color: var(--text) !important;
+    text-align: center !important;
+    background:
+      radial-gradient(60% 120% at 8% 0%, rgba(145,205,255,.26), transparent 66%),
+      radial-gradient(80% 160% at 100% 10%, rgba(160,232,218,.22), transparent 70%),
+      rgba(255,255,255,.82) !important;
+    border: 1px solid rgba(255,255,255,.62) !important;
+    box-shadow: 0 16px 38px rgba(17,24,39,.12), 0 1px 0 rgba(255,255,255,.88) inset !important;
+    -webkit-backdrop-filter: blur(22px) saturate(140%) !important;
+    backdrop-filter: blur(22px) saturate(140%) !important;
+    transform: translateY(calc(-100% - 20px)) !important;
+  }
+  .toast.show {
+    transform: translateY(0) !important;
+  }
 }
 </style>
 </head>
@@ -2829,6 +2934,7 @@ let previewNoteId = null;
 let previewNote = null;        // 当前预览抽屉的完整笔记对象（供内联编辑/背面用）
 let previewFlipped = false;    // 预览抽屉是否翻到背面
 let previewDirty = false;      // 抽屉内有内联修改，关闭时再静默刷新列表，避免编辑时闪动
+let previewFlipTimer = null;
 let allLoadedItems = []; // current page items for checkbox reference
 let sectionCounts = {};  // 章节编码 -> 条目数（用于侧栏徽章）
 let totalCount = 0;      // 笔记总数（"全部笔记"徽章）
@@ -3363,7 +3469,7 @@ async function approveProposal(id) {
   const d = await r.json().catch(() => ({}));
   if (r.ok) { showToast(d.message || '已批准并生效', 'success'); }
   else { showToast(d.error || '操作失败', 'error'); }
-  loadProposals(); refreshProposalBadge(); doSearch(); loadStats();
+  loadProposals(); refreshProposalBadge(); doSearch(); loadStats(false);
 }
 async function rejectProposal(id) {
   const note = prompt('驳回原因（可留空）：') || '';
@@ -3909,21 +4015,25 @@ async function loadSections() {
   const sel = document.getElementById('editSection');
   sel.innerHTML = '<option value=""></option>' + sections.map(s => `<option value="${s.code}">${s.code} ${s.name}</option>`).join('');
 }
-async function loadStats() {
+async function loadStats(renderCards = true) {
   const s = await fetchJSON('/api/stats');
-  const byLevel = {};
-  s.by_level.forEach(l => byLevel[l.level] = l.cnt);
-  document.getElementById('statsBar').innerHTML = `
-    <div class="stat-card"><div class="num">${s.total}</div><div class="label">总条目</div></div>
-    <div class="stat-card"><div class="num c-star3">${byLevel['★★★'] || 0}</div><div class="label">★★★ 核心</div></div>
-    <div class="stat-card"><div class="num c-star2">${byLevel['★★'] || 0}</div><div class="label">★★ 重要</div></div>
-    <div class="stat-card"><div class="num c-star1">${byLevel['★'] || 0}</div><div class="label">★ 参考</div></div>
-  `;
+  if (renderCards) renderStatsCards(s.total, s.by_level || []);
   // 缓存各章节条目数 + 总数，刷新侧栏徽章（领域/章节条数一目了然）
   totalCount = s.total;
   sectionCounts = {};
   (s.by_section || []).forEach(x => { sectionCounts[x.section] = x.cnt; });
   if (domains.length && sections.length) renderSidebar();
+}
+
+function renderStatsCards(total, byLevelRows) {
+  const byLevel = {};
+  (byLevelRows || []).forEach(l => byLevel[l.level] = l.cnt);
+  document.getElementById('statsBar').innerHTML = `
+    <div class="stat-card"><div class="num">${total || 0}</div><div class="label">总条目</div></div>
+    <div class="stat-card"><div class="num c-star3">${byLevel['★★★'] || 0}</div><div class="label">★★★ 核心</div></div>
+    <div class="stat-card"><div class="num c-star2">${byLevel['★★'] || 0}</div><div class="label">★★ 重要</div></div>
+    <div class="stat-card"><div class="num c-star1">${byLevel['★'] || 0}</div><div class="label">★ 参考</div></div>
+  `;
 }
 
 function populateBatchSectionSelect() {
@@ -4058,7 +4168,7 @@ async function doSearch() {
   if (isRoamMode) exitRoam();
 
   const params = buildListParams();
-  document.getElementById('clearSearch').style.display = params.get('q') ? 'block' : 'none';
+  document.getElementById('clearSearch').style.display = params.get('q') ? 'flex' : 'none';
   params.set('page', currentPage);
   params.set('per', 30);
 
@@ -4067,6 +4177,7 @@ async function doSearch() {
   if (mySeq !== _searchSeq) return;  // 已有更新的搜索发出，丢弃本次过期结果
   allLoadedItems = data.items;
   lastSearchTotal = data.total;
+  renderStatsCards(data.total, data.by_level || []);
 
   document.getElementById('resultCount').textContent = `共 ${data.total} 条`;
   renderTable(data.items);
@@ -4505,8 +4616,8 @@ async function batchDelete() {
       showToast(`已删除 ${data.deleted} 条`, 'success');
       selectedIds.clear();
       updateBatchBar();
+      loadStats(false);
       doSearch();
-      loadStats();
     } else {
       showToast(data.error || '删除失败', 'error');
     }
@@ -4529,7 +4640,7 @@ async function batchUpdateLevel() {
       showToast(`已更新 ${data.updated} 条等级`, 'success');
       document.getElementById('batchLevel').value = '';
       clearSelection();
-      await Promise.all([doSearch(), loadStats()]);
+      await Promise.all([loadStats(false), doSearch()]);
     } else { showToast(data.error || '更新失败', 'error'); }
   } catch(e) { showToast('网络错误', 'error'); }
 }
@@ -4552,7 +4663,7 @@ async function batchUpdateSection() {
       document.getElementById('batchSection').value = '';
       clearSelection();
       doSearch();
-      loadStats();
+      loadStats(false);
     } else { showToast(data.error || '更新失败', 'error'); }
   } catch(e) { showToast('网络错误', 'error'); }
 }
@@ -4799,10 +4910,40 @@ function editPreviewDate(event) {
 
 // 详情抽屉正/背面切换
 function setPreviewFace(toBack) {
+  const body = document.getElementById('previewBody');
+  const back = document.getElementById('previewBack');
+  const from = previewFlipped ? back : body;
+  const to = toBack ? back : body;
   previewFlipped = !!toBack;
-  document.getElementById('previewBody').style.display = toBack ? 'none' : '';
-  document.getElementById('previewBack').style.display = toBack ? '' : 'none';
   document.getElementById('previewFlipBtn').textContent = toBack ? '正面' : '翻面';
+  clearTimeout(previewFlipTimer);
+  [body, back].forEach(el => el.classList.remove(
+    'preview-face-enter',
+    'preview-face-enter-active',
+    'preview-face-exit',
+    'preview-face-exit-active'
+  ));
+  if (from === to) {
+    body.style.display = toBack ? 'none' : '';
+    back.style.display = toBack ? '' : 'none';
+    return;
+  }
+  to.style.display = '';
+  to.classList.add('preview-face-enter');
+  from.classList.add('preview-face-exit');
+  requestAnimationFrame(() => {
+    to.classList.add('preview-face-enter-active');
+    from.classList.add('preview-face-exit-active');
+  });
+  previewFlipTimer = setTimeout(() => {
+    from.style.display = 'none';
+    [body, back].forEach(el => el.classList.remove(
+      'preview-face-enter',
+      'preview-face-enter-active',
+      'preview-face-exit',
+      'preview-face-exit-active'
+    ));
+  }, 170);
 }
 function flipPreview() { setPreviewFace(!previewFlipped); }
 
@@ -4817,7 +4958,7 @@ function closePreview() {
   previewNoteId = null;
   previewNote = null;
   // 编辑过才刷新列表/统计，且延到关闭后，避免编辑过程中表格在抽屉后面闪动
-  if (previewDirty) { previewDirty = false; doSearch(); loadStats(); }
+  if (previewDirty) { previewDirty = false; loadStats(false); doSearch(); }
 }
 
 // ==================== 卡片背面：来源文件 + AI 总结 ====================
@@ -5047,7 +5188,7 @@ async function deleteFromPreview() {
   } else if (r.ok) {
     showToast('已删除', 'success');
     previewDirty = false; closePreview();
-    doSearch(); loadStats();
+    loadStats(false); doSearch();
   } else showToast(body.error || '删除失败', 'error');
 }
 
@@ -5138,7 +5279,7 @@ async function saveNote() {
     showToast(id ? '已更新' : '已创建', 'success');
     closeModal();
     doSearch();
-    loadStats();
+    loadStats(false);
   } else {
     showToast(body.error || '保存失败', 'error');
   }
@@ -5149,7 +5290,7 @@ async function deleteNote(id, title) {
   const r = await fetch('/api/notes/' + id, { method: 'DELETE' });
   const body = await r.json().catch(() => ({}));
   if (r.status === 202) { showToast(body.message || '删除申请已提交，待管理员确认', 'success'); refreshProposalBadge(); }
-  else if (r.ok) { showToast('已删除', 'success'); doSearch(); loadStats(); }
+  else if (r.ok) { showToast('已删除', 'success'); loadStats(false); doSearch(); }
   else showToast(body.error || '删除失败', 'error');
 }
 
@@ -5210,7 +5351,7 @@ function importExcel() {
         if (out.skipped) msg += `，跳过 ${out.skipped}`;
         showToast(msg, 'success');
         doSearch();
-        loadStats();
+        loadStats(false);
       } catch (err) {
         console.error('Excel 导入出错:', err);
         showToast('解析 Excel 失败，请确认文件格式是否为系统模板', 'error');
