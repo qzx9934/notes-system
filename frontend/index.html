@@ -2208,24 +2208,6 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
     margin-left: auto !important;
     flex: 0 0 auto !important;
   }
-  .preview-body.preview-face-enter {
-    opacity: 0 !important;
-    transform: translateY(6px) scale(.995) !important;
-  }
-  .preview-body.preview-face-enter.preview-face-enter-active {
-    opacity: 1 !important;
-    transform: translateY(0) scale(1) !important;
-    transition: opacity .16s ease, transform .16s ease !important;
-  }
-  .preview-body.preview-face-exit {
-    opacity: 1 !important;
-    transform: translateY(0) scale(1) !important;
-  }
-  .preview-body.preview-face-exit.preview-face-exit-active {
-    opacity: 0 !important;
-    transform: translateY(-4px) scale(.995) !important;
-    transition: opacity .14s ease, transform .14s ease !important;
-  }
   .fav-star.on,
   .fav-star-lg.on,
   .preview-meta #previewFavStar.on,
@@ -2633,7 +2615,7 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
         <button type="button" class="icon-btn" id="settingsBtn" style="display:none" onclick="closeSidebar(); openSettingsModal()" title="系统设置" aria-label="系统设置">⚙️</button>
         <button type="button" class="icon-btn" onclick="closeSidebar(); openFeedbackModal()" title="反馈建议" aria-label="反馈建议">✉️</button>
         <button type="button" class="icon-btn" onclick="closeSidebar(); openPwdModal()" title="修改密码" aria-label="修改密码">🔑</button>
-        <button type="button" class="icon-btn" onclick="doLogout()" title="退出登录" aria-label="退出登录">🚪</button>
+        <button type="button" class="icon-btn" onclick="closeSidebar(); doLogout()" title="退出登录" aria-label="退出登录">🚪</button>
       </span>
     </div>
   </div>
@@ -2671,31 +2653,31 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
 
   <!-- Batch bar -->
   <div class="batch-bar" id="batchBar">
-    <input type="checkbox" id="checkAll" onchange="toggleAllCheck()" class="clickable">
+    <input type="checkbox" id="checkAll" onchange="toggleAllCheck(this)" class="clickable">
     <span class="sel-info" id="selInfo">已选 0 条</span>
     <button type="button" class="btn btn-sm btn-outline" id="selectPageBtn" onclick="selectCurrentPage()">本页全选</button>
     <a href="#" id="selectAllPages" class="select-all-pages" style="display:none" onclick="selectAllMatching();return false"></a>
     <div class="actions">
-      <select id="batchLevel" title="批量修改等级">
+      <select id="batchLevel" class="admin-only" title="批量修改等级">
         <option value="">改等级…</option>
         <option value="★★★">★★★ 核心</option>
         <option value="★★">★★ 重要</option>
         <option value="★">★ 参考</option>
       </select>
-      <button class="btn btn-sm btn-outline" onclick="batchUpdateLevel()">应用等级</button>
-      <select id="batchSection" title="批量修改章节">
+      <button class="btn btn-sm btn-outline admin-only" onclick="batchUpdateLevel()">应用等级</button>
+      <select id="batchSection" class="admin-only" title="批量修改章节">
         <option value="">改章节…</option>
       </select>
-      <button class="btn btn-sm btn-outline" onclick="batchUpdateSection()">应用章节</button>
-      <select id="batchSource" title="批量修改来源">
+      <button class="btn btn-sm btn-outline admin-only" onclick="batchUpdateSection()">应用章节</button>
+      <select id="batchSource" class="admin-only" title="批量修改来源">
         <option value="">改来源…</option>
       </select>
-      <button class="btn btn-sm btn-outline" onclick="batchUpdateSource()">应用来源</button>
-      <input type="date" id="batchDate" title="批量修改日期" class="batch-date-input">
-      <button class="btn btn-sm btn-outline" onclick="batchUpdateDate()">应用日期</button>
-      <button class="btn btn-sm btn-outline" onclick="batchSummarize()" title="对选中且尚无总结的笔记一键生成AI总结">一键总结</button>
+      <button class="btn btn-sm btn-outline admin-only" onclick="batchUpdateSource()">应用来源</button>
+      <input type="date" id="batchDate" title="批量修改日期" class="batch-date-input admin-only">
+      <button class="btn btn-sm btn-outline admin-only" onclick="batchUpdateDate()">应用日期</button>
+      <button class="btn btn-sm btn-outline admin-only" onclick="batchSummarize()" title="对选中且尚无总结的笔记一键生成AI总结">一键总结</button>
       <button class="btn btn-sm btn-outline" onclick="exportExamWord()" title="将已选笔记导出为有答案/无答案两份 Word 试卷">生成试卷</button>
-      <button class="btn btn-sm btn-danger" onclick="batchDelete()">删除选中</button>
+      <button class="btn btn-sm btn-danger admin-only" onclick="batchDelete()">删除选中</button>
       <button class="btn btn-sm btn-outline" onclick="clearSelection()">取消选择</button>
     </div>
   </div>
@@ -2716,7 +2698,7 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
       <table>
         <thead>
           <tr>
-            <th class="col-check"><input type="checkbox" id="headerCheck" onchange="toggleAllCheck()"></th>
+            <th class="col-check"><input type="checkbox" id="headerCheck" onchange="toggleAllCheck(this)"></th>
             <th class="col-code">编号</th>
             <th class="col-title">要点标题</th>
             <th class="col-content">内容详情</th>
@@ -2733,7 +2715,7 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
     <div class="empty" id="emptyState" style="display:none">
       <div class="icon">📝</div>
       <p>暂无符合条件的笔记</p>
-      <p class="empty-sub">换个筛选条件试试，或新增第一条知识条目</p>
+      <p class="empty-sub" id="emptySub">换个筛选条件试试，或新增第一条知识条目</p>
       <button class="btn btn-primary" id="emptyAddBtn" style="display:none;margin-top:14px" onclick="openAddModal()">+新增笔记</button>
     </div>
   </div>
@@ -2934,7 +2916,6 @@ let previewNoteId = null;
 let previewNote = null;        // 当前预览抽屉的完整笔记对象（供内联编辑/背面用）
 let previewFlipped = false;    // 预览抽屉是否翻到背面
 let previewDirty = false;      // 抽屉内有内联修改，关闭时再静默刷新列表，避免编辑时闪动
-let previewFlipTimer = null;
 let allLoadedItems = []; // current page items for checkbox reference
 let sectionCounts = {};  // 章节编码 -> 条目数（用于侧栏徽章）
 let totalCount = 0;      // 笔记总数（"全部笔记"徽章）
@@ -3044,6 +3025,7 @@ async function doLogin(e) {
 }
 
 async function doLogout() {
+  closeSidebar();
   try { await _origFetch('/api/logout', { method: 'POST' }); } catch(e) {}
   // 清除状态
   selectedIds.clear();
@@ -3079,12 +3061,18 @@ function applyRoleUI() {
   const importBtn = document.getElementById('importBtn');
   if (addBtn) addBtn.style.display = writer ? '' : 'none';
   if (importBtn) importBtn.style.display = isAdmin ? '' : 'none';
+  const mobileMore = document.querySelector('.mobile-more-actions');
+  if (mobileMore) mobileMore.style.display = isAdmin ? '' : 'none';
   const emptyAddBtn = document.getElementById('emptyAddBtn');
   if (emptyAddBtn) emptyAddBtn.style.display = writer ? '' : 'none';
-  // 批量操作栏与多选：仅管理员
+  const emptySub = document.getElementById('emptySub');
+  if (emptySub) emptySub.textContent = writer
+    ? '换个筛选条件试试，或新增第一条知识条目'
+    : '换个筛选条件试试，当前账号为只读模式';
+  // 多选/导出：所有登录用户可用；批量修改/删除/总结仍仅管理员
   document.getElementById('batchBar').classList.remove('show');
   const headerCheck = document.getElementById('headerCheck');
-  if (headerCheck) headerCheck.style.display = isAdmin ? '' : 'none';
+  if (headerCheck) headerCheck.style.display = '';
   const previewFooter = document.querySelector('.preview-footer');
   if (previewFooter) previewFooter.style.display = '';
   document.querySelectorAll('.admin-only').forEach(el => { el.style.display = isAdmin ? '' : 'none'; });
@@ -4499,10 +4487,13 @@ function toggleCheck(id, checked) {
   updateBatchBar();
 }
 
-function toggleAllCheck() {
+function toggleAllCheck(source) {
   const headerCheck = document.getElementById('headerCheck');
+  const barCheck = document.getElementById('checkAll');
   const allChecks = document.querySelectorAll('#notesTable input[type=checkbox]');
-  const newState = headerCheck.checked;
+  const newState = source ? source.checked : headerCheck.checked;
+  if (headerCheck) headerCheck.checked = newState;
+  if (barCheck) barCheck.checked = newState;
   allChecks.forEach(cb => {
     const id = parseInt(cb.dataset.id);
     cb.checked = newState;
@@ -4516,7 +4507,7 @@ function toggleAllCheck() {
 function updateBatchBar() {
   const bar = document.getElementById('batchBar');
   const count = selectedIds.size;
-  if (count > 0 && currentRole === 'admin') {
+  if (count > 0 && isAuthenticated) {
     bar.classList.add('show');
     document.getElementById('selInfo').textContent = `已选 ${count} 条`;
   } else {
@@ -4525,27 +4516,40 @@ function updateBatchBar() {
   // Update header checkbox state
   const allChecks = document.querySelectorAll('#notesTable input[type=checkbox]');
   const headerCheck = document.getElementById('headerCheck');
+  const barCheck = document.getElementById('checkAll');
   const pageIds = allLoadedItems.map(it => it.id);
   const pageAllSel = pageIds.length > 0 && pageIds.every(id => selectedIds.has(id));
   const pageBtn = document.getElementById('selectPageBtn');
   if (pageBtn) {
     pageBtn.textContent = pageAllSel ? '取消本页' : '本页全选';
-    pageBtn.style.display = currentRole === 'admin' && pageIds.length ? '' : 'none';
+    pageBtn.style.display = isAuthenticated && pageIds.length ? '' : 'none';
   }
   // 跨页全选提示：本页已全选且还有更多匹配项时出现
   const link = document.getElementById('selectAllPages');
   if (link) {
-    if (count > 0 && currentRole === 'admin' && pageAllSel && lastSearchTotal > pageIds.length) {
+    if (count > 0 && isAuthenticated && pageAllSel && lastSearchTotal > pageIds.length) {
       link.style.display = '';
       link.textContent = (selectedIds.size >= lastSearchTotal)
         ? '已选择全部，点此仅保留本页'
         : `选择全部 ${lastSearchTotal} 条`;
     } else link.style.display = 'none';
   }
-  if (allChecks.length === 0) { headerCheck.checked = false; headerCheck.indeterminate = false; return; }
+  if (allChecks.length === 0) {
+    if (headerCheck) { headerCheck.checked = false; headerCheck.indeterminate = false; }
+    if (barCheck) { barCheck.checked = false; barCheck.indeterminate = false; }
+    return;
+  }
   const checkedCount = document.querySelectorAll('#notesTable input[type=checkbox]:checked').length;
-  headerCheck.checked = checkedCount === allChecks.length;
-  headerCheck.indeterminate = checkedCount > 0 && checkedCount < allChecks.length;
+  const pageChecked = checkedCount === allChecks.length;
+  const pagePartial = checkedCount > 0 && checkedCount < allChecks.length;
+  if (headerCheck) {
+    headerCheck.checked = pageChecked;
+    headerCheck.indeterminate = pagePartial;
+  }
+  if (barCheck) {
+    barCheck.checked = pageChecked;
+    barCheck.indeterminate = pagePartial;
+  }
 }
 
 function selectCurrentPage() {
@@ -4598,6 +4602,8 @@ function clearSelection() {
   });
   document.getElementById('headerCheck').checked = false;
   document.getElementById('headerCheck').indeterminate = false;
+  document.getElementById('checkAll').checked = false;
+  document.getElementById('checkAll').indeterminate = false;
   updateBatchBar();
 }
 
@@ -4912,38 +4918,10 @@ function editPreviewDate(event) {
 function setPreviewFace(toBack) {
   const body = document.getElementById('previewBody');
   const back = document.getElementById('previewBack');
-  const from = previewFlipped ? back : body;
-  const to = toBack ? back : body;
   previewFlipped = !!toBack;
   document.getElementById('previewFlipBtn').textContent = toBack ? '正面' : '翻面';
-  clearTimeout(previewFlipTimer);
-  [body, back].forEach(el => el.classList.remove(
-    'preview-face-enter',
-    'preview-face-enter-active',
-    'preview-face-exit',
-    'preview-face-exit-active'
-  ));
-  if (from === to) {
-    body.style.display = toBack ? 'none' : '';
-    back.style.display = toBack ? '' : 'none';
-    return;
-  }
-  to.style.display = '';
-  to.classList.add('preview-face-enter');
-  from.classList.add('preview-face-exit');
-  requestAnimationFrame(() => {
-    to.classList.add('preview-face-enter-active');
-    from.classList.add('preview-face-exit-active');
-  });
-  previewFlipTimer = setTimeout(() => {
-    from.style.display = 'none';
-    [body, back].forEach(el => el.classList.remove(
-      'preview-face-enter',
-      'preview-face-enter-active',
-      'preview-face-exit',
-      'preview-face-exit-active'
-    ));
-  }, 170);
+  body.style.display = toBack ? 'none' : '';
+  back.style.display = toBack ? '' : 'none';
 }
 function flipPreview() { setPreviewFace(!previewFlipped); }
 
@@ -5050,11 +5028,13 @@ function renderRoamBack(n) {
 async function exportExamWord() {
   const ids = Array.from(selectedIds);
   if (!ids.length) { showToast('请先勾选要生成试卷的笔记', 'error'); return; }
+  const examTitle = (prompt('请输入试卷名称', '运行工作笔记试卷') || '').trim();
+  if (!examTitle) { showToast('已取消生成试卷', 'error'); return; }
   try {
     const r = await fetch('/api/notes/export-exam', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ ids })
+      body: JSON.stringify({ ids, exam_title: examTitle })
     });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));

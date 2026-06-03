@@ -2275,14 +2275,14 @@ def _add_doc_paragraph(doc, text='', size_pt=12, bold=False):
     _set_run_font(run, size_pt=size_pt, bold=bold)
     return p
 
-def _build_exam_doc(notes, with_answers):
+def _build_exam_doc(notes, with_answers, title):
     doc = Document()
     style = doc.styles['Normal']
     style.font.name = '宋体'
     style._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
     style.font.size = Pt(12)
 
-    title = '运行工作笔记试卷（含答案）' if with_answers else '运行工作笔记试卷'
+    title = title or '运行工作笔记试卷'
     title_p = doc.add_paragraph()
     title_p.alignment = 1
     title_run = title_p.add_run(title)
@@ -2290,8 +2290,6 @@ def _build_exam_doc(notes, with_answers):
 
     for idx, row in enumerate(notes, 1):
         _add_doc_paragraph(doc, f'{idx}. {row["title"]}', size_pt=14, bold=True)
-        meta = f'编号：{row["code"]}    来源：{row["source"]}    等级：{row["level"]}    日期：{row["note_date"]}'
-        _add_doc_paragraph(doc, meta, size_pt=12)
         if with_answers:
             _add_doc_paragraph(doc, '参考答案：', size_pt=12, bold=True)
             content = _plain_text_from_markdown(row['content'])
@@ -2311,10 +2309,18 @@ def _build_exam_doc(notes, with_answers):
     return out
 
 @app.route('/api/notes/export-exam', methods=['POST'])
-@admin_required
+@login_required
 def api_notes_export_exam():
     data = request.get_json() or {}
     ids = data.get('ids') or []
+    exam_title = data.get('exam_title', data.get('title')) or '运行工作笔记试卷'
+    if not isinstance(exam_title, str):
+        return jsonify({'error': '试卷标题必须是字符串'}), 400
+    exam_title = exam_title.strip()
+    if not exam_title:
+        return jsonify({'error': '试卷标题不能为空'}), 400
+    if len(exam_title) > 80:
+        return jsonify({'error': '试卷标题最多 80 个字符'}), 400
     if not isinstance(ids, list):
         return jsonify({'error': 'ids 必须是数组'}), 400
     try:
@@ -2339,8 +2345,8 @@ def api_notes_export_exam():
 
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr('运行工作笔记试卷-无答案.docx', _build_exam_doc(rows, with_answers=False).getvalue())
-        zf.writestr('运行工作笔记试卷-含答案.docx', _build_exam_doc(rows, with_answers=True).getvalue())
+        zf.writestr('运行工作笔记试卷-无答案.docx', _build_exam_doc(rows, with_answers=False, title=exam_title).getvalue())
+        zf.writestr('运行工作笔记试卷-含答案.docx', _build_exam_doc(rows, with_answers=True, title=exam_title).getvalue())
     zip_buf.seek(0)
     return send_file(
         zip_buf,

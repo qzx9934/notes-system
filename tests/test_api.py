@@ -113,6 +113,12 @@ def test_batch_update_invalid_source_rejected(admin):
     nid = admin.post('/api/notes', json={'section': 'A01', 'title': '批改非法来源'}).get_json()['id']
     assert admin.put('/api/notes/batch', json={'ids': [nid], 'updates': {'source': 'X' * 51}}).status_code == 400
 
+def _docx_xml_from_zip_member(zf, name):
+    import io, zipfile
+    with zipfile.ZipFile(io.BytesIO(zf.read(name))) as docx:
+        return docx.read('word/document.xml').decode('utf-8')
+
+
 def test_export_exam_word_zip(admin):
     import io, zipfile
     n1 = admin.post('/api/notes', json={
@@ -121,14 +127,34 @@ def test_export_exam_word_zip(admin):
     n2 = admin.post('/api/notes', json={
         'section': 'A01', 'title': '试卷题二', 'content': '**答案内容二**', 'source': '技术文件'
     }).get_json()
-    r = admin.post('/api/notes/export-exam', json={'ids': [n2['id'], n1['id']]})
+    r = admin.post('/api/notes/export-exam', json={'ids': [n2['id'], n1['id']], 'exam_title': '班前测试'})
     assert r.status_code == 200
     assert r.mimetype == 'application/zip'
     with zipfile.ZipFile(io.BytesIO(r.data)) as zf:
         names = set(zf.namelist())
         assert '运行工作笔记试卷-无答案.docx' in names
         assert '运行工作笔记试卷-含答案.docx' in names
-        assert zf.read('运行工作笔记试卷-含答案.docx')[:2] == b'PK'
+        no_answer_xml = _docx_xml_from_zip_member(zf, '运行工作笔记试卷-无答案.docx')
+        answer_xml = _docx_xml_from_zip_member(zf, '运行工作笔记试卷-含答案.docx')
+        assert '班前测试' in no_answer_xml
+        assert '班前测试' in answer_xml
+        assert '班前测试（含答案）' not in answer_xml
+        assert '编号：' not in no_answer_xml
+        assert '来源：' not in answer_xml
+        assert '答案内容二' in answer_xml
+
+
+def test_viewer_can_export_exam_word_zip(admin):
+    note = admin.post('/api/notes', json={
+        'section': 'A01', 'title': '只读导出题', 'content': '答案内容'
+    }).get_json()
+    _make_user(admin, 'viewer_export', 'viewer')
+    viewer = _new_client()
+    viewer.post('/api/login', json={'username': 'viewer_export', 'password': 'secret123'})
+    r = viewer.post('/api/notes/export-exam', json={'ids': [note['id']], 'exam_title': '只读试卷'})
+    assert r.status_code == 200
+    assert r.mimetype == 'application/zip'
+
 
 def test_ingest_coerces_bad_source(admin):
     admin.post('/api/notes/ingest', json={'notes': [
