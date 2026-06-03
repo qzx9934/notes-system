@@ -5,7 +5,7 @@
  *  - 其余同源静态资源：缓存优先，未命中则网络并回填
  * 升级缓存：改 CACHE 版本号即可，activate 时清理旧缓存。
  */
-const CACHE = 'notes-shell-v27';
+const CACHE = 'notes-shell-v28';
 const SHELL = [
   './',
   'index.html',
@@ -13,6 +13,7 @@ const SHELL = [
   'vendor/marked.min.js',
   'vendor/purify.min.js',
   'manifest.webmanifest',
+  'favicon.ico',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'apple-touch-icon.png'
