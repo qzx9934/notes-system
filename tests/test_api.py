@@ -130,18 +130,20 @@ def test_export_exam_word_zip(admin):
     r = admin.post('/api/notes/export-exam', json={'ids': [n2['id'], n1['id']], 'exam_title': '班前测试'})
     assert r.status_code == 200
     assert r.mimetype == 'application/zip'
+    assert '%E7%8F%AD%E5%89%8D%E6%B5%8B%E8%AF%95.zip' in r.headers.get('Content-Disposition', '')
     with zipfile.ZipFile(io.BytesIO(r.data)) as zf:
         names = set(zf.namelist())
-        assert '运行工作笔记试卷-无答案.docx' in names
-        assert '运行工作笔记试卷-含答案.docx' in names
-        no_answer_xml = _docx_xml_from_zip_member(zf, '运行工作笔记试卷-无答案.docx')
-        answer_xml = _docx_xml_from_zip_member(zf, '运行工作笔记试卷-含答案.docx')
+        assert '班前测试-无答案.docx' in names
+        assert '班前测试-含答案.docx' in names
+        no_answer_xml = _docx_xml_from_zip_member(zf, '班前测试-无答案.docx')
+        answer_xml = _docx_xml_from_zip_member(zf, '班前测试-含答案.docx')
         assert '班前测试' in no_answer_xml
         assert '班前测试' in answer_xml
         assert '班前测试（含答案）' not in answer_xml
         assert '编号：' not in no_answer_xml
         assert '来源：' not in answer_xml
         assert '答案内容二' in answer_xml
+        assert 'w:line="240"' in answer_xml
 
 
 def test_viewer_can_export_exam_word_zip(admin):

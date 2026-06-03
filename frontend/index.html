@@ -302,12 +302,12 @@ tbody tr.selected { background: #EBF5FB; }
 .form-row { display: flex; gap: 12px; }
 .form-row .form-group { flex: 1; }
 .source-combo { position: relative; }
-.source-combo input { padding-right: 40px; }
+.source-mobile-select { display: none; }
 .source-toggle {
   position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
   width: 28px; height: 28px; border-radius: 999px; border: 1px solid var(--border);
   background: rgba(255,255,255,.82); color: var(--text-secondary); cursor: pointer;
-  display: flex; align-items: center; justify-content: center; line-height: 1;
+  display: none; align-items: center; justify-content: center; line-height: 1;
   transition: background .15s, color .15s, transform .15s;
 }
 .source-toggle:hover { background: rgba(255,255,255,.96); color: var(--text); }
@@ -436,6 +436,9 @@ tbody tr.selected { background: #EBF5FB; }
   }
   .mobile-more-actions.open .mobile-more-list { display: grid; gap: 6px; }
   .mobile-more-list .btn { width: 100%; white-space: nowrap; }
+  .source-mobile-select { display: block; }
+  .source-combo:not(.custom-source) #editSource { display: none; }
+  .source-combo.custom-source #editSource { margin-top: 6px; }
   /* 统计栏 */
   .stats-bar {
     display: flex; gap: 6px; overflow-x: auto; margin-bottom: 10px;
@@ -2877,9 +2880,11 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
         <div class="form-group">
           <label>来源</label>
           <div class="source-combo" id="sourceCombo">
-            <input type="text" id="editSource" autocomplete="off" placeholder="选择或输入预设来源">
+            <select id="editSourceMobileSelect" class="source-mobile-select" aria-label="来源"></select>
+            <input type="text" id="editSource" list="sourceDatalist" autocomplete="off" placeholder="选择或输入预设来源">
             <button type="button" class="source-toggle" id="sourceToggle" aria-label="展开来源列表" aria-expanded="false">⌄</button>
             <div class="source-menu" id="sourceOptions" role="listbox"></div>
+            <datalist id="sourceDatalist"></datalist>
           </div>
         </div>
       </div>
@@ -4001,7 +4006,17 @@ const SOURCE_OPTS = ['规程', '规章制度', '技术文件', '技术通知', '
 let _editOrigSource = '';   // 当前编辑笔记的原始来源（新增为空）
 
 function populateSourceOptions() {
-  // 编辑框：自定义完整列表（不随输入内容筛选，避免移动端 datalist 兼容问题）
+  // 大屏/iPad：保留原生 datalist；手机：使用自定义完整列表（不随输入内容筛选）
+  const sourceDatalist = document.getElementById('sourceDatalist');
+  if (sourceDatalist) {
+    sourceDatalist.innerHTML = SOURCE_OPTS.map(s => `<option value="${s}"></option>`).join('');
+  }
+  const mobileSourceSelect = document.getElementById('editSourceMobileSelect');
+  if (mobileSourceSelect) {
+    mobileSourceSelect.innerHTML = '<option value="">请选择来源</option>' +
+      SOURCE_OPTS.map(s => `<option value="${s}">${s}</option>`).join('') +
+      '<option value="__custom__">手动输入…</option>';
+  }
   const sourceOptions = document.getElementById('sourceOptions');
   if (sourceOptions) {
     sourceOptions.innerHTML = SOURCE_OPTS
@@ -5063,6 +5078,10 @@ function renderRoamBack(n) {
   renderBackContent(n, 'roamBackSrcFile', 'roamBackSummary', 'roamSummaryMeta', 'roamSummarizeBtn');
 }
 
+function safeDownloadName(name, fallback = '运行工作笔记试卷') {
+  return String(name || fallback).replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim().replace(/[. ]+$/g, '') || fallback;
+}
+
 async function exportExamWord() {
   const ids = Array.from(selectedIds);
   if (!ids.length) { showToast('请先勾选要生成试卷的笔记', 'error'); return; }
@@ -5082,7 +5101,7 @@ async function exportExamWord() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = '运行工作笔记试卷.zip';
+    a.download = safeDownloadName(examTitle) + '.zip';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -5213,6 +5232,10 @@ async function deleteFromPreview() {
 // ==================== CRUD ====================
 let _sourceComboBound = false;
 
+function isPhoneLayout() {
+  return !!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
+}
+
 function closeSourceMenu() {
   const menu = document.getElementById('sourceOptions');
   const toggle = document.getElementById('sourceToggle');
@@ -5238,16 +5261,54 @@ function toggleSourceMenu() {
   else openSourceMenu();
 }
 
+function syncMobileSourceSelect() {
+  const combo = document.getElementById('sourceCombo');
+  const sourceInput = document.getElementById('editSource');
+  const sourceSelect = document.getElementById('editSourceMobileSelect');
+  if (!combo || !sourceInput || !sourceSelect) return;
+  const value = sourceInput.value.trim();
+  if (!value && sourceSelect.value === '__custom__' && combo.classList.contains('custom-source')) {
+    return;
+  }
+  const isPreset = SOURCE_OPTS.includes(value);
+  if (!value || isPreset) {
+    sourceSelect.value = value;
+    combo.classList.remove('custom-source');
+  } else {
+    sourceSelect.value = '__custom__';
+    combo.classList.add('custom-source');
+  }
+}
+
 function prepareMobileSourceInput() {
   const sourceInput = document.getElementById('editSource');
   if (!sourceInput) return;
-  sourceInput.removeAttribute('list');
+  syncMobileSourceSelect();
+  if (isPhoneLayout()) {
+    sourceInput.removeAttribute('list');
+  } else {
+    sourceInput.setAttribute('list', 'sourceDatalist');
+    closeSourceMenu();
+  }
   if (_sourceComboBound) return;
   _sourceComboBound = true;
   const combo = document.getElementById('sourceCombo');
   const toggle = document.getElementById('sourceToggle');
   const menu = document.getElementById('sourceOptions');
-  if (!combo || !toggle || !menu) return;
+  const sourceSelect = document.getElementById('editSourceMobileSelect');
+  if (!combo || !toggle || !menu || !sourceSelect) return;
+  sourceSelect.addEventListener('change', () => {
+    if (sourceSelect.value === '__custom__') {
+      combo.classList.add('custom-source');
+      sourceInput.value = '';
+      sourceInput.focus();
+    } else {
+      combo.classList.remove('custom-source');
+      sourceInput.value = sourceSelect.value;
+      sourceInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
+  sourceInput.addEventListener('input', syncMobileSourceSelect);
   toggle.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -5264,6 +5325,13 @@ function prepareMobileSourceInput() {
   document.addEventListener('click', (e) => {
     if (!combo.contains(e.target)) closeSourceMenu();
   });
+  window.addEventListener('resize', () => {
+    if (isPhoneLayout()) sourceInput.removeAttribute('list');
+    else {
+      sourceInput.setAttribute('list', 'sourceDatalist');
+      closeSourceMenu();
+    }
+  });
 }
 
 function openAddModal() {
@@ -5274,6 +5342,7 @@ function openAddModal() {
   document.getElementById('editContent').value = '';
   document.getElementById('editTags').value = '';
   document.getElementById('editSource').value = '';
+  syncMobileSourceSelect();
   _editOrigSource = '';
   document.getElementById('editLevel').value = '';
   document.getElementById('editDate').value = '';
@@ -5308,6 +5377,7 @@ async function openEditModal(id) {
   document.getElementById('editContent').value = n.content;
   document.getElementById('editTags').value = n.tags;
   document.getElementById('editSource').value = n.source;
+  syncMobileSourceSelect();
   _editOrigSource = n.source || '';   // 记录原来源：未改动则放行历史遗留的自定义值
   document.getElementById('editLevel').value = n.level;
   document.getElementById('editDate').value = n.note_date;
