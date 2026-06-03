@@ -301,6 +301,28 @@ tbody tr.selected { background: #EBF5FB; }
 .md-preview { border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; min-height: 120px; max-height: 50vh; overflow-y: auto; background: #fcfcfc; }
 .form-row { display: flex; gap: 12px; }
 .form-row .form-group { flex: 1; }
+.source-combo { position: relative; }
+.source-combo input { padding-right: 40px; }
+.source-toggle {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 28px; height: 28px; border-radius: 999px; border: 1px solid var(--border);
+  background: rgba(255,255,255,.82); color: var(--text-secondary); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; line-height: 1;
+  transition: background .15s, color .15s, transform .15s;
+}
+.source-toggle:hover { background: rgba(255,255,255,.96); color: var(--text); }
+.source-toggle.open { transform: translateY(-50%) rotate(180deg); }
+.source-menu {
+  display: none; position: absolute; z-index: 420; left: 0; right: 0; top: calc(100% + 6px);
+  padding: 6px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--card); box-shadow: 0 10px 24px rgba(0,0,0,.12);
+}
+.source-menu.open { display: grid; gap: 4px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.source-option {
+  border: none; border-radius: 999px; padding: 7px 10px; background: transparent;
+  color: var(--text); font-size: 13px; text-align: center; cursor: pointer;
+}
+.source-option:hover { background: var(--bg); }
 .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
 
 /* Toast */
@@ -1729,6 +1751,9 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
     font-size: 13px !important;
     box-shadow: 0 10px 24px rgba(17,24,39,.08), 0 1px 0 rgba(255,255,255,.9) inset !important;
   }
+  #modalOverlay .source-combo input {
+    padding-right: 42px !important;
+  }
   #modalOverlay .modal-body > .form-row {
     flex: 0 0 auto !important;
     flex-direction: row !important;
@@ -1800,6 +1825,11 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
     border-radius: 16px !important;
     background: rgba(255,255,255,.72) !important;
     border: 1px solid var(--border) !important;
+  }
+  #modalOverlay .source-menu {
+    border-radius: 18px !important;
+    background: rgba(255,255,255,.92) !important;
+    box-shadow: 0 18px 38px rgba(17,24,39,.14), 0 1px 0 rgba(255,255,255,.9) inset !important;
   }
   #modalOverlay .md-toolbar + textarea,
   #modalOverlay #editContent {
@@ -2846,8 +2876,11 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
         </div>
         <div class="form-group">
           <label>来源</label>
-          <input type="text" id="editSource" list="sourceOptions" autocomplete="off" placeholder="选择或输入预设来源">
-          <datalist id="sourceOptions"></datalist>
+          <div class="source-combo" id="sourceCombo">
+            <input type="text" id="editSource" autocomplete="off" placeholder="选择或输入预设来源">
+            <button type="button" class="source-toggle" id="sourceToggle" aria-label="展开来源列表" aria-expanded="false">⌄</button>
+            <div class="source-menu" id="sourceOptions" role="listbox"></div>
+          </div>
         </div>
       </div>
       <div class="form-group edit-date-card">
@@ -3968,9 +4001,13 @@ const SOURCE_OPTS = ['规程', '规章制度', '技术文件', '技术通知', '
 let _editOrigSource = '';   // 当前编辑笔记的原始来源（新增为空）
 
 function populateSourceOptions() {
-  // 编辑框：datalist 建议项
-  document.getElementById('sourceOptions').innerHTML =
-    SOURCE_OPTS.map(s => `<option value="${s}"></option>`).join('');
+  // 编辑框：自定义完整列表（不随输入内容筛选，避免移动端 datalist 兼容问题）
+  const sourceOptions = document.getElementById('sourceOptions');
+  if (sourceOptions) {
+    sourceOptions.innerHTML = SOURCE_OPTS
+      .map(s => `<button type="button" class="source-option" role="option" data-source="${esc(s)}">${esc(s)}</button>`)
+      .join('');
+  }
   // 筛选框：固定下拉（保留“全部来源”）
   const fs = document.getElementById('filterSource');
   const cur = fs.value;
@@ -5174,10 +5211,59 @@ async function deleteFromPreview() {
 }
 
 // ==================== CRUD ====================
+let _sourceComboBound = false;
+
+function closeSourceMenu() {
+  const menu = document.getElementById('sourceOptions');
+  const toggle = document.getElementById('sourceToggle');
+  if (!menu || !toggle) return;
+  menu.classList.remove('open');
+  toggle.classList.remove('open');
+  toggle.setAttribute('aria-expanded', 'false');
+}
+
+function openSourceMenu() {
+  const menu = document.getElementById('sourceOptions');
+  const toggle = document.getElementById('sourceToggle');
+  if (!menu || !toggle) return;
+  menu.classList.add('open');
+  toggle.classList.add('open');
+  toggle.setAttribute('aria-expanded', 'true');
+}
+
+function toggleSourceMenu() {
+  const menu = document.getElementById('sourceOptions');
+  if (!menu) return;
+  if (menu.classList.contains('open')) closeSourceMenu();
+  else openSourceMenu();
+}
+
 function prepareMobileSourceInput() {
   const sourceInput = document.getElementById('editSource');
   if (!sourceInput) return;
-  sourceInput.setAttribute('list', 'sourceOptions');
+  sourceInput.removeAttribute('list');
+  if (_sourceComboBound) return;
+  _sourceComboBound = true;
+  const combo = document.getElementById('sourceCombo');
+  const toggle = document.getElementById('sourceToggle');
+  const menu = document.getElementById('sourceOptions');
+  if (!combo || !toggle || !menu) return;
+  toggle.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleSourceMenu();
+  });
+  menu.addEventListener('click', (e) => {
+    const option = e.target.closest('.source-option');
+    if (!option) return;
+    sourceInput.value = option.dataset.source || option.textContent || '';
+    sourceInput.dispatchEvent(new Event('input', { bubbles: true }));
+    closeSourceMenu();
+    sourceInput.focus();
+  });
+  document.addEventListener('click', (e) => {
+    if (!combo.contains(e.target)) closeSourceMenu();
+  });
 }
 
 function openAddModal() {
@@ -5229,7 +5315,10 @@ async function openEditModal(id) {
   document.getElementById('modalOverlay').classList.add('open');
 }
 
-function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+function closeModal() {
+  closeSourceMenu();
+  document.getElementById('modalOverlay').classList.remove('open');
+}
 
 async function saveNote() {
   const id = document.getElementById('editId').value;
