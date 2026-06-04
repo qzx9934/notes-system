@@ -232,8 +232,14 @@ tbody tr.selected { background: #EBF5FB; }
 .preview-header .title-area { flex: 1; }
 .preview-header .code { font-family: 'Consolas', monospace; font-size: 12px; color: var(--text-secondary); }
 .preview-header .title { font-size: 18px; font-weight: 600; margin-top: 4px; line-height: 1.4; }
-.preview-close { cursor: pointer; font-size: 24px; color: var(--text-secondary); background: none; border: none; padding: 0 4px; flex-shrink: 0; }
-.preview-close:hover { color: var(--text); }
+.preview-close, .card-more-btn {
+  background: none; border: none; font-size: 20px; color: var(--text-secondary); cursor: pointer;
+  padding: 0; line-height: 1; display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 999px; transition: all .15s ease; outline: none; flex-shrink: 0;
+}
+.preview-close:hover, .card-more-btn:hover { color: var(--text); background: rgba(0,0,0,.06); }
+.preview-close:focus-visible, .card-more-btn:focus-visible { box-shadow: 0 0 0 2px var(--primary-light); }
+.preview-close { font-size: 24px; }
 .preview-meta {
   padding: 12px 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
   border-bottom: 1px solid var(--border); background: #f8f9fa;
@@ -2288,7 +2294,7 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
 .card-more-btn { background: none; border: none; font-size: 20px; color: var(--text-secondary); cursor: pointer; padding: 0 4px; line-height: 1; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 4px; }
 .card-more-btn:hover { color: var(--text); background: rgba(0,0,0,.05); }
 .card-dropdown { position: relative; display: inline-block; }
-.card-dropdown-content { display: none; position: absolute; right: 0; top: 100%; min-width: 140px; background: var(--card); box-shadow: 0 4px 16px rgba(0,0,0,.15); border-radius: 6px; z-index: 100; overflow: hidden; border: 1px solid var(--border); padding: 4px 0; }
+.card-dropdown-content { display: none; position: absolute; right: 0; top: 100%; min-width: 140px; background: var(--glass-bg); backdrop-filter: blur(18px) saturate(125%); -webkit-backdrop-filter: blur(18px) saturate(125%); box-shadow: 0 4px 16px rgba(0,0,0,.15); border-radius: var(--radius); z-index: 100; overflow: hidden; border: 1px solid var(--border); padding: 4px 0; }
 .card-dropdown-content.show { display: block; }
 .card-dropdown-item { padding: 10px 16px; font-size: 14px; color: var(--text); cursor: pointer; display: block; text-align: left; background: none; border: none; width: 100%; transition: background .15s; }
 .card-dropdown-item:hover { background: var(--bg-hover); }
@@ -2801,8 +2807,8 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
               <div class="card-dropdown" id="roamDropdownWrap">
                 <button class="card-more-btn roam-flip-btn" onclick="toggleCardMenu('roamDropdownWrap', event)" title="更多操作">⋮</button>
                 <div class="card-dropdown-content">
-                  <button class="card-dropdown-item" onclick="exportCardImage('roamCardInner')">📤 分享图片</button>
-                  <button class="card-dropdown-item writer-only" onclick="promptEditSource(roamNotes[roamIndex])">📝 修改来源</button>
+                  <button class="card-dropdown-item" onclick="exportCardImage('roamCardInner')">分享图片</button>
+                  <button class="card-dropdown-item writer-only" onclick="promptEditSource(roamNotes[roamIndex])">修改来源</button>
                 </div>
               </div>
             </span>
@@ -2855,8 +2861,8 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
           <div class="card-dropdown" id="previewDropdownWrap">
             <button class="card-more-btn" onclick="toggleCardMenu('previewDropdownWrap', event)" title="更多操作">⋮</button>
             <div class="card-dropdown-content">
-              <button class="card-dropdown-item" onclick="exportCardImage('previewDrawer')">📤 分享图片</button>
-              <button class="card-dropdown-item writer-only" onclick="promptEditSource(previewNote)">📝 修改来源</button>
+              <button class="card-dropdown-item" onclick="exportCardImage('previewDrawer')">分享图片</button>
+              <button class="card-dropdown-item writer-only" onclick="promptEditSource(previewNote)">修改来源</button>
             </div>
           </div>
           <button class="preview-close" onclick="closePreview()">×</button>
