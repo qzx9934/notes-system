@@ -5265,10 +5265,20 @@ async function exportNoteImage(note, face = 'front') {
       windowWidth: w,
       logging: false
     });
-    const url = canvas.toDataURL('image/png', 1.0);
+    // 体积控制：白底文档型图片优先 PNG 无损；超过阈值(约 3MB)自动转
+    // JPEG q0.92（文字几乎无损，体积降到 PNG 的 1/5~1/8，清晰度不变）。
+    const PNG_LIMIT = 3 * 1024 * 1024;
+    let url = canvas.toDataURL('image/png', 1.0);
+    let ext = 'png';
+    // base64 长度 ≈ 字节数 × 4/3，据此估算 PNG 体积，避免无谓再编码
+    const pngBytes = Math.floor((url.length - (url.indexOf(',') + 1)) * 0.75);
+    if (pngBytes > PNG_LIMIT) {
+      const jpg = canvas.toDataURL('image/jpeg', 0.92);
+      if (jpg && jpg.length < url.length) { url = jpg; ext = 'jpg'; }
+    }
     const safe = (note.code || 'note').replace(/[^\w一-龥-]/g, '');
     const a = document.createElement('a');
-    a.href = url; a.download = `工作笔记_${safe}${face === 'back' ? '_总结' : ''}.png`; a.click();
+    a.href = url; a.download = `工作笔记_${safe}${face === 'back' ? '_总结' : ''}.${ext}`; a.click();
     showToast('图片导出成功', 'success');
   } catch (e) {
     console.error(e);
@@ -6073,7 +6083,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '4.5';
+const APP_VERSION = '4.6';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
