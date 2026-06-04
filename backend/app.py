@@ -1423,6 +1423,7 @@ def api_note_update(id):
     source  = (data.get('source', existing['source']) or '').strip()
     level   = data.get('level', existing['level'])
     note_date = data.get('note_date', existing['note_date'])
+    source_file = (data.get('source_file', existing['source_file']) or '').strip()
 
     if not valid_level(level):
         return jsonify({'error': 'level 只能为 ★ / ★★ / ★★★'}), 400
@@ -1439,7 +1440,7 @@ def api_note_update(id):
     # 共建者：仅记录其实际提交的字段，转为待审申请
     role, _, _ = effective_actor()
     if role == 'contributor':
-        allowed = ('title', 'content', 'tags', 'source', 'level', 'note_date')
+        allowed = ('title', 'content', 'tags', 'source', 'level', 'note_date', 'source_file')
         proposed = {k: data[k] for k in allowed if k in data}
         if not proposed:
             return jsonify({'error': '没有要修改的字段'}), 400
@@ -1449,11 +1450,11 @@ def api_note_update(id):
     if 'section' in data and data['section'] != existing['section']:
         move_note_to_section(db, id, data['section'],
                              {'title': title, 'content': content, 'tags': tags,
-                              'source': source, 'level': level, 'note_date': note_date})
+                              'source': source, 'level': level, 'note_date': note_date, 'source_file': source_file})
     else:
         db.execute(
-            'UPDATE notes SET title=?,content=?,tags=?,source=?,level=?,note_date=?,updated_at=datetime("now","localtime") WHERE id=?',
-            (title, content, tags, source, level, note_date, id)
+            'UPDATE notes SET title=?,content=?,tags=?,source=?,level=?,note_date=?,source_file=?,updated_at=datetime("now","localtime") WHERE id=?',
+            (title, content, tags, source, level, note_date, source_file, id)
         )
     db.commit()
 
