@@ -1442,12 +1442,16 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
     line-height: 1.22 !important;
     margin-top: 2px !important;
   }
-  .preview-close {
+  .preview-close, .card-more-btn {
     width: 32px !important;
     height: 32px !important;
     min-height: 32px !important;
     padding: 0 !important;
     border-radius: 999px !important;
+    background: rgba(142, 150, 170, 0.14) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
   .preview-meta {
     display: grid !important;
@@ -2294,6 +2298,8 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
   .card-dropdown-item:last-child { border-bottom: none; }
 }
 @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.dropdown-overlay { display: none; position: fixed; inset: 0; z-index: 999; background: rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.2s; }
+.dropdown-overlay.open { display: block; opacity: 1; }
 </style>
 </head>
 <body>
@@ -5009,33 +5015,43 @@ function flipPreview() { setPreviewFace(!previewFlipped); }
 
 // ==================== Card Menu Actions ====================
 let cardDropdownOverlay = null;
+let currentOpenMenu = null;
+let currentMenuParent = null;
+
 function toggleCardMenu(wrapId, event) {
   event.stopPropagation();
   const wrap = document.getElementById(wrapId);
   if (!wrap) return;
-  const content = wrap.querySelector('.card-dropdown-content');
+  const content = wrap.querySelector('.card-dropdown-content') || currentOpenMenu;
   const isShow = content.classList.contains('show');
   
   closeAllCardMenus();
   
   if (!isShow) {
-    content.classList.add('show');
     if (window.innerWidth <= 768) {
       if (!cardDropdownOverlay) {
         cardDropdownOverlay = document.createElement('div');
-        cardDropdownOverlay.className = 'modal-overlay';
-        cardDropdownOverlay.style.zIndex = '999';
+        cardDropdownOverlay.className = 'dropdown-overlay';
         cardDropdownOverlay.onclick = closeAllCardMenus;
         document.body.appendChild(cardDropdownOverlay);
       }
       cardDropdownOverlay.classList.add('open');
+      currentMenuParent = wrap;
+      currentOpenMenu = content;
+      document.body.appendChild(content);
     }
+    content.classList.add('show');
   }
 }
 
 function closeAllCardMenus() {
   document.querySelectorAll('.card-dropdown-content').forEach(c => c.classList.remove('show'));
   if (cardDropdownOverlay) cardDropdownOverlay.classList.remove('open');
+  if (currentOpenMenu && currentMenuParent) {
+    currentMenuParent.appendChild(currentOpenMenu);
+    currentOpenMenu = null;
+    currentMenuParent = null;
+  }
 }
 document.addEventListener('click', closeAllCardMenus);
 
