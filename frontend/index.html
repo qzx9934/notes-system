@@ -4996,8 +4996,46 @@ function closePreview() {
 // 详情抽屉与漫游卡片共用的背面渲染逻辑
 function renderBackContent(n, srcFileId, summaryId, metaId, btnId) {
   const sf = document.getElementById(srcFileId);
-  if (n.source_file) { sf.style.display = ''; sf.innerHTML = '📄 来源文件：<b>' + esc(n.source_file) + '</b>'; }
-  else { sf.style.display = 'none'; sf.innerHTML = ''; }
+  const writable = typeof canWrite === 'function' && canWrite();
+  if (n.source_file) {
+    sf.style.display = '';
+    sf.innerHTML = '📄 来源文件：<b' + (writable ? ' class="clickable" title="点击修改来源文件"' : '') + '>' + esc(n.source_file) + '</b>';
+  } else if (writable) {
+    sf.style.display = '';
+    sf.innerHTML = '<span class="clickable" style="opacity: 0.5; font-size: var(--fs-sm);" title="点击添加">➕ 补充来源文件</span>';
+  } else {
+    sf.style.display = 'none';
+    sf.innerHTML = '';
+  }
+
+  if (writable) {
+    sf.onclick = async () => {
+      const v = prompt('请输入来源文件：', n.source_file || '');
+      if (v !== null && v.trim() !== (n.source_file || '')) {
+        const val = v.trim();
+        try {
+          const r = await fetch('/api/notes/' + n.id, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source_file: val })
+          });
+          if (!r.ok) throw new Error();
+          if (r.status === 202) {
+             showToast('已提交补充来源文件的申请', 'success');
+             return;
+          }
+          const updated = await r.json();
+          n.source_file = updated.source_file;
+          if (typeof previewDirty !== 'undefined') previewDirty = true;
+          renderBackContent(n, srcFileId, summaryId, metaId, btnId);
+          showToast('来源文件已更新', 'success');
+        } catch (e) {
+          showToast('保存失败', 'error');
+        }
+      }
+    };
+  } else {
+    sf.onclick = null;
+  }
 
   const sumEl = document.getElementById(summaryId);
   const metaEl = document.getElementById(metaId);

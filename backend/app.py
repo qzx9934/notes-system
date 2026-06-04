@@ -2870,7 +2870,7 @@ def api_import_excel():
 # ==================== 图片上传 ====================
 
 @app.route('/api/upload', methods=['POST'])
-@admin_required
+@writer_required
 def api_upload():
     """上传单张图片，返回可直接写进 Markdown 的 URL。
     仅管理员/可编辑者可用；按文件头魔数校验真实类型，文件名取内容 SHA256+扩展名（天然去重）。
