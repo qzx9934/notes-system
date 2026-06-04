@@ -2293,23 +2293,30 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
 /* 卡片右上角下拉菜单 */
 /* 注：.card-more-btn 的形状/底色已与 .preview-close 统一在上方（圆形 hover 阴影），此处不再覆盖 border-radius */
 .card-dropdown { position: relative; display: inline-block; }
-/* 菜单与卡片同款液态玻璃：圆角、毛玻璃、高光描边 */
-.card-dropdown-content { display: none; position: absolute; right: 0; top: calc(100% + 6px); min-width: 150px;
-  background: var(--glass-bg-solid);
-  -webkit-backdrop-filter: blur(18px) saturate(170%); backdrop-filter: blur(18px) saturate(170%);
+/* 菜单与卡片完全同款液态玻璃：偏透底色(--glass-bg) + 折射滤镜(--glass-refract)
+   + 同款高光描边阴影；这正是卡片"更透明、有折射感"的配方，纯 blur 会偏实偏闷 */
+.card-dropdown-content { display: none; position: absolute; right: 0; top: calc(100% + 8px); min-width: 152px;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-refract);
   box-shadow: var(--glass-sh), var(--glass-hi); border: 1px solid var(--glass-brd);
-  border-radius: 14px; z-index: 100; overflow: hidden; padding: 6px; }
+  border-radius: 16px; z-index: 100; overflow: hidden; padding: 6px; }
 .card-dropdown-content.show { display: block; animation: cardMenuIn .14s ease-out; }
 @keyframes cardMenuIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-.card-dropdown-item { padding: 9px 14px; font-size: 14px; color: var(--text); cursor: pointer; display: block; text-align: left; background: none; border: none; width: 100%; border-radius: 9px; transition: background .15s; }
-.card-dropdown-item:hover { background: rgba(46,139,240,.12); }
+.card-dropdown-item { padding: 10px 16px; font-size: 14px; color: var(--text); cursor: pointer; display: block; text-align: left; background: none; border: none; width: 100%; border-radius: 11px; transition: background .15s; }
+.card-dropdown-item:hover { background: rgba(255,255,255,.5); }
 @media (max-width: 768px) {
-  .card-dropdown-content { position: fixed; bottom: 0; top: auto; right: 0; left: 0; width: 100%; min-width: 0; border-radius: 18px 18px 0 0; padding: 10px 12px calc(20px + env(safe-area-inset-bottom)); animation: slideUp .25s ease-out; box-shadow: 0 -8px 30px rgba(60,110,180,.22), var(--glass-hi); border: none; z-index: 1000; }
-  .card-dropdown-item { font-size: 16px; padding: 15px; text-align: center; border-radius: 12px; }
-  .card-dropdown-item + .card-dropdown-item { margin-top: 4px; }
+  /* 手机端：底部悬浮卡片（不贴边、不到底），圆角四边、液态玻璃，与其它弹层统一 */
+  .card-dropdown-content { position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom));
+    top: auto; width: auto; min-width: 0; border-radius: 20px; padding: 10px;
+    background: var(--glass-bg); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-refract);
+    box-shadow: var(--glass-sh-lg), var(--glass-hi); border: 1px solid var(--glass-brd);
+    animation: sheetIn .26s cubic-bezier(.22,1,.36,1); z-index: 1000; }
+  .card-dropdown-item { font-size: 16px; padding: 16px; text-align: center; border-radius: 14px; }
+  .card-dropdown-item + .card-dropdown-item { margin-top: 6px; }
 }
-@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-.dropdown-overlay { display: none; position: fixed; inset: 0; z-index: 999; background: rgba(0,0,0,0.4); opacity: 0; transition: opacity 0.2s; }
+@keyframes sheetIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+/* 手机端菜单背后的遮罩：轻一点，配合玻璃悬浮卡片更通透 */
+.dropdown-overlay { display: none; position: fixed; inset: 0; z-index: 999; background: rgba(20,40,70,0.28); opacity: 0; transition: opacity 0.2s; }
 .dropdown-overlay.open { display: block; opacity: 1; }
 </style>
 </head>
@@ -6083,7 +6090,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '4.6';
+const APP_VERSION = '4.7';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
