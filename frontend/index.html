@@ -2812,7 +2812,7 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
               <div class="card-dropdown" id="roamDropdownWrap">
                 <button class="card-more-btn roam-flip-btn" onclick="toggleCardMenu('roamDropdownWrap', event)" title="更多操作">⋮</button>
                 <div class="card-dropdown-content">
-                  <button class="card-dropdown-item" onclick="exportNoteImage(roamNotes[roamIndex])">导出图片</button>
+                  <button class="card-dropdown-item" onclick="exportNoteImage(roamNotes[roamIndex], roamFlipped ? 'back' : 'front')">导出图片</button>
                   <button class="card-dropdown-item writer-only" onclick="promptEditSource(roamNotes[roamIndex])">修改来源</button>
                 </div>
               </div>
@@ -2866,7 +2866,7 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
           <div class="card-dropdown" id="previewDropdownWrap">
             <button class="card-more-btn" onclick="toggleCardMenu('previewDropdownWrap', event)" title="更多操作">⋮</button>
             <div class="card-dropdown-content">
-              <button class="card-dropdown-item" onclick="exportNoteImage(previewNote)">导出图片</button>
+              <button class="card-dropdown-item" onclick="exportNoteImage(previewNote, previewFlipped ? 'back' : 'front')">导出图片</button>
               <button class="card-dropdown-item writer-only" onclick="promptEditSource(previewNote)">修改来源</button>
             </div>
           </div>
@@ -5117,12 +5117,23 @@ async function ensureHtml2Canvas() {
   return !!window.html2canvas;
 }
 
-// 导出笔记为图片：不截取实时响应式 DOM，而是离屏构建一个固定宽度(720px)的
-// 纯净卡片，统一样式渲染后再高清截图。这样手机与电脑导出完全一致，且只含
-// 卡片内容（编号/标题/元信息/正文，含表格），不含任何界面按钮/图标。
-async function exportNoteImage(note) {
+// 导出笔记为图片：不截取实时响应式 DOM，而是离屏构建固定基准宽度(1080px)的
+// 纯净卡片，统一样式渲染后再高清截图。手机与电脑导出完全一致，只含卡片内容
+// （编号/标题/元信息/正文或 AI 总结，含表格），不含任何界面按钮/图标。
+// face: 'front'=正文 / 'back'=AI 总结背面（与当前所看的一面一致）。
+const EXPORT_BASE_W = 1080;   // 基准宽度（更宽，给表格留足空间）
+const EXPORT_MAX_W = 2200;    // 宽表格时画布最多扩到此宽，避免列被挤压换行
+const EXPORT_PAD = 48;        // 卡片左右内边距
+const EXPORT_MAX_DIM = 12000; // 单边像素安全上限（远低于浏览器 16384 硬限）
+const EXPORT_MAX_AREA = 50e6; // 面积上限：取手机(iOS Safari)也安全的值，宁可超长
+                              // 笔记稍降清晰度，也保证出图有效、不返回空白
+
+async function exportNoteImage(note, face = 'front') {
   closeAllCardMenus();
   if (!note) { showToast('没有可导出的笔记', 'error'); return; }
+  if (face === 'back' && !note.ai_summary) {
+    showToast('该笔记尚无 AI 总结，无法导出背面', 'error'); return;
+  }
   showToast('正在生成高清图片…', 'info');
 
   if (!(await ensureHtml2Canvas())) {
@@ -5130,7 +5141,7 @@ async function exportNoteImage(note) {
     return;
   }
 
-  // 章节名（用于副标题）：尽量从已加载的 sections 找
+  // 章节名（副标题）：尽量从已加载的 sections 找
   let sectionName = note.section_name || '';
   if (!sectionName && Array.isArray(sections)) {
     const sec = sections.find(s => s.code === note.section);
@@ -5145,9 +5156,20 @@ async function exportNoteImage(note) {
   if (note.level) metaBits.push(`等级：${esc(note.level)}`);
   if (note.note_date) metaBits.push(`日期：${esc(note.note_date)}`);
 
-  // 离屏容器：固定 720px 宽，自包含样式（不依赖页面响应式/液态玻璃）
+  // 正/背面内容：背面为 AI 总结（带标签与生成时间、来源文件）
+  let bodyHtml, faceTag = '';
+  if (face === 'back') {
+    faceTag = '<div class="ex-face">📑 AI 总结</div>';
+    const srcFile = note.source_file ? `<div class="ex-srcfile">📄 来源文件：<b>${esc(note.source_file)}</b></div>` : '';
+    const at = note.ai_summary_at ? `<div class="ex-summary-at">🕒 总结于 ${esc(note.ai_summary_at)}</div>` : '';
+    bodyHtml = srcFile + `<div class="ex-body md-body">${mdSafe(note.ai_summary)}</div>` + at;
+  } else {
+    bodyHtml = `<div class="ex-body md-body">${mdSafe(note.content)}</div>`;
+  }
+
+  // 离屏容器：基准 1080px 宽，自包含样式（不依赖页面响应式/液态玻璃）
   const stage = document.createElement('div');
-  stage.style.cssText = 'position:fixed;left:-99999px;top:0;width:720px;background:#fff;z-index:-1;';
+  stage.style.cssText = `position:fixed;left:-99999px;top:0;width:${EXPORT_BASE_W}px;background:#fff;z-index:-1;`;
   stage.innerHTML = `
     <div class="export-card">
       <div class="ex-head">
@@ -5156,64 +5178,97 @@ async function exportNoteImage(note) {
         ${metaBits.length ? `<div class="ex-meta">${metaBits.join('　|　')}</div>` : ''}
         ${tagsHtml}
       </div>
-      <div class="ex-body md-body">${mdSafe(note.content)}</div>
+      ${faceTag}
+      ${bodyHtml}
       <div class="ex-foot">电厂运行人员工作笔记　·　${esc(note.code || '')}</div>
     </div>
     <style>
-      .export-card { width:720px; box-sizing:border-box; padding:40px 44px; background:#fff;
+      .export-card { width:${EXPORT_BASE_W}px; box-sizing:border-box; padding:48px ${EXPORT_PAD}px; background:#fff;
         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
         color:#2c3e50; }
-      .export-card .ex-head { border-bottom:3px solid #2E8BF0; padding-bottom:18px; margin-bottom:22px; }
-      .export-card .ex-code { font-family:Consolas,monospace; font-size:14px; color:#7f8c8d; margin-bottom:8px; }
-      .export-card .ex-title { font-size:27px; font-weight:700; line-height:1.4; margin:0 0 12px; color:#1a2533; }
-      .export-card .ex-meta { font-size:14px; color:#5b6770; }
-      .export-card .ex-tags { margin-top:12px; display:flex; flex-wrap:wrap; gap:8px; }
-      .export-card .ex-tag { font-size:13px; color:#1657c0; background:#eef4ff; border:1px solid #d4e2ff;
-        border-radius:6px; padding:3px 11px; }
-      .export-card .ex-body { font-size:17px; line-height:1.85; color:#2c3e50; }
-      .export-card .ex-body h1, .export-card .ex-body h2, .export-card .ex-body h3 { line-height:1.3; font-weight:700; margin:18px 0 10px; color:#1a2533; }
-      .export-card .ex-body h1 { font-size:23px; border-bottom:2px solid #e1e4e8; padding-bottom:6px; }
-      .export-card .ex-body h2 { font-size:20px; border-bottom:1px solid #e1e4e8; padding-bottom:4px; }
-      .export-card .ex-body h3 { font-size:18px; }
-      .export-card .ex-body p { margin:6px 0 10px; }
-      .export-card .ex-body ul, .export-card .ex-body ol { margin:6px 0 10px; padding-left:26px; }
-      .export-card .ex-body li { margin:4px 0; }
+      .export-card .ex-head { border-bottom:3px solid #2E8BF0; padding-bottom:20px; margin-bottom:24px; }
+      .export-card .ex-code { font-family:Consolas,monospace; font-size:16px; color:#7f8c8d; margin-bottom:10px; }
+      .export-card .ex-title { font-size:30px; font-weight:700; line-height:1.4; margin:0 0 14px; color:#1a2533; }
+      .export-card .ex-meta { font-size:16px; color:#5b6770; }
+      .export-card .ex-tags { margin-top:14px; display:flex; flex-wrap:wrap; gap:9px; }
+      .export-card .ex-tag { font-size:15px; color:#1657c0; background:#eef4ff; border:1px solid #d4e2ff;
+        border-radius:7px; padding:4px 13px; }
+      .export-card .ex-face { font-size:16px; font-weight:700; color:#2E8BF0; margin-bottom:14px; }
+      .export-card .ex-srcfile { font-size:15px; color:#5b6770; margin-bottom:14px; }
+      .export-card .ex-summary-at { font-size:14px; color:#9aa6b2; margin-top:16px; }
+      .export-card .ex-body { font-size:19px; line-height:1.85; color:#2c3e50; }
+      .export-card .ex-body h1, .export-card .ex-body h2, .export-card .ex-body h3 { line-height:1.3; font-weight:700; margin:20px 0 11px; color:#1a2533; }
+      .export-card .ex-body h1 { font-size:26px; border-bottom:2px solid #e1e4e8; padding-bottom:7px; }
+      .export-card .ex-body h2 { font-size:22px; border-bottom:1px solid #e1e4e8; padding-bottom:5px; }
+      .export-card .ex-body h3 { font-size:20px; }
+      .export-card .ex-body p { margin:7px 0 11px; }
+      .export-card .ex-body ul, .export-card .ex-body ol { margin:7px 0 11px; padding-left:28px; }
+      .export-card .ex-body li { margin:5px 0; }
       .export-card .ex-body strong, .export-card .ex-body b { font-weight:700; color:#1a2533; }
-      .export-card .ex-body code { background:#f0f2f5; padding:2px 6px; border-radius:4px; font-family:Consolas,monospace; font-size:15px; color:#b4326e; }
-      .export-card .ex-body pre { background:#2d2d44; color:#e8e8f0; padding:14px 18px; border-radius:8px; overflow:hidden; margin:10px 0; font-size:14px; line-height:1.6; white-space:pre-wrap; word-break:break-word; }
-      .export-card .ex-body pre code { background:none; padding:0; color:inherit; }
-      .export-card .ex-body blockquote { border-left:4px solid #2E8BF0; margin:10px 0; padding:6px 16px; color:#5b6770; background:#f5f8fc; border-radius:0 6px 6px 0; }
-      .export-card .ex-body table { border-collapse:collapse; width:100%; margin:12px 0; font-size:15px; }
-      .export-card .ex-body th, .export-card .ex-body td { border:1px solid #cfd6de; padding:9px 13px; text-align:left; vertical-align:top; word-break:break-word; }
+      .export-card .ex-body code { background:#f0f2f5; padding:2px 7px; border-radius:4px; font-family:Consolas,monospace; font-size:17px; color:#b4326e; }
+      .export-card .ex-body pre { background:#2d2d44; color:#e8e8f0; padding:16px 20px; border-radius:8px; overflow:hidden; margin:11px 0; font-size:16px; line-height:1.6; white-space:pre-wrap; word-break:break-word; }
+      .export-card .ex-body pre code { background:none; padding:0; color:inherit; font-size:inherit; }
+      .export-card .ex-body blockquote { border-left:4px solid #2E8BF0; margin:11px 0; padding:7px 18px; color:#5b6770; background:#f5f8fc; border-radius:0 7px 7px 0; }
+      /* 表格：默认按内容自然宽度（不强制 100%，避免短表被拉宽、宽表被挤压）；
+         单元格默认不换行以保持可读，过宽时由 JS 把超宽表切换为换行模式 */
+      .export-card .ex-body table { border-collapse:collapse; margin:14px 0; font-size:17px; width:auto; max-width:100%; }
+      .export-card .ex-body th, .export-card .ex-body td { border:1px solid #cfd6de; padding:10px 15px; text-align:left; vertical-align:top; white-space:nowrap; }
+      .export-card .ex-body table.ex-wrap th, .export-card .ex-body table.ex-wrap td { white-space:normal; word-break:break-word; }
       .export-card .ex-body th { background:#eef4fb; font-weight:700; color:#1a2533; }
-      .export-card .ex-body tr:nth-child(even) td { background:#f8fafc; }
+      .export-card .ex-body tbody tr:nth-child(even) td { background:#f8fafc; }
       .export-card .ex-body img { max-width:100%; height:auto; border-radius:6px; }
-      .export-card .ex-body hr { border:none; border-top:1px solid #e1e4e8; margin:18px 0; }
-      .export-card .ex-foot { margin-top:26px; padding-top:14px; border-top:1px solid #eef1f6;
-        font-size:13px; color:#9aa6b2; text-align:center; }
+      .export-card .ex-body hr { border:none; border-top:1px solid #e1e4e8; margin:20px 0; }
+      .export-card .ex-foot { margin-top:30px; padding-top:16px; border-top:1px solid #eef1f6;
+        font-size:15px; color:#9aa6b2; text-align:center; }
     </style>`;
   document.body.appendChild(stage);
 
   try {
+    const card = stage.querySelector('.export-card');
+    const body = stage.querySelector('.ex-body');
+
     // 等图片解码完成，避免截图缺图（含远程 /uploads 图片）
     const imgs = Array.from(stage.querySelectorAll('img'));
     await Promise.all(imgs.map(img => img.complete ? Promise.resolve()
       : new Promise(res => { img.onload = img.onerror = res; })));
-    await new Promise(r => setTimeout(r, 60));
+    await new Promise(r => setTimeout(r, 50));
 
-    const card = stage.querySelector('.export-card');
+    // 宽表格自适应：测量最宽的表格/代码块自然宽度，必要时把整张图加宽到容纳它，
+    // 让列保持清晰而非被挤成竖条；超过上限的表格再退化为换行。
+    const bodyAvail = EXPORT_BASE_W - 2 * EXPORT_PAD;
+    let widest = 0;
+    stage.querySelectorAll('.ex-body table, .ex-body pre').forEach(el => {
+      widest = Math.max(widest, el.scrollWidth);
+    });
+    if (widest > bodyAvail) {
+      const targetBody = Math.min(widest, EXPORT_MAX_W - 2 * EXPORT_PAD);
+      card.style.width = (targetBody + 2 * EXPORT_PAD) + 'px';
+      stage.style.width = card.style.width;
+      // 仍超过目标宽度的超宽表：切到换行模式，至少保证不溢出
+      stage.querySelectorAll('.ex-body table').forEach(t => {
+        if (t.scrollWidth > targetBody) t.classList.add('ex-wrap');
+      });
+      await new Promise(r => setTimeout(r, 30));
+    }
+
+    // 动态清晰度：正常笔记 3×（极清晰）；超长/超宽时按画布上限自动降档，确保出图有效
+    const w = card.offsetWidth, h = card.offsetHeight;
+    let scale = Math.min(3, EXPORT_MAX_DIM / w, EXPORT_MAX_DIM / h,
+                         Math.sqrt(EXPORT_MAX_AREA / (w * h)));
+    if (!isFinite(scale) || scale <= 0) scale = 1;
+
     const canvas = await window.html2canvas(card, {
-      scale: 3,                 // 高清：长笔记缩小后文字依旧清晰
+      scale: scale,
       useCORS: true,
       backgroundColor: '#ffffff',
-      width: 720,
-      windowWidth: 720,
+      width: w,
+      windowWidth: w,
       logging: false
     });
     const url = canvas.toDataURL('image/png', 1.0);
     const safe = (note.code || 'note').replace(/[^\w一-龥-]/g, '');
     const a = document.createElement('a');
-    a.href = url; a.download = `工作笔记_${safe}.png`; a.click();
+    a.href = url; a.download = `工作笔记_${safe}${face === 'back' ? '_总结' : ''}.png`; a.click();
     showToast('图片导出成功', 'success');
   } catch (e) {
     console.error(e);
@@ -6018,7 +6073,7 @@ document.addEventListener('keydown', e => {
 
 // ==================== Start ====================
 // 版本号单一来源：填充页面各处 + 文档标题
-const APP_VERSION = '4.4';
+const APP_VERSION = '4.5';
 document.title = '运行人员工作笔记管理系统 v' + APP_VERSION;
 document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + APP_VERSION; });
 
