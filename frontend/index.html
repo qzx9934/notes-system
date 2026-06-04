@@ -2280,6 +2280,20 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
     transform: translateY(0) !important;
   }
 }
+/* 卡片右上角下拉菜单 */
+.card-more-btn { background: none; border: none; font-size: 20px; color: var(--text-secondary); cursor: pointer; padding: 0 4px; line-height: 1; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 4px; }
+.card-more-btn:hover { color: var(--text); background: rgba(0,0,0,.05); }
+.card-dropdown { position: relative; display: inline-block; }
+.card-dropdown-content { display: none; position: absolute; right: 0; top: 100%; min-width: 140px; background: var(--card); box-shadow: 0 4px 16px rgba(0,0,0,.15); border-radius: 6px; z-index: 100; overflow: hidden; border: 1px solid var(--border); padding: 4px 0; }
+.card-dropdown-content.show { display: block; }
+.card-dropdown-item { padding: 10px 16px; font-size: 14px; color: var(--text); cursor: pointer; display: block; text-align: left; background: none; border: none; width: 100%; transition: background .15s; }
+.card-dropdown-item:hover { background: var(--bg-hover); }
+@media (max-width: 768px) {
+  .card-dropdown-content { position: fixed; bottom: 0; top: auto; right: 0; left: 0; width: 100%; border-radius: 16px 16px 0 0; padding: 12px 0 30px; animation: slideUp .25s ease-out; box-shadow: 0 -4px 20px rgba(0,0,0,.15); border: none; z-index: 1000; }
+  .card-dropdown-item { font-size: 16px; padding: 16px; text-align: center; border-bottom: 1px solid var(--border-light); }
+  .card-dropdown-item:last-child { border-bottom: none; }
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 </style>
 </head>
 <body>
@@ -2778,7 +2792,14 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
             <span class="roam-card-code" id="roamCode"></span>
             <span style="display:flex;align-items:center;gap:8px">
               <span id="roamLevel" class="roam-card-level" onclick="cycleRoamLevel()" title="点击切换重要程度"></span>
-              <button class="roam-flip-btn" onclick="flipRoam()" title="查看背面（来源文件/AI总结）">🔄 翻面</button>
+              <div class="card-dropdown" id="roamDropdownWrap">
+                <button class="card-more-btn roam-flip-btn" onclick="toggleCardMenu('roamDropdownWrap', event)" title="更多操作">⋮</button>
+                <div class="card-dropdown-content">
+                  <button class="card-dropdown-item" onclick="exportCardImage('roamCardInner')">📤 分享图片</button>
+                  <button class="card-dropdown-item writer-only" onclick="promptEditSource(roamNotes[roamIndex])">📝 修改来源</button>
+                  <button class="card-dropdown-item" onclick="flipRoam()">🔄 翻面 (AI总结)</button>
+                </div>
+              </div>
             </span>
           </div>
           <div class="roam-title-row">
@@ -2825,7 +2846,17 @@ tbody tr.selected { background: rgba(17,24,39,.045) !important; }
           <div class="code" id="previewCode"></div>
           <div class="title" id="previewTitle"></div>
         </div>
-        <button class="preview-close" onclick="closePreview()">×</button>
+        <div style="display:flex;align-items:center;gap:4px">
+          <div class="card-dropdown" id="previewDropdownWrap">
+            <button class="card-more-btn" onclick="toggleCardMenu('previewDropdownWrap', event)" title="更多操作">⋮</button>
+            <div class="card-dropdown-content">
+              <button class="card-dropdown-item" onclick="exportCardImage('previewDrawer')">📤 分享图片</button>
+              <button class="card-dropdown-item writer-only" onclick="promptEditSource(previewNote)">📝 修改来源</button>
+              <button class="card-dropdown-item" onclick="flipPreview()">🔄 翻面 (AI总结)</button>
+            </div>
+          </div>
+          <button class="preview-close" onclick="closePreview()">×</button>
+        </div>
       </div>
       <div class="preview-meta" id="previewMeta"></div>
     </div>
@@ -4977,6 +5008,115 @@ function setPreviewFace(toBack) {
   back.style.display = toBack ? '' : 'none';
 }
 function flipPreview() { setPreviewFace(!previewFlipped); }
+
+// ==================== Card Menu Actions ====================
+let cardDropdownOverlay = null;
+function toggleCardMenu(wrapId, event) {
+  event.stopPropagation();
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  const content = wrap.querySelector('.card-dropdown-content');
+  const isShow = content.classList.contains('show');
+  
+  closeAllCardMenus();
+  
+  if (!isShow) {
+    content.classList.add('show');
+    if (window.innerWidth <= 768) {
+      if (!cardDropdownOverlay) {
+        cardDropdownOverlay = document.createElement('div');
+        cardDropdownOverlay.className = 'modal-overlay';
+        cardDropdownOverlay.style.zIndex = '999';
+        cardDropdownOverlay.onclick = closeAllCardMenus;
+        document.body.appendChild(cardDropdownOverlay);
+      }
+      cardDropdownOverlay.classList.add('open');
+    }
+  }
+}
+
+function closeAllCardMenus() {
+  document.querySelectorAll('.card-dropdown-content').forEach(c => c.classList.remove('show'));
+  if (cardDropdownOverlay) cardDropdownOverlay.classList.remove('open');
+}
+document.addEventListener('click', closeAllCardMenus);
+
+async function promptEditSource(noteObj) {
+  closeAllCardMenus();
+  if (!noteObj) return;
+  const v = prompt('请输入来源文件：', noteObj.source_file || '');
+  if (v !== null && v.trim() !== (noteObj.source_file || '')) {
+    const val = v.trim();
+    try {
+      const r = await fetch('/api/notes/' + noteObj.id, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_file: val })
+      });
+      if (!r.ok) throw new Error();
+      if (r.status === 202) {
+         showToast('已提交补充来源文件的申请', 'success');
+         return;
+      }
+      const updated = await r.json();
+      noteObj.source_file = updated.source_file;
+      if (typeof previewDirty !== 'undefined') previewDirty = true;
+      if (typeof previewNote !== 'undefined' && noteObj === previewNote) renderPreviewBack(previewNote);
+      if (typeof roamNotes !== 'undefined' && noteObj === roamNotes[roamIndex]) renderRoamBack(roamNotes[roamIndex]);
+      showToast('来源文件已更新', 'success');
+    } catch (e) {
+      showToast('保存失败', 'error');
+    }
+  }
+}
+
+async function exportCardImage(containerId) {
+  closeAllCardMenus();
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const oldBgc = el.style.backgroundColor;
+  // assure white background for capture
+  el.style.backgroundColor = getComputedStyle(document.body).getPropertyValue('--card') || '#ffffff';
+  
+  // hide interactive elements
+  const toHide = el.querySelectorAll('.preview-close, .card-more-btn, .card-dropdown-content, .preview-footer, .roam-nav');
+  toHide.forEach(n => {
+    n._oldDisplay = n.style.display;
+    n.style.display = 'none';
+  });
+  
+  showToast('正在生成图片...', 'info');
+  
+  try {
+    if (!window.html2canvas) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.staticfile.net/html2canvas/1.4.1/html2canvas.min.js';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    // slight delay to ensure UI updates
+    await new Promise(r => setTimeout(r, 100));
+    const canvas = await window.html2canvas(el, {
+      scale: window.devicePixelRatio > 1 ? 2 : window.devicePixelRatio,
+      useCORS: true,
+      backgroundColor: el.style.backgroundColor
+    });
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `工作笔记分享_${Date.now()}.png`;
+    a.click();
+    showToast('图片导出成功', 'success');
+  } catch (e) {
+    console.error(e);
+    showToast('生成图片失败', 'error');
+  } finally {
+    toHide.forEach(n => { n.style.display = n._oldDisplay; delete n._oldDisplay; });
+    el.style.backgroundColor = oldBgc;
+  }
+}
 
 // 渲染详情背面：来源文件 + AI 总结
 function renderPreviewBack(n) {
